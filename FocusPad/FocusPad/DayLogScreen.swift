@@ -16,7 +16,7 @@ struct DayLogScreen: View {
     }
 
     private var focusMinutes: Double {
-        todaySessions.filter { $0.type == .work }.reduce(0) { $0 + $1.durationMinutes }
+        todaySessions.filter { $0.isFocus }.reduce(0) { $0 + $1.durationMinutes }
     }
 
     private var breakMinutes: Double {

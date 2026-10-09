@@ -34,10 +34,21 @@ struct TimerView: View {
                 .foregroundStyle(.orange)
             }
 
-            Text(timer.currentPhase.displayName.uppercased())
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .tracking(2)
-                .foregroundStyle(phaseColor)
+            // The pause countdown takes the phase label's slot so pausing and
+            // resuming never shifts the layout.
+            if timer.pauseRemainingSeconds > 0 {
+                let s = Int(timer.pauseRemainingSeconds.rounded(.up))
+                Text("PAUSED · ENDS IN \(s / 60):\(String(format: "%02d", s % 60))")
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .tracking(1)
+                    .foregroundStyle(.orange)
+                    .help("Resume before this runs out, or the session is saved and ended")
+            } else {
+                Text(timer.currentPhase.displayName.uppercased())
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .tracking(2)
+                    .foregroundStyle(phaseColor)
+            }
 
             if !timer.isOnBreak {
                 if settings.tags.isEmpty {
@@ -47,7 +58,7 @@ struct TimerView: View {
                         .frame(maxWidth: .infinity)
                 } else {
                     glassChipGroup {
-                        HStack(spacing: 6) {
+                        FlowLayout(spacing: 5) {
                             ForEach(settings.tags, id: \.self) { tag in
                                 let selected = timer.currentLabel == tag
                                 Button(tag) {
@@ -57,9 +68,10 @@ struct TimerView: View {
                                         timer.currentLabel = selected ? "" : tag
                                     }
                                 }
-                                    .font(.system(size: 11, weight: .medium))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
+                                    .font(.system(size: 10.5, weight: .medium))
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 4)
                                     .foregroundStyle(selected ? phaseColor : Color.secondary)
                                     .glassChip(selected: selected, tint: phaseColor)
                                     .buttonStyle(.plain)
@@ -77,7 +89,7 @@ struct TimerView: View {
                 .foregroundStyle(phaseColor.opacity(0.7))
             }
 
-            if !timer.isActive && !timer.isOnBreak {
+            if !timer.isActive && !timer.isOnBreak && !FocusCategories.isLife(timer.currentLabel) {
                 glassChipGroup {
                     HStack(spacing: 6) {
                         ForEach([15, 25, 45, 60], id: \.self) { mins in
@@ -295,7 +307,9 @@ struct TimerView: View {
                             startBreak(minutes: mins)
                         }
                         .font(.system(size: 11, weight: .medium))
-                        .padding(.horizontal, 10)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .foregroundStyle(Color(red: 0.27, green: 0.62, blue: 0.83))
                         .glassChip()

@@ -38,7 +38,7 @@ struct DashboardScreen: View {
     private var personalBest: PersonalBest? {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
-        let workSessions = sessions.filter { $0.type == .work }
+        let workSessions = sessions.filter { $0.isFocus }
         guard !workSessions.isEmpty else { return nil }
 
         // Best day in history.

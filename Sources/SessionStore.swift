@@ -111,7 +111,7 @@ class SessionStore: ObservableObject {
     var todayWorkSessions: [WorkSession] {
         let calendar = Calendar.current
         return sessions.filter {
-            $0.type == .work && calendar.isDateInToday($0.startTime)
+            $0.isFocus && calendar.isDateInToday($0.startTime)
         }
     }
 
@@ -154,24 +154,24 @@ class SessionStore: ObservableObject {
         let calendar = Calendar.current
         let dayEnd = calendar.date(byAdding: .day, value: 1, to: date)!
         return sessions.contains {
-            $0.type == .work && $0.startTime >= date && $0.startTime < dayEnd
+            $0.isFocus && $0.startTime >= date && $0.startTime < dayEnd
         }
     }
 
     // MARK: - Lifetime
 
     var totalWorkHours: Double {
-        sessions.filter { $0.type == .work }.reduce(0) { $0 + $1.durationMinutes } / 60.0
+        sessions.filter { $0.isFocus }.reduce(0) { $0 + $1.durationMinutes } / 60.0
     }
 
     var totalWorkSessions: Int {
-        sessions.filter { $0.type == .work }.count
+        sessions.filter { $0.isFocus }.count
     }
 
     var bestStreak: Int {
         let calendar = Calendar.current
         let activeDays = Set(sessions
-            .filter { $0.type == .work }
+            .filter { $0.isFocus }
             .map { calendar.startOfDay(for: $0.startTime) }
         ).sorted()
 
@@ -194,7 +194,7 @@ class SessionStore: ObservableObject {
     var bestDayMinutes: Double {
         let calendar = Calendar.current
         var dailyTotals: [Date: Double] = [:]
-        for session in sessions where session.type == .work {
+        for session in sessions where session.isFocus {
             let day = calendar.startOfDay(for: session.startTime)
             dailyTotals[day, default: 0] += session.durationMinutes
         }
@@ -217,7 +217,7 @@ class SessionStore: ObservableObject {
             guard date <= today else { return (date: date, minutes: -1) }
             let dayEnd = calendar.date(byAdding: .day, value: 1, to: date)!
             let mins = sessions.filter {
-                $0.type == .work && $0.startTime >= date && $0.startTime < dayEnd
+                $0.isFocus && $0.startTime >= date && $0.startTime < dayEnd
             }.reduce(0.0) { $0 + $1.durationMinutes }
             return (date: date, minutes: mins)
         }
@@ -232,7 +232,7 @@ class SessionStore: ObservableObject {
             let dayEnd = calendar.date(byAdding: .day, value: 1, to: date)!
 
             let daySessions = sessions.filter {
-                $0.type == .work && $0.startTime >= date && $0.startTime < dayEnd
+                $0.isFocus && $0.startTime >= date && $0.startTime < dayEnd
             }
 
             let totalMinutes = daySessions.reduce(0.0) { $0 + $1.durationMinutes }
@@ -247,9 +247,9 @@ class SessionStore: ObservableObject {
     }
 
     /// Total work minutes grouped by label, sorted descending. Includes all historical labels.
-    func minutesByTag() -> [(tag: String, minutes: Double)] {
+    func minutesByTag(includeLife: Bool = false) -> [(tag: String, minutes: Double)] {
         var dict: [String: Double] = [:]
-        for session in sessions where session.type == .work {
+        for session in sessions where includeLife ? session.type == .work : session.isFocus {
             guard let label = session.label, !label.isEmpty else { continue }
             dict[label, default: 0] += session.durationMinutes
         }
@@ -269,14 +269,14 @@ class SessionStore: ObservableObject {
     func workMinutes(since start: Date, until end: Date? = nil) -> Double {
         let end = end ?? Date()
         return sessions.filter {
-            $0.type == .work && $0.startTime >= start && $0.startTime < end
+            $0.isFocus && $0.startTime >= start && $0.startTime < end
         }.reduce(0.0) { $0 + $1.durationMinutes }
     }
 
     func minutesByTag(since start: Date, until end: Date? = nil) -> [(tag: String, minutes: Double)] {
         let end = end ?? Date()
         var dict: [String: Double] = [:]
-        for s in sessions where s.type == .work && s.startTime >= start && s.startTime < end {
+        for s in sessions where s.isFocus && s.startTime >= start && s.startTime < end {
             guard let label = s.label, !label.isEmpty else { continue }
             dict[label, default: 0] += s.durationMinutes
         }
@@ -313,7 +313,7 @@ class SessionStore: ObservableObject {
     var bestWeekMinutes: Double {
         let calendar = Calendar.current
         var dailyTotals: [Date: Double] = [:]
-        for session in sessions where session.type == .work {
+        for session in sessions where session.isFocus {
             let day = calendar.startOfDay(for: session.startTime)
             dailyTotals[day, default: 0] += session.durationMinutes
         }
@@ -332,7 +332,7 @@ class SessionStore: ObservableObject {
 
     /// Average minutes/session over the last `n` work sessions.
     func averageSessionMinutes(last n: Int = 20) -> Double {
-        let recent = sessions.filter { $0.type == .work }.suffix(n)
+        let recent = sessions.filter { $0.isFocus }.suffix(n)
         guard !recent.isEmpty else { return 0 }
         return recent.reduce(0.0) { $0 + $1.durationMinutes } / Double(recent.count)
     }

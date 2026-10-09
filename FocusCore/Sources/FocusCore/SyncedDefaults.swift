@@ -34,6 +34,7 @@ public final class SyncedDefaults {
         "pauseGraceMinutes",
         "autoBreakEnabled",
         "tags",
+        "lifeTags",
         "quantGoal",
         "quantWeeklyGoal",
         "sweGoal",

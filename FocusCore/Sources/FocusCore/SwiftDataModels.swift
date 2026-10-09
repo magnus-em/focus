@@ -41,6 +41,8 @@ public final class StoredWorkSession {
         set { typeRaw = newValue.rawValue }
     }
 
+    public var isFocus: Bool { type == .work && !FocusCategories.isLife(label) }
+
     public var breakKinds: [BreakKind]? {
         get { breakKindsRaw.isEmpty ? nil : breakKindsRaw.compactMap { BreakKind(rawValue: $0) } }
         set { breakKindsRaw = newValue?.map(\.rawValue) ?? [] }

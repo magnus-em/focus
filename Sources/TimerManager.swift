@@ -12,7 +12,9 @@ class TimerManager: ObservableObject {
     @Published var workSessionsCompleted: Int = 0
     @Published var isBlockingActive = false
 
-    @Published var currentLabel: String = ""
+    @Published var currentLabel: String = "" {
+        didSet { if !isActive && currentPhase == .work && currentLabel != oldValue { setTimeForCurrentPhase() } }
+    }
     @Published var lastCompletedLabel: String? = nil
     @Published var currentBreakKinds: [BreakKind] = []
 
@@ -119,15 +121,9 @@ class TimerManager: ObservableObject {
 
     // MARK: - Display
 
-    var progress: Double {
-        guard totalTime > 0 else { return 0 }
-        return 1.0 - (timeRemaining / totalTime)
-    }
+    var progress: Double { FocusCategories.progress(total: totalTime, remaining: timeRemaining) }
 
-    var timeString: String {
-        let total = Int(timeRemaining)
-        return String(format: "%02d:%02d", total / 60, total % 60)
-    }
+    var timeString: String { FocusCategories.timeString(total: totalTime, remaining: timeRemaining) }
 
     var isActive: Bool { isRunning || timeRemaining < totalTime }
     var isOnBreak: Bool { currentPhase != .work }
@@ -299,7 +295,6 @@ class TimerManager: ObservableObject {
             lastResumeTime = nil
             sessionStartTime = nil
             currentPhase = .work
-            currentLabel = ""
             currentBreakKinds = []
             setTimeForCurrentPhase()
             unblockIfNeeded()
@@ -363,7 +358,6 @@ class TimerManager: ObservableObject {
             lastResumeTime = nil
             sessionStartTime = nil
             currentPhase = .work
-            currentLabel = ""
             currentBreakKinds = []
             setTimeForCurrentPhase()
             unblockIfNeeded()
@@ -464,13 +458,19 @@ class TimerManager: ObservableObject {
             }
             if elapsed(until: date) < 60 {
                 currentLabel = label
+                if FocusCategories.isLife(label) && !FocusCategories.isOpenEnded(total: totalTime) {
+                    totalTime += FocusCategories.openEndedSeconds
+                    timeRemaining += FocusCategories.openEndedSeconds
+                }
                 if isRunning { saveCheckpoint(); pushSharedState() } else { start() }
                 return
             }
         }
         cancelPauseGrace()
         closeSegment(at: date)
-        beginSession(phase: .work, label: label, kinds: [], plannedSeconds: workDuration, at: date)
+        beginSession(phase: .work, label: label, kinds: [],
+                     plannedSeconds: FocusCategories.isLife(label) ? FocusCategories.openEndedSeconds : workDuration,
+                     at: date)
     }
 
     func stop(at date: Date) {
@@ -478,7 +478,6 @@ class TimerManager: ObservableObject {
         closeSegment(at: max(min(date, Date()), sessionStartTime ?? date))
         timer?.cancel(); timer = nil
         isRunning = false
-        currentLabel = ""
         currentBreakKinds = []
         elapsedBeforePause = 0
         lastResumeTime = nil
@@ -549,7 +548,6 @@ class TimerManager: ObservableObject {
             ))
         }
 
-        currentLabel = ""
         currentBreakKinds = []
         elapsedBeforePause = 0
         lastResumeTime = nil
@@ -567,7 +565,7 @@ class TimerManager: ObservableObject {
         cancelPauseGrace()
         if currentPhase == .work { closeSegment(at: date) }
         clearCheckpoint()
-        beginSession(phase: .shortBreak, label: "", kinds: kinds, plannedSeconds: minutes * 60, at: date)
+        beginSession(phase: .shortBreak, label: currentLabel, kinds: kinds, plannedSeconds: minutes * 60, at: date)
         updateBlocking()
     }
 
@@ -621,7 +619,6 @@ class TimerManager: ObservableObject {
                 type: .work, label: currentLabel.isEmpty ? nil : currentLabel
             ))
         }
-        currentLabel = ""
         elapsedBeforePause = 0
         lastResumeTime = nil
         sessionStartTime = nil
@@ -629,6 +626,7 @@ class TimerManager: ObservableObject {
         currentPhase = .work
         setTimeForCurrentPhase()
         unblockIfNeeded()
+        pushIdleEverywhere()
         sendStaleEndedNotification()
     }
 
@@ -647,9 +645,37 @@ class TimerManager: ObservableObject {
         guard let resumeTime = lastResumeTime else { return }
         let elapsed = elapsedBeforePause + Date().timeIntervalSince(resumeTime)
         timeRemaining = max(0, totalTime - elapsed)
-        if timeRemaining <= 0 { completePhase(); return }
+        if timeRemaining <= 0 { extendRunway(); return }
         tickCount += 1
         if tickCount % 60 == 0 { saveCheckpoint() }
+    }
+
+    /// Nothing ends on its own: a finished countdown rolls into overtime and
+    /// keeps tracking until the user switches or stops.
+    private func extendRunway() {
+        let wasCountdown = !FocusCategories.isOpenEnded(total: totalTime)
+        totalTime += FocusCategories.openEndedSeconds
+        timeRemaining += FocusCategories.openEndedSeconds
+        saveCheckpoint()
+        pushSharedState()
+        guard wasCountdown else { return }
+
+        if settings?.soundEnabled ?? true { NSSound(named: "Glass")?.play() }
+        if currentPhase == .work {
+            workSessionsCompleted += 1
+            lastCompletedLabel = currentLabel.isEmpty ? nil : currentLabel
+            completionPanel.show(label: lastCompletedLabel) { [weak self] action in
+                guard let self, action == .takeBreak else { return }
+                self.startManualBreak(minutes: self.breakDuration / 60)
+            }
+        } else {
+            let content = UNMutableNotificationContent()
+            content.title = "Focus"
+            content.body = "Break's up — still tracking it until you switch."
+            UNUserNotificationCenter.current().add(
+                UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            )
+        }
     }
 
     private func completePhase() {
@@ -682,7 +708,6 @@ class TimerManager: ObservableObject {
         if currentPhase == .work {
             let capturedDuration = totalTime   // "Keep Going" reuses the same length
             lastCompletedLabel = currentLabel.isEmpty ? nil : currentLabel
-            currentLabel = ""
             workSessionsCompleted += 1
             sendNotification(breakStarting: false)
 
@@ -722,7 +747,6 @@ class TimerManager: ObservableObject {
             setTimeForCurrentPhase()
             updateBlocking()
         } else {
-            currentLabel = ""
             currentBreakKinds = []
             currentPhase = .work
             setTimeForCurrentPhase()
@@ -734,7 +758,7 @@ class TimerManager: ObservableObject {
 
     private func setTimeForCurrentPhase() {
         switch currentPhase {
-        case .work: totalTime = workDuration
+        case .work: totalTime = FocusCategories.isLife(currentLabel) ? FocusCategories.openEndedSeconds : workDuration
         case .shortBreak, .longBreak: totalTime = breakDuration
         }
         timeRemaining = totalTime

@@ -2,20 +2,51 @@ import Foundation
 import FocusCore
 import SwiftData
 
-enum HealthKind: String, CaseIterable, Identifiable {
-    case fap
+enum HealthTracker: String, CaseIterable, Identifiable {
+    case fap, adderall
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .fap: return "Fap"
+        case .fap: return "Jerk"
+        case .adderall: return "Adderall"
         }
     }
 
-    var icon: String {
+    var kinds: [HealthKind] { HealthKind.allCases.filter { $0.tracker == self } }
+
+    /// Fap counts occurrences; Adderall sums milligrams.
+    var unit: String { self == .adderall ? "mg" : "" }
+}
+
+enum HealthKind: String, CaseIterable, Identifiable {
+    case fap
+    case adderallIR10, adderallIR20, adderallXR20
+
+    var id: String { rawValue }
+
+    var tracker: HealthTracker {
         switch self {
-        case .fap: return "drop.fill"
+        case .fap: return .fap
+        case .adderallIR10, .adderallIR20, .adderallXR20: return .adderall
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .fap: return "Jerk"
+        case .adderallIR10: return "IR 10 mg"
+        case .adderallIR20: return "IR 20 mg"
+        case .adderallXR20: return "XR 20 mg"
+        }
+    }
+
+    var amount: Int {
+        switch self {
+        case .fap: return 1
+        case .adderallIR10: return 10
+        case .adderallIR20, .adderallXR20: return 20
         }
     }
 }
@@ -28,7 +59,7 @@ struct HealthEvent: Identifiable, Equatable {
 
 struct HealthWeek: Identifiable {
     let start: Date
-    let count: Int
+    let total: Int
     let focusHours: Double
     var id: Date { start }
 }
@@ -78,26 +109,26 @@ class HealthStore: ObservableObject {
 
     // MARK: - Stats
 
-    func events(_ kind: HealthKind) -> [HealthEvent] {
-        events.filter { $0.kind == kind }
+    func events(_ tracker: HealthTracker) -> [HealthEvent] {
+        events.filter { $0.kind.tracker == tracker }
     }
 
     func weekStart(_ date: Date) -> Date {
         Self.calendar.dateInterval(of: .weekOfYear, for: date)?.start ?? Self.calendar.startOfDay(for: date)
     }
 
-    func count(_ kind: HealthKind, from start: Date, to end: Date) -> Int {
-        events.filter { $0.kind == kind && $0.date >= start && $0.date < end }.count
+    func total(_ tracker: HealthTracker, from start: Date, to end: Date) -> Int {
+        events.filter { $0.kind.tracker == tracker && $0.date >= start && $0.date < end }.map(\.kind.amount).reduce(0, +)
     }
 
-    func daysSinceLast(_ kind: HealthKind) -> Int? {
-        guard let last = events(kind).first else { return nil }
+    func daysSinceLast(_ tracker: HealthTracker) -> Int? {
+        guard let last = events(tracker).first else { return nil }
         let cal = Self.calendar
         return cal.dateComponents([.day], from: cal.startOfDay(for: last.date), to: cal.startOfDay(for: Date())).day
     }
 
     /// Oldest first, ending with the current week.
-    func weeks(_ kind: HealthKind, count n: Int, sessionStore: SessionStore) -> [HealthWeek] {
+    func weeks(_ tracker: HealthTracker, count n: Int, sessionStore: SessionStore) -> [HealthWeek] {
         let cal = Self.calendar
         let thisWeek = weekStart(Date())
         return (0..<n).reversed().compactMap { back in
@@ -105,16 +136,35 @@ class HealthStore: ObservableObject {
                   let end = cal.date(byAdding: .weekOfYear, value: 1, to: start) else { return nil }
             return HealthWeek(
                 start: start,
-                count: count(kind, from: start, to: end),
+                total: total(tracker, from: start, to: end),
                 focusHours: sessionStore.workMinutes(since: start, until: end) / 60
             )
         }
     }
 
-    /// Longest run of whole days with no event, counting the open run up to today.
-    func longestGapDays(_ kind: HealthKind) -> Int {
+    /// Average focus hours on days with vs without an event, over complete
+    /// days since the first event. Nil until both groups have 3+ days.
+    func focusOnVsOff(_ tracker: HealthTracker, sessionStore: SessionStore) -> (on: Double, onDays: Int, off: Double, offDays: Int)? {
         let cal = Self.calendar
-        let days = Set(events(kind).map { cal.startOfDay(for: $0.date) }).sorted()
+        guard let first = events(tracker).last?.date else { return nil }
+        let eventDays = Set(events(tracker).map { cal.startOfDay(for: $0.date) })
+        let today = cal.startOfDay(for: Date())
+        var on: [Double] = [], off: [Double] = []
+        var day = cal.startOfDay(for: first)
+        while day < today, let next = cal.date(byAdding: .day, value: 1, to: day) {
+            let h = sessionStore.workMinutes(since: day, until: next) / 60
+            if eventDays.contains(day) { on.append(h) } else { off.append(h) }
+            day = next
+        }
+        guard on.count >= 3, off.count >= 3 else { return nil }
+        let avg: ([Double]) -> Double = { $0.reduce(0, +) / Double($0.count) }
+        return (avg(on), on.count, avg(off), off.count)
+    }
+
+    /// Longest run of whole days with no event, counting the open run up to today.
+    func longestGapDays(_ tracker: HealthTracker) -> Int {
+        let cal = Self.calendar
+        let days = Set(events(tracker).map { cal.startOfDay(for: $0.date) }).sorted()
         guard days.count > 0 else { return 0 }
         var best = 0
         for (a, b) in zip(days, days.dropFirst()) {

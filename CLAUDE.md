@@ -24,7 +24,7 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 | `Sources/DayStore.swift` | Day boundaries (`DayRecord { calendarDay, dayStart, dayEnd }`). SwiftData `StoredDayRecord`. |
 | `Sources/ProblemStore.swift` | Logged problems per domain. SwiftData `StoredProblem`. |
 | `Sources/ScratchStore.swift` | Scratchpad checklist items. SwiftData `StoredScratchItem`. |
-| `Sources/HealthStore.swift` | Health habit log. SwiftData `StoredHealthEvent { date, kind }`; `HealthKind` enum (add a case for a new habit, no schema change). Weekly counts paired with focus hours, days since last, longest gap. |
+| `Sources/HealthStore.swift` | Health habit log. SwiftData `StoredHealthEvent { date, kind }`; `HealthTracker` (Fap, Adderall) groups `HealthKind` cases (add a case for a new habit or dose, no schema change); each kind has an `amount` (1, or mg). Weekly totals paired with focus hours, dose-day vs off-day focus, days since last, longest gap. |
 | `Sources/CommitmentStore.swift` | AVFoundation voice oath recorder. Audio at `oaths/YYYY-MM-DD.m4a`. |
 | `Sources/AppSettings.swift` | All settings, UserDefaults-backed. Bundle id `com.magnus.focus`. |
 | `Sources/LeetCodeStore.swift` | LeetCode grind tracking derived from `ProblemStore` (every solve is a normal SWE `ProblemEntry`, matched to the catalog by URL slug, then title). Streaks, pace vs target/deadline, pattern coverage, difficulty mix vs 20/60/20 target, solve-time medians vs 15/25/40m, redo queue, milestones, Smart pick, stopwatch (persisted in UserDefaults), evening nudge notification. |
@@ -81,13 +81,21 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 
 ### Timer
 - **Phases**: focus → break → focus. No long-break cycle anymore (single break duration in settings, default 10m).
-- **Auto-break**: when a focus session naturally completes, a break timer auto-starts if `settings.autoBreakEnabled` (default true). Otherwise returns to idle.
+- **Nothing ends on its own.** When a countdown hits 0 the session rolls into overtime (`extendRunway`): chime + Keep Going / Take a Break panel, menu bar shows `+MM:SS`, tracking continues until a switch/stop. Breaks do the same. Only pause grace ends a session automatically.
+- **Open-ended encoding**: life blocks and overtime add `FocusCategories.openEndedSeconds` (24h) to `totalTime`, so the shared state's `endTime` is always in the future (peers treat a past `endTime` as finished). Display derives from `(total, remaining)` via `FocusCategories.timeString/progress`; `countdown(total:)` = total mod 24h (0 = life block).
+- **Category is sticky**: `currentLabel` survives completion, breaks, stop and pause-grace; it only changes when the user picks one.
 - **Manual break**: "Take a Break" button (idle on work phase) opens a sheet — 30 / 60 / 120 min / custom (5m steps, 5–480m). Saves any in-progress focus first.
 - **Stop / skip**: stop button mid-session saves partial work if ≥ 1 min; skip during a break saves break if ≥ 5 min, then returns to work.
 - **Pause grace**: pausing arms an auto-finalize that saves + ends the session after `pauseGraceMinutes` (default 10). Bathroom-break safe; longer absences auto-end.
 - **Crash recovery**: timer state checkpointed every 30s during work; on next launch the partial session is recovered into the store.
 - **In-session adjustment**: ±5 / ±10 min chips during active work.
 - **Quick presets**: 15 / 25 / 45 / 60m chips when idle on work.
+
+### Categories (focus vs life)
+- `settings.tags` = all categories (order = ⌃⌥1–9; the switcher panel gives 10+ a letter key). `settings.lifeTags` (synced key `lifeTags`) = the life subset: tracked but not counted toward the goal. Toggle Focus/Life in the Stats tab category card.
+- `WorkSession.isFocus` / `StoredWorkSession.isFocus` = work type and not a life label. All goal/streak/stats code uses `isFocus`; day logs and timelines show everything. `minutesByTag(includeLife:)` for full-day splits.
+- Life categories start open-ended (count up, no presets). Colors: `categoryColor(_:)` in `DashboardView.swift`.
+- Dashboard day timeline spans 0–24h; untracked gaps ≥ 5 min are dashed and clickable to back-fill a category or Break.
 
 ### Switching & remote commands
 - **Switch = split at a timestamp.** `TimerManager.switchTo(_:at:)` / `FocusTimerEngine.switchTo(_:at:)` save the running segment up to `at` (if ≥ 1 min; shorter focus is just relabeled) and start the new category already running from `at`. Category chips mid-session switch rather than relabel.
@@ -161,6 +169,9 @@ Requires admin password on first setup. Sets up sudoers entry + helper script. M
 
 ### In flight (see HANDOFF.md)
 _(none)_
+
+### Vision: track every minute of the day
+Homework stays the focus, but the app should cover the whole day with near-zero-friction switching from every surface. Phase 1 (done): focus/life categories, keep-tracking at countdown end, focus-only goal, fillable day timeline. Phase 2: infer Sleep from Mac sleep/idle, prompt to fill long gaps, weekly "where time went". Phase 3: iOS Control Center / Action Button / interactive widgets / Live Activity, Apple Watch app, HomePod via Siri Personal Requests → existing App Intents.
 
 ### Future ideas (not started)
 - Multi-day visual timeline (horizontal blocks for past days)

@@ -165,12 +165,10 @@ public final class FocusTimerEngine: ObservableObject {
     private func scheduleCompletionNotification() {
         let center = UNUserNotificationCenter.current()
         center.removePendingNotificationRequests(withIdentifiers: [Self.notifIdentifier])
-        guard timeRemaining > 1 else { return }
+        guard timeRemaining > 1, !FocusCategories.isOpenEnded(total: totalTime) else { return }
         let content = UNMutableNotificationContent()
         content.title = phase == .work ? "Focus complete" : "Break over"
-        content.body = phase == .work
-            ? "Session finished — \(Int(settings.breakMinutes)) min break ready when you are."
-            : "Back to focus."
+        content.body = "Still tracking until you switch."
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: timeRemaining, repeats: false)
         let req = UNNotificationRequest(identifier: Self.notifIdentifier, content: content, trigger: trigger)
@@ -191,15 +189,9 @@ public final class FocusTimerEngine: ObservableObject {
     public var isActive: Bool { isRunning || timeRemaining < totalTime }
     public var isOnBreak: Bool { phase.isBreak }
 
-    public var progress: Double {
-        guard totalTime > 0 else { return 0 }
-        return 1.0 - (timeRemaining / totalTime)
-    }
+    public var progress: Double { FocusCategories.progress(total: totalTime, remaining: timeRemaining) }
 
-    public var timeString: String {
-        let total = max(0, Int(timeRemaining))
-        return String(format: "%02d:%02d", total / 60, total % 60)
-    }
+    public var timeString: String { FocusCategories.timeString(total: totalTime, remaining: timeRemaining) }
 
     // MARK: - Public controls
 
@@ -340,7 +332,6 @@ public final class FocusTimerEngine: ObservableObject {
             phase = .work
             totalTime = settings.workMinutes * 60
             timeRemaining = totalTime
-            currentLabel = ""
             currentBreakKinds = []
             cancelCompletionNotification()
             return
@@ -407,7 +398,6 @@ public final class FocusTimerEngine: ObservableObject {
             phase = .work
             totalTime = settings.workMinutes * 60
             timeRemaining = totalTime
-            currentLabel = ""
             currentBreakKinds = []
             cancelCompletionNotification()
             return
@@ -509,13 +499,20 @@ public final class FocusTimerEngine: ObservableObject {
             }
             if elapsed(until: date) < 60 {
                 currentLabel = label
+                if FocusCategories.isLife(label) && !FocusCategories.isOpenEnded(total: totalTime) {
+                    totalTime += FocusCategories.openEndedSeconds
+                    timeRemaining += FocusCategories.openEndedSeconds
+                    cancelCompletionNotification()
+                }
                 if isRunning { saveCheckpoint(); pushSharedState() } else { start() }
                 return
             }
         }
         closeSegment(at: date)
         cancelCompletionNotification()
-        beginSession(phase: .work, label: label, kinds: [], plannedSeconds: settings.workMinutes * 60, at: date)
+        beginSession(phase: .work, label: label, kinds: [],
+                     plannedSeconds: FocusCategories.isLife(label) ? FocusCategories.openEndedSeconds : settings.workMinutes * 60,
+                     at: date)
     }
 
     public func stop(at requested: Date) {
@@ -526,7 +523,7 @@ public final class FocusTimerEngine: ObservableObject {
         isRunning = false
         cancelCompletionNotification()
         pushIdleEverywhere()
-        resetSessionState(clearLabel: true)
+        resetSessionState()
         currentBreakKinds = []
         phase = .work
         totalTime = settings.workMinutes * 60
@@ -538,7 +535,7 @@ public final class FocusTimerEngine: ObservableObject {
         if let start = sessionStartTime { date = max(date, start) }
         if phase == .work { closeSegment(at: date) }
         cancelCompletionNotification()
-        beginSession(phase: .breakPhase, label: "", kinds: kinds, plannedSeconds: minutes * 60, at: date)
+        beginSession(phase: .breakPhase, label: currentLabel, kinds: kinds, plannedSeconds: minutes * 60, at: date)
     }
 
     public func apply(_ command: TimerCommand) {
@@ -657,7 +654,20 @@ public final class FocusTimerEngine: ObservableObject {
         let elapsed = elapsedBeforePause + Date().timeIntervalSince(resume)
         elapsedSeconds = elapsed
         timeRemaining = max(0, totalTime - elapsed)
-        if timeRemaining <= 0 { completePhase() }
+        if timeRemaining <= 0 { extendRunway() }
+    }
+
+    /// Nothing ends on its own: a finished countdown rolls into overtime and
+    /// keeps tracking. The completion notification already fired on schedule.
+    private func extendRunway() {
+        if phase == .work && !FocusCategories.isOpenEnded(total: totalTime) {
+            lastCompletedLabel = currentLabel.isEmpty ? nil : currentLabel
+            workSessionsCompletedToday += 1
+        }
+        totalTime += FocusCategories.openEndedSeconds
+        timeRemaining += FocusCategories.openEndedSeconds
+        saveCheckpoint()
+        pushSharedState()
     }
 
     private func completePhase() {
@@ -679,7 +689,7 @@ public final class FocusTimerEngine: ObservableObject {
         if phase == .work {
             lastCompletedLabel = currentLabel.isEmpty ? nil : currentLabel
             workSessionsCompletedToday += 1
-            resetSessionState(clearLabel: true)
+            resetSessionState()
             if settings.autoStartBreaks {
                 phase = .breakPhase
                 totalTime = settings.breakMinutes * 60
@@ -691,7 +701,7 @@ public final class FocusTimerEngine: ObservableObject {
                 timeRemaining = totalTime
             }
         } else {
-            resetSessionState(clearLabel: true)
+            resetSessionState()
             currentBreakKinds = []
             phase = .work
             totalTime = settings.workMinutes * 60
@@ -722,19 +732,18 @@ public final class FocusTimerEngine: ObservableObject {
             }
         }
 
-        resetSessionState(clearLabel: true)
+        resetSessionState()
         currentBreakKinds = []
         phase = .work
         totalTime = settings.workMinutes * 60
         timeRemaining = totalTime
     }
 
-    private func resetSessionState(clearLabel: Bool = false) {
+    private func resetSessionState() {
         elapsedBeforePause = 0
         lastResumeTime = nil
         sessionStartTime = nil
         elapsedSeconds = 0
-        if clearLabel { currentLabel = "" }
         clearCheckpoint()
     }
 
@@ -877,7 +886,10 @@ public final class FocusTimerEngine: ObservableObject {
             let elapsed = elapsedBeforePause + Date().timeIntervalSince(resume)
             elapsedSeconds = elapsed
             timeRemaining = max(0, totalTime - elapsed)
-            if timeRemaining <= 0 { completePhase() }
+            while timeRemaining <= 0 {
+                extendRunway()
+                timeRemaining = max(0, totalTime - elapsed)
+            }
         }
         recomputeTodayCount()
     }

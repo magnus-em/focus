@@ -25,10 +25,10 @@ struct StatsScreen: View {
     }
 
     private var totalMinutes: Double {
-        sessions.filter { $0.type == .work }.reduce(0) { $0 + $1.durationMinutes }
+        sessions.filter { $0.isFocus }.reduce(0) { $0 + $1.durationMinutes }
     }
     private var totalSessions: Int {
-        sessions.filter { $0.type == .work }.count
+        sessions.filter { $0.isFocus }.count
     }
 
     private var topMetricsRow: some View {
@@ -150,7 +150,7 @@ struct StatsScreen: View {
     }
 
     private var lifetimeCard: some View {
-        let bestDay = sessions.filter { $0.type == .work }
+        let bestDay = sessions.filter { $0.isFocus }
             .reduce(into: [Date: Double]()) {
                 $0[Calendar.current.startOfDay(for: $1.startTime), default: 0] += $1.durationMinutes
             }

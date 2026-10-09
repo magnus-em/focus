@@ -10,7 +10,7 @@ enum PadStats {
 
     static func workMinutes(_ sessions: [StoredWorkSession], on day: Date) -> Double {
         sessions
-            .filter { cal.isDate($0.startTime, inSameDayAs: day) && $0.type == .work }
+            .filter { cal.isDate($0.startTime, inSameDayAs: day) && $0.isFocus }
             .reduce(0) { $0 + $1.durationMinutes }
     }
 
@@ -21,7 +21,7 @@ enum PadStats {
     }
 
     static func sessionCount(_ sessions: [StoredWorkSession], on day: Date) -> Int {
-        sessions.filter { cal.isDate($0.startTime, inSameDayAs: day) && $0.type == .work }.count
+        sessions.filter { cal.isDate($0.startTime, inSameDayAs: day) && $0.isFocus }.count
     }
 
     // MARK: - Recent windows
@@ -30,7 +30,7 @@ enum PadStats {
     static func minutesByDay(_ sessions: [StoredWorkSession], days: Int) -> [Date: Double] {
         let today = cal.startOfDay(for: Date())
         let earliest = cal.date(byAdding: .day, value: -(days - 1), to: today)!
-        let work = sessions.filter { $0.type == .work && $0.startTime >= earliest }
+        let work = sessions.filter { $0.isFocus && $0.startTime >= earliest }
         var dict: [Date: Double] = [:]
         for s in work {
             let day = cal.startOfDay(for: s.startTime)
@@ -114,7 +114,7 @@ enum PadStats {
         let start = cal.date(byAdding: .day, value: -startOffset, to: today)!
         let endExclusive = cal.date(byAdding: .day, value: -endOffset + 1, to: today)!
         return sessions
-            .filter { $0.type == .work && $0.startTime >= start && $0.startTime < endExclusive }
+            .filter { $0.isFocus && $0.startTime >= start && $0.startTime < endExclusive }
             .reduce(0) { $0 + $1.durationMinutes }
     }
 
@@ -123,7 +123,7 @@ enum PadStats {
     static func byTag(_ sessions: [StoredWorkSession], days: Int = 7) -> [(tag: String, minutes: Double)] {
         let today = cal.startOfDay(for: Date())
         let earliest = cal.date(byAdding: .day, value: -(days - 1), to: today)!
-        let work = sessions.filter { $0.type == .work && $0.startTime >= earliest }
+        let work = sessions.filter { $0.isFocus && $0.startTime >= earliest }
         var dict: [String: Double] = [:]
         for s in work {
             let key = (s.label?.isEmpty == false ? s.label! : "Untagged")

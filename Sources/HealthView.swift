@@ -5,18 +5,24 @@ struct HealthView: View {
     @ObservedObject var store: HealthStore
     @ObservedObject var sessionStore: SessionStore
 
-    @State private var kind: HealthKind = .fap
+    @AppStorage("healthTracker") private var tracker: HealthTracker = .fap
+    @State private var backdateKind: HealthKind = .fap
     @State private var justLogged: UUID?
     @State private var showBackdate = false
     @State private var backdate = Date()
 
     private let accent = Color(red: 0.62, green: 0.48, blue: 0.95)
 
-    private var weeks: [HealthWeek] { store.weeks(kind, count: 12, sessionStore: sessionStore) }
+    private var weeks: [HealthWeek] { store.weeks(tracker, count: 12, sessionStore: sessionStore) }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
+                Picker("", selection: $tracker) {
+                    ForEach(HealthTracker.allCases) { Text($0.displayName).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
                 logCard
                 statsRow
                 chartCard
@@ -34,7 +40,7 @@ struct HealthView: View {
     private var logCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                label(kind.displayName.uppercased())
+                label(tracker.displayName.uppercased())
                 Spacer()
                 Text(lastText)
                     .font(.system(size: 10))
@@ -42,24 +48,28 @@ struct HealthView: View {
             }
 
             HStack(spacing: 8) {
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) { justLogged = store.log(kind) }
-                    let id = justLogged
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
-                        if justLogged == id { withAnimation { justLogged = nil } }
+                ForEach(tracker.kinds) { kind in
+                    Button {
+                        withAnimation(.easeOut(duration: 0.15)) { justLogged = store.log(kind) }
+                        let id = justLogged
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+                            if justLogged == id { withAnimation { justLogged = nil } }
+                        }
+                    } label: {
+                        Label(tracker.kinds.count == 1 ? "Log now" : kind.displayName, systemImage: "plus")
+                            .font(.system(size: tracker.kinds.count == 1 ? 13 : 11, weight: .semibold))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(accent.opacity(0.85)))
+                            .foregroundStyle(.white)
                     }
-                } label: {
-                    Label("Log now", systemImage: "plus")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(accent.opacity(0.85)))
-                        .foregroundStyle(.white)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
 
                 Button {
                     backdate = Date()
+                    backdateKind = tracker.kinds.first ?? .fap
                     showBackdate = true
                 } label: {
                     Image(systemName: "calendar.badge.plus")
@@ -94,11 +104,18 @@ struct HealthView: View {
 
     private var backdatePopover: some View {
         VStack(spacing: 10) {
+            if tracker.kinds.count > 1 {
+                Picker("", selection: $backdateKind) {
+                    ForEach(tracker.kinds) { Text($0.displayName).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
             DatePicker("", selection: $backdate, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
                 .labelsHidden()
                 .datePickerStyle(.graphical)
             Button("Log at this time") {
-                store.log(kind, at: backdate)
+                store.log(backdateKind, at: backdate)
                 showBackdate = false
             }
             .keyboardShortcut(.defaultAction)
@@ -107,7 +124,7 @@ struct HealthView: View {
     }
 
     private var lastText: String {
-        guard let days = store.daysSinceLast(kind) else { return "Nothing logged yet" }
+        guard let days = store.daysSinceLast(tracker) else { return "Nothing logged yet" }
         switch days {
         case 0: return "Last: today"
         case 1: return "Last: yesterday"
@@ -119,15 +136,16 @@ struct HealthView: View {
 
     private var statsRow: some View {
         let w = weeks
-        let thisWeek = w.last?.count ?? 0
-        let lastWeek = w.dropLast().last?.count ?? 0
+        let thisWeek = w.last?.total ?? 0
+        let lastWeek = w.dropLast().last?.total ?? 0
         let prior = w.dropLast().suffix(8)
-        let avg = prior.isEmpty ? 0 : Double(prior.map(\.count).reduce(0, +)) / Double(prior.count)
+        let avg = prior.isEmpty ? 0 : Double(prior.map(\.total).reduce(0, +)) / Double(prior.count)
+        let unit = tracker.unit
         return HStack(spacing: 8) {
-            stat("\(thisWeek)", "this week")
-            stat("\(lastWeek)", "last week")
-            stat(String(format: "%.1f", avg), "8-wk avg")
-            stat("\(store.longestGapDays(kind))d", "longest gap")
+            stat("\(thisWeek)\(unit)", "this week")
+            stat("\(lastWeek)\(unit)", "last week")
+            stat(unit.isEmpty ? String(format: "%.1f", avg) : "\(Int(avg.rounded()))\(unit)", "8-wk avg")
+            stat("\(store.longestGapDays(tracker))d", "longest gap")
         }
     }
 
@@ -145,11 +163,11 @@ struct HealthView: View {
 
     private var chartCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            label("PER WEEK · 12 WEEKS")
+            label(tracker.unit.isEmpty ? "PER WEEK · 12 WEEKS" : "MG PER WEEK · 12 WEEKS")
             Chart(weeks) { w in
                 BarMark(
                     x: .value("Week", w.start, unit: .weekOfYear),
-                    y: .value("Count", w.count)
+                    y: .value("Total", w.total)
                 )
                 .foregroundStyle(accent.gradient)
                 .cornerRadius(3)
@@ -175,7 +193,7 @@ struct HealthView: View {
 
     private var weeksCard: some View {
         let w = Array(weeks.suffix(8).reversed())
-        let maxCount = max(1, w.map(\.count).max() ?? 1)
+        let maxCount = max(1, w.map(\.total).max() ?? 1)
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 label("WEEK")
@@ -191,20 +209,20 @@ struct HealthView: View {
                     GeometryReader { geo in
                         RoundedRectangle(cornerRadius: 2)
                             .fill(accent.opacity(0.7))
-                            .frame(width: max(2, geo.size.width * CGFloat(week.count) / CGFloat(maxCount)))
-                            .opacity(week.count == 0 ? 0.25 : 1)
+                            .frame(width: max(2, geo.size.width * CGFloat(week.total) / CGFloat(maxCount)))
+                            .opacity(week.total == 0 ? 0.25 : 1)
                     }
                     .frame(height: 8)
-                    Text("\(week.count)")
+                    Text("\(week.total)")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .frame(width: 18, alignment: .trailing)
+                        .frame(width: 28, alignment: .trailing)
                     Text(String(format: "%.1fh", week.focusHours))
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .frame(width: 42, alignment: .trailing)
                 }
             }
-            if let insight = focusInsight {
+            ForEach([onOffInsight, focusInsight].compactMap { $0 }, id: \.self) { insight in
                 Text(insight)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
@@ -221,20 +239,26 @@ struct HealthView: View {
     private var focusInsight: String? {
         let done = weeks.dropLast().filter { $0.focusHours > 0 }
         guard done.count >= 4 else { return nil }
-        let sorted = done.map(\.count).sorted()
+        let sorted = done.map(\.total).sorted()
         let median = sorted[sorted.count / 2]
-        let heavy = done.filter { $0.count > median }
-        let light = done.filter { $0.count <= median }
+        let heavy = done.filter { $0.total > median }
+        let light = done.filter { $0.total <= median }
         guard !heavy.isEmpty, !light.isEmpty else { return nil }
         let avg: ([HealthWeek]) -> Double = { $0.map(\.focusHours).reduce(0, +) / Double($0.count) }
-        return String(format: "Weeks with more than %d: %.1fh focus on average, vs %.1fh in the rest.",
-                      median, avg(heavy), avg(light))
+        return String(format: "Weeks with more than %d%@: %.1fh focus on average, vs %.1fh in the rest.",
+                      median, tracker.unit, avg(heavy), avg(light))
+    }
+
+    private var onOffInsight: String? {
+        guard tracker == .adderall, let r = store.focusOnVsOff(tracker, sessionStore: sessionStore) else { return nil }
+        return String(format: "Dose days: %.1fh focus on average (%d days), vs %.1fh on days off (%d days).",
+                      r.on, r.onDays, r.off, r.offDays)
     }
 
     // MARK: - Recent
 
     private var recentCard: some View {
-        let recent = Array(store.events(kind).prefix(12))
+        let recent = Array(store.events(tracker).prefix(12))
         return VStack(alignment: .leading, spacing: 6) {
             label("RECENT")
             if recent.isEmpty {
@@ -245,6 +269,9 @@ struct HealthView: View {
             ForEach(recent) { e in
                 HStack {
                     Text(e.date, format: .dateTime.weekday(.abbreviated).month(.abbreviated).day())
+                    if tracker.kinds.count > 1 {
+                        Text(e.kind.displayName).foregroundStyle(accent)
+                    }
                     Spacer()
                     Text(e.date, format: .dateTime.hour().minute())
                         .foregroundStyle(.secondary)

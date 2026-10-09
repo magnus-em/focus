@@ -31,6 +31,10 @@ class AppSettings: ObservableObject {
     @Published var tags: [String] {
         didSet { sd.set(tags, forKey: "tags") }
     }
+    /// Subset of `tags` that are life categories (tracked, not counted toward the goal).
+    @Published var lifeTags: [String] {
+        didSet { sd.set(lifeTags, forKey: FocusCategories.lifeTagsKey) }
+    }
     /// Category the ⌃⌥S quick-start hotkey tags a session with.
     @Published var quickStartTag: String {
         didSet { sd.set(quickStartTag, forKey: "quickStartTag") }
@@ -171,6 +175,7 @@ class AppSettings: ObservableObject {
         blockDuringBreaks = d.bool(forKey: "blockDuringBreaks")
         blockedSites = d.stringArray(forKey: "blockedSites") ?? []
         tags = d.stringArray(forKey: "tags") ?? []
+        lifeTags = d.stringArray(forKey: FocusCategories.lifeTagsKey) ?? []
         quickStartTag = d.string(forKey: "quickStartTag") ?? "HW"
         pauseGraceMinutes = d.integer(forKey: "pauseGraceMinutes")
         autoBreakEnabled = d.bool(forKey: "autoBreakEnabled")
@@ -200,6 +205,15 @@ class AppSettings: ObservableObject {
             d.set(true, forKey: "didAddHWChoresTags")
         }
 
+        if !d.bool(forKey: "didAddLifeCategories") {
+            let order = ["Quant", "SWE", "AI", "HW", "Class", "Meals", "Leisure", "Sleep", "Chores",
+                         "Exercise", "Social", "Commute", "Admin"]
+            tags = order.filter { tags.contains($0) || !["Quant", "SWE", "AI", "HW"].contains($0) }
+                + tags.filter { !order.contains($0) }
+            lifeTags = ["Class", "Meals", "Leisure", "Sleep", "Chores", "Exercise", "Social", "Commute", "Admin"]
+            d.set(true, forKey: "didAddLifeCategories")
+        }
+
         if tags.contains("AI/ML") {
             tags = tags.map { $0 == "AI/ML" ? "AI" : $0 }
             sd.set(tags, forKey: "tags")
@@ -225,6 +239,7 @@ class AppSettings: ObservableObject {
         autoStartWork = d.bool(forKey: "autoStartWork")
         soundEnabled = d.bool(forKey: "soundEnabled")
         tags = d.stringArray(forKey: "tags") ?? tags
+        lifeTags = d.stringArray(forKey: FocusCategories.lifeTagsKey) ?? lifeTags
         pauseGraceMinutes = d.integer(forKey: "pauseGraceMinutes")
         autoBreakEnabled = d.bool(forKey: "autoBreakEnabled")
         commitmentEnabled = d.bool(forKey: "commitmentEnabled")

@@ -77,7 +77,7 @@ struct InsightsScreen: View {
     /// Which weekday do you log the most focus on?
     private func bestDayOfWeekInsight() -> [Insight] {
         let cal = Calendar.current
-        let work = sessions.filter { $0.type == .work }
+        let work = sessions.filter { $0.isFocus }
         guard work.count >= 10 else { return [] }
         var byWeekday: [Int: Double] = [:]
         for s in work {
@@ -97,7 +97,7 @@ struct InsightsScreen: View {
     /// What hour do you usually start? Used to suggest morning vs evening.
     private func peakHourInsight() -> [Insight] {
         let cal = Calendar.current
-        let work = sessions.filter { $0.type == .work }
+        let work = sessions.filter { $0.isFocus }
         guard work.count >= 10 else { return [] }
         var byHour: [Int: Double] = [:]
         for s in work {

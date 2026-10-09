@@ -188,8 +188,10 @@ private struct SwitcherView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 6)
-            ForEach(Array(quick.tags.prefix(9).enumerated()), id: \.offset) { i, tag in
-                row(key: "\(i + 1)", title: tag, current: tag == quick.currentLabel) { quick.switchTo(tag) }
+            let letters = letterKeys
+            ForEach(Array(quick.tags.enumerated()), id: \.offset) { i, tag in
+                row(key: i < 9 ? "\(i + 1)" : (letters[tag].map { String($0).uppercased() } ?? "·"),
+                    title: tag, current: tag == quick.currentLabel) { quick.switchTo(tag) }
             }
             Divider().padding(.vertical, 4)
             row(key: "B", title: "Break", current: quick.isOnBreak) { quick.startBreak() }
@@ -213,8 +215,26 @@ private struct SwitcherView: View {
             }
             if c == "0" || c == "s" { run { quick.stop() }; return .handled }
             if c == "b" { run { quick.startBreak() }; return .handled }
+            if let ch = c.first, let tag = letterKeys.first(where: { $0.value == ch })?.key {
+                run { quick.switchTo(tag) }
+                return .handled
+            }
             return .ignored
         }
+    }
+
+    /// Categories past the ninth have no digit, so each gets the first letter
+    /// of its name not already taken (B and S are Break and Stop).
+    private var letterKeys: [String: Character] {
+        var taken: Set<Character> = ["b", "s"]
+        var out: [String: Character] = [:]
+        for tag in quick.tags.dropFirst(9) {
+            if let ch = tag.lowercased().first(where: { $0.isLetter && !taken.contains($0) }) {
+                out[tag] = ch
+                taken.insert(ch)
+            }
+        }
+        return out
     }
 
     private var statusLine: String {

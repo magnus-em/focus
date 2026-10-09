@@ -11,15 +11,7 @@ struct StatsView: View {
     private let sweColor   = Color(red: 0.96, green: 0.36, blue: 0.36)   // red
     private let otherColor = Color(red: 0.30, green: 0.78, blue: 0.74)   // teal
 
-    private func color(for tag: String) -> Color {
-        switch tag.lowercased() {
-        case "quant": return quantColor
-        case "swe":   return sweColor
-        case "hw":    return Color(red: 0.98, green: 0.70, blue: 0.18)
-        case "chores": return Color(red: 0.62, green: 0.58, blue: 0.52)
-        default:      return otherColor
-        }
-    }
+    private func color(for tag: String) -> Color { categoryColor(tag) }
 
     // MARK: - Derived metrics
 
@@ -270,7 +262,7 @@ struct StatsView: View {
                 .tracking(1.2)
                 .foregroundStyle(.secondary)
 
-            let byTag = store.minutesByTag()
+            let byTag = store.minutesByTag(includeLife: true)
             let maxMins = byTag.first?.minutes ?? 1
 
             VStack(spacing: 6) {
@@ -292,8 +284,21 @@ struct StatsView: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 50, alignment: .trailing)
                         Spacer()
+                        let isLife = settings.lifeTags.contains(tag)
+                        Button(isLife ? "Life" : "Focus") {
+                            if isLife { settings.lifeTags.removeAll { $0 == tag } }
+                            else { settings.lifeTags.append(tag) }
+                        }
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(isLife ? Color.secondary : red)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill((isLife ? Color.secondary : red).opacity(0.12)))
+                        .buttonStyle(.plain)
+                        .help(isLife ? "Life: tracked, not counted toward the daily goal. Click to make it Focus."
+                                     : "Focus: counts toward the daily goal. Click to make it Life.")
                         Button {
                             settings.tags.removeAll { $0 == tag }
+                            settings.lifeTags.removeAll { $0 == tag }
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: 8, weight: .bold))

@@ -56,6 +56,25 @@ private func fmtHours(_ h: Double) -> String {
 
 // MARK: - Dashboard
 
+func categoryColor(_ tag: String) -> Color {
+    switch tag.lowercased() {
+    case "quant":    return Color(red: 0.27, green: 0.62, blue: 0.83)
+    case "swe":      return Color(red: 0.25, green: 0.72, blue: 0.53)
+    case "ai", "ai/ml": return Color(red: 0.65, green: 0.40, blue: 0.90)
+    case "hw":       return Color(red: 0.98, green: 0.70, blue: 0.18)
+    case "class":    return Color(red: 0.36, green: 0.42, blue: 0.86)
+    case "meals":    return Color(red: 0.95, green: 0.52, blue: 0.25)
+    case "leisure":  return Color(red: 0.93, green: 0.42, blue: 0.62)
+    case "sleep":    return Color(red: 0.33, green: 0.36, blue: 0.52)
+    case "chores":   return Color(red: 0.62, green: 0.58, blue: 0.52)
+    case "exercise": return Color(red: 0.55, green: 0.78, blue: 0.25)
+    case "social":   return Color(red: 0.80, green: 0.35, blue: 0.80)
+    case "commute":  return Color(red: 0.45, green: 0.55, blue: 0.62)
+    case "admin":    return Color(red: 0.62, green: 0.50, blue: 0.40)
+    default:         return Color(red: 0.30, green: 0.78, blue: 0.74)
+    }
+}
+
 struct DashboardView: View {
     @ObservedObject var sessionStore: SessionStore
     @ObservedObject var problemStore: ProblemStore
@@ -126,7 +145,7 @@ struct DashboardView: View {
     }
 
     private var selectedDayFocusMinutes: Double {
-        selectedDayFocusSessions.reduce(0) { $0 + $1.durationMinutes }
+        selectedDayFocusSessions.filter(\.isFocus).reduce(0) { $0 + $1.durationMinutes }
     }
 
     private var selectedDayBreakMinutes: Double {
@@ -371,7 +390,7 @@ struct DashboardView: View {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let earliest = cal.date(byAdding: .day, value: -(18 * 7 - 1), to: today)!
-        let workSessions = sessionStore.sessions.filter { $0.type == .work && $0.startTime >= earliest }
+        let workSessions = sessionStore.sessions.filter { $0.isFocus && $0.startTime >= earliest }
         var minutesByDay: [Date: Double] = [:]
         for s in workSessions {
             let d = cal.startOfDay(for: s.startTime)
@@ -519,7 +538,7 @@ struct DashboardView: View {
 
     private var narrativeInsightsList: [NarrativeInsight] {
         var out: [NarrativeInsight] = []
-        let work = sessionStore.sessions.filter { $0.type == .work }
+        let work = sessionStore.sessions.filter { $0.isFocus }
         let cal = Calendar.current
 
         // Peak weekday
@@ -667,7 +686,7 @@ struct DashboardView: View {
     }
 
     private var allAwards: [Award] {
-        let work = sessionStore.sessions.filter { $0.type == .work }
+        let work = sessionStore.sessions.filter { $0.isFocus }
         let totalSessions = work.count
         let totalHours = work.reduce(0) { $0 + $1.durationMinutes } / 60
         let bestStreak = sessionStore.bestStreak
@@ -781,21 +800,21 @@ struct DashboardView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if focus.isEmpty && breaks.isEmpty {
-                Text(isSelectedDayToday ? "No sessions yet today." : "No sessions on this day.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
-            } else {
-                DayTimelineCanvas(
-                    day: selectedDay,
-                    focus: focus,
-                    breaks: breaks,
-                    livefocus: isSelectedDayToday ? timerManager.currentInProgressSession : nil,
-                    liveBreak: isSelectedDayToday ? timerManager.currentInProgressBreak : nil,
-                    red: red, blue: blue
-                )
-            }
+            DayTimelineCanvas(
+                day: selectedDay,
+                focus: focus,
+                breaks: breaks,
+                livefocus: isSelectedDayToday ? timerManager.currentInProgressSession : nil,
+                liveBreak: isSelectedDayToday ? timerManager.currentInProgressBreak : nil,
+                red: red, blue: blue,
+                tags: settings.tags,
+                onFill: { start, end, label in
+                    sessionStore.addSession(WorkSession(
+                        startTime: start, durationMinutes: end.timeIntervalSince(start) / 60,
+                        type: label == nil ? .shortBreak : .work, label: label
+                    ))
+                }
+            )
         }
         .padding(12)
         .glassCard(cornerRadius: 10)
@@ -1285,16 +1304,7 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func tagColor(_ tag: String) -> Color {
-        switch tag.lowercased() {
-        case "quant": return blue
-        case "swe":   return green
-        case "ai", "ai/ml": return Color(red: 0.65, green: 0.4, blue: 0.9)
-        case "hw":    return amber
-        case "chores": return Color(red: 0.62, green: 0.58, blue: 0.52)
-        default:      return Color(red: 0.30, green: 0.78, blue: 0.74)
-        }
-    }
+    private func tagColor(_ tag: String) -> Color { categoryColor(tag) }
 
     private func scoreColor(_ score: Double) -> Color {
         score < 0.7 ? .red : score < 1.4 ? amber : green
@@ -1727,6 +1737,16 @@ private struct DayTimelineCanvas: View {
     let liveBreak: WorkSession?
     let red: Color
     let blue: Color
+    let tags: [String]
+    let onFill: (Date, Date, String?) -> Void
+
+    @State private var fillingGap: Gap?
+
+    struct Gap: Identifiable, Equatable {
+        let start: Date
+        let end: Date
+        var id: Date { start }
+    }
 
     private struct Block {
         let start: Date
@@ -1751,7 +1771,7 @@ private struct DayTimelineCanvas: View {
                 start: s.startTime, end: end,
                 label: s.label?.isEmpty == false ? s.label! : "Focus",
                 subtitle: fmtDuration(s.durationMinutes),
-                color: red, isLive: false
+                color: s.label?.isEmpty == false ? categoryColor(s.label!) : red, isLive: false
             ))
         }
         for s in breaks {
@@ -1770,7 +1790,7 @@ private struct DayTimelineCanvas: View {
                 start: live.startTime, end: end,
                 label: live.label?.isEmpty == false ? live.label! : "Focus",
                 subtitle: fmtDuration(live.durationMinutes) + " · live",
-                color: red, isLive: true
+                color: live.label?.isEmpty == false ? categoryColor(live.label!) : red, isLive: true
             ))
         }
         if let live = liveBreak {
@@ -1831,20 +1851,25 @@ private struct DayTimelineCanvas: View {
         return result
     }
 
-    private var hourRange: (start: Int, end: Int) {
+    private var hourRange: (start: Int, end: Int) { (0, 24) }
+
+    /// Untracked stretches of 5+ minutes between midnight and now (or the
+    /// end of a past day).
+    private var gaps: [Gap] {
         let cal = Calendar.current
-        guard let first = blocks.map(\.start).min(),
-              let last = blocks.map(\.end).max() else { return (8, 18) }
-        var s = cal.component(.hour, from: first)
-        var e = cal.component(.hour, from: last)
-        if cal.component(.minute, from: last) > 0 { e += 1 }
-        s = max(0, s - 1)
-        e = min(24, e + 1)
-        if e - s < 8 { e = min(24, s + 8) }
-        return (s, e)
+        let dayStart = cal.startOfDay(for: day)
+        let dayEnd = min(cal.date(byAdding: .day, value: 1, to: dayStart)!, Date())
+        var out: [Gap] = []
+        var cursor = dayStart
+        for b in blocks where b.end > cursor {
+            if b.start.timeIntervalSince(cursor) >= 300 { out.append(Gap(start: cursor, end: min(b.start, dayEnd))) }
+            cursor = max(cursor, b.end)
+        }
+        if dayEnd.timeIntervalSince(cursor) >= 300 { out.append(Gap(start: cursor, end: dayEnd)) }
+        return out.filter { $0.end > $0.start }
     }
 
-    private let rowHeight: CGFloat = 22
+    private let rowHeight: CGFloat = 16
     private let leftCol: CGFloat = 38
 
     var body: some View {
@@ -1877,6 +1902,9 @@ private struct DayTimelineCanvas: View {
                 .cornerRadius(4)
 
                 GeometryReader { geo in
+                    ForEach(gaps) { gap in
+                        gapView(gap, range: range, totalHeight: height, width: geo.size.width)
+                    }
                     ForEach(Array(laidOut.enumerated()), id: \.offset) { _, item in
                         block(item, range: range, totalHeight: height, width: geo.size.width)
                     }
@@ -1923,6 +1951,34 @@ private struct DayTimelineCanvas: View {
             .offset(x: x, y: y)
     }
 
+    private func gapView(_ gap: Gap, range: (start: Int, end: Int), totalHeight: CGFloat, width: CGFloat) -> some View {
+        let totalSeconds = Double(range.end - range.start) * 3600.0
+        let y = CGFloat(gap.start.timeIntervalSince(Calendar.current.startOfDay(for: day)) / totalSeconds) * totalHeight
+        let h = max(6, CGFloat(gap.end.timeIntervalSince(gap.start) / totalSeconds) * totalHeight)
+        return RoundedRectangle(cornerRadius: 4)
+            .strokeBorder(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            .background(RoundedRectangle(cornerRadius: 4).fill(Color.secondary.opacity(fillingGap == gap ? 0.12 : 0.001)))
+            .overlay(alignment: .leading) {
+                if h >= 12 {
+                    Text("Untracked · \(fmtDuration(gap.end.timeIntervalSince(gap.start) / 60))")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 5)
+                }
+            }
+            .frame(width: width, height: h)
+            .contentShape(Rectangle())
+            .onTapGesture { fillingGap = gap }
+            .popover(isPresented: Binding(get: { fillingGap == gap }, set: { if !$0 { fillingGap = nil } })) {
+                GapFillPopover(gap: gap, tags: tags) { start, end, label in
+                    onFill(start, end, label)
+                    fillingGap = nil
+                }
+            }
+            .offset(y: y)
+            .help("Click to log what you were doing")
+    }
+
     private func hourLabel(_ h: Int) -> String {
         let mod = h % 12 == 0 ? 12 : h % 12
         let ampm = h < 12 ? "a" : "p"
@@ -1932,5 +1988,51 @@ private struct DayTimelineCanvas: View {
     private func fmtDuration(_ m: Double) -> String {
         let h = Int(m) / 60, mn = Int(m) % 60
         return h > 0 ? "\(h)h \(mn)m" : "\(Int(m))m"
+    }
+}
+
+private struct GapFillPopover: View {
+    let gap: DayTimelineCanvas.Gap
+    let tags: [String]
+    let onPick: (Date, Date, String?) -> Void
+
+    @State private var start: Date
+    @State private var end: Date
+
+    init(gap: DayTimelineCanvas.Gap, tags: [String], onPick: @escaping (Date, Date, String?) -> Void) {
+        self.gap = gap
+        self.tags = tags
+        self.onPick = onPick
+        _start = State(initialValue: gap.start)
+        _end = State(initialValue: gap.end)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("What were you doing?")
+                .font(.system(size: 12, weight: .semibold))
+            HStack {
+                DatePicker("", selection: $start, in: gap.start...end, displayedComponents: .hourAndMinute)
+                Text("–").foregroundStyle(.secondary)
+                DatePicker("", selection: $end, in: start...gap.end, displayedComponents: .hourAndMinute)
+            }
+            .labelsHidden()
+            FlowLayout(spacing: 6) {
+                ForEach(tags, id: \.self) { tag in chip(tag, color: categoryColor(tag)) { onPick(start, end, tag) } }
+                chip("Break", color: Color(red: 0.27, green: 0.62, blue: 0.83)) { onPick(start, end, nil) }
+            }
+        }
+        .padding(12)
+        .frame(width: 280)
+    }
+
+    private func chip(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .font(.system(size: 11, weight: .medium))
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(Capsule().fill(color.opacity(0.18)))
+            .foregroundStyle(color)
+            .buttonStyle(.plain)
+            .disabled(end.timeIntervalSince(start) < 60)
     }
 }

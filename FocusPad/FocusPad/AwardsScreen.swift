@@ -67,13 +67,13 @@ struct AwardsScreen: View {
     }
 
     private func allAwards() -> [Award] {
-        let totalMinutes = sessions.filter { $0.type == .work }.reduce(0) { $0 + $1.durationMinutes }
+        let totalMinutes = sessions.filter { $0.isFocus }.reduce(0) { $0 + $1.durationMinutes }
         let totalHours = totalMinutes / 60.0
         let streak = PadStats.currentStreak(sessions)
         let bestStreak = PadStats.bestStreak(sessions)
         let bestDayMin = bestDayMinutes()
         let problemCount = problems.count
-        let totalSessions = sessions.filter { $0.type == .work }.count
+        let totalSessions = sessions.filter { $0.isFocus }.count
 
         return [
             Award(id: "first-session",
@@ -184,7 +184,7 @@ struct AwardsScreen: View {
     }
 
     private func bestDayMinutes() -> Double {
-        sessions.filter { $0.type == .work }
+        sessions.filter { $0.isFocus }
             .reduce(into: [Date: Double]()) {
                 $0[Calendar.current.startOfDay(for: $1.startTime), default: 0] += $1.durationMinutes
             }

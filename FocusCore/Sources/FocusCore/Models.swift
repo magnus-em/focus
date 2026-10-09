@@ -159,6 +159,58 @@ public struct WorkSession: Codable, Identifiable, Sendable {
     }
 }
 
+/// Focus categories (homework, prep) count toward the daily goal; life
+/// categories (sleep, meals, ...) are tracked for the full-day picture only.
+/// The life set lives in synced defaults under `lifeTags`.
+public enum FocusCategories {
+    public static let lifeTagsKey = "lifeTags"
+
+    /// Life blocks and focus overtime carry this much runway so the shared
+    /// timer state never shows an expired endTime, which peers treat as over.
+    public static let openEndedSeconds: TimeInterval = 24 * 3600
+
+    public static func isLife(_ label: String?) -> Bool {
+        guard let label, !label.isEmpty else { return false }
+        return UserDefaults.standard.stringArray(forKey: lifeTagsKey)?.contains(label) ?? false
+    }
+
+    // MARK: Timer display, derived only from (total, remaining) so every
+    // device renders a shared state the same way.
+
+    public static func isOpenEnded(total: TimeInterval) -> Bool { total >= openEndedSeconds }
+
+    /// Countdown length before overtime; 0 for a life block.
+    public static func countdown(total: TimeInterval) -> TimeInterval {
+        total.truncatingRemainder(dividingBy: openEndedSeconds)
+    }
+
+    /// Countdown → "MM:SS" left; overtime → "+MM:SS"; life → elapsed.
+    public static func timeString(total: TimeInterval, remaining: TimeInterval) -> String {
+        guard isOpenEnded(total: total) else { return clock(remaining, hours: false) }
+        let elapsed = total - remaining
+        let target = countdown(total: total)
+        return target > 0 ? "+" + clock(elapsed - target, hours: true) : clock(elapsed, hours: true)
+    }
+
+    /// Countdown fills once; overtime stays full; life sweeps once per hour.
+    public static func progress(total: TimeInterval, remaining: TimeInterval) -> Double {
+        guard total > 0 else { return 0 }
+        guard isOpenEnded(total: total) else { return 1.0 - remaining / total }
+        if countdown(total: total) > 0 { return 1 }
+        return (total - remaining).truncatingRemainder(dividingBy: 3600) / 3600
+    }
+
+    private static func clock(_ t: TimeInterval, hours: Bool) -> String {
+        let s = max(0, Int(t))
+        if hours && s >= 3600 { return String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) }
+        return String(format: "%02d:%02d", s / 60, s % 60)
+    }
+}
+
+extension WorkSession {
+    public var isFocus: Bool { type == .work && !FocusCategories.isLife(label) }
+}
+
 // MARK: - Homework problems (side system)
 
 public struct HomeworkProblem: Codable, Identifiable, Sendable {
