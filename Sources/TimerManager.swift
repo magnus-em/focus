@@ -28,7 +28,7 @@ class TimerManager: ObservableObject {
     }
 
     private var timer: AnyCancellable?
-    private var sessionStartTime: Date?
+    private(set) var sessionStartTime: Date?
     private var elapsedBeforePause: TimeInterval = 0
     private var lastResumeTime: Date?
     private var settingsSubscriptions = Set<AnyCancellable>()
@@ -497,8 +497,7 @@ class TimerManager: ObservableObject {
         case .stop:
             stop(at: command.createdAt)
         case .startBreak:
-            startManualBreak(minutes: command.minutes > 0 ? command.minutes : breakDuration / 60,
-                             at: command.createdAt)
+            startManualBreak(minutes: command.minutes, at: command.createdAt)
         }
     }
 
@@ -565,7 +564,8 @@ class TimerManager: ObservableObject {
         cancelPauseGrace()
         if currentPhase == .work { closeSegment(at: date) }
         clearCheckpoint()
-        beginSession(phase: .shortBreak, label: currentLabel, kinds: kinds, plannedSeconds: minutes * 60, at: date)
+        beginSession(phase: .shortBreak, label: currentLabel, kinds: kinds,
+                     plannedSeconds: minutes > 0 ? minutes * 60 : FocusCategories.openEndedSeconds, at: date)
         updateBlocking()
     }
 
@@ -666,7 +666,7 @@ class TimerManager: ObservableObject {
             lastCompletedLabel = currentLabel.isEmpty ? nil : currentLabel
             completionPanel.show(label: lastCompletedLabel) { [weak self] action in
                 guard let self, action == .takeBreak else { return }
-                self.startManualBreak(minutes: self.breakDuration / 60)
+                self.startManualBreak(minutes: 0)
             }
         } else {
             let content = UNMutableNotificationContent()

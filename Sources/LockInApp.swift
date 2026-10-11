@@ -259,6 +259,7 @@ struct PopoverContent: View {
     @State private var selectedTab = 0
     @State private var showCommitment = false
     @State private var reviewTarget: DayRecord? = nil
+    @State private var showDayReview = false
     // Prevents onAppear re-triggering commitment (and microphone requests) after each session end
     @AppStorage("lastCommitmentPromptDay") private var lastCommitmentPromptDay: Double = 0
 
@@ -314,55 +315,70 @@ struct PopoverContent: View {
         return String(format: "%02d:%02d", s / 60, s % 60)
     }
 
-    private var leetCodeButton: some View {
-        let orange = Color(red: 0.98, green: 0.63, blue: 0.16)
-        let lc = leetCodeStore
-        return Button { openLeetCode() } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "chevron.left.forwardslash.chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                if let p = lc.activeProblem {
-                    Text("LeetCode · #\(p.number) \(p.title)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .lineLimit(1)
-                } else {
-                    Text("LeetCode")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                Spacer(minLength: 4)
-                if lc.activeProblem == nil {
-                    Text("\(lc.todayCount)/\(lc.dailyGoal)")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(RoundedRectangle(cornerRadius: 4)
-                            .fill((lc.todayCount >= lc.dailyGoal ? Color.green : orange).opacity(0.2)))
-                        .foregroundStyle(lc.todayCount >= lc.dailyGoal ? Color.green : orange)
-                    if lc.streak > 0 {
-                        HStack(spacing: 2) {
-                            Image(systemName: "flame.fill").font(.system(size: 9))
-                            Text("\(lc.streak)").font(.system(size: 10, weight: .semibold))
-                        }
-                        .foregroundStyle(lc.streakAtRisk ? Color.red : orange)
-                    }
-                }
-                Image(systemName: "arrow.up.right.square")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+    private func launcherTile(icon: String, title: String, badge: String?, badgeColor: Color? = nil,
+                              tint: Color, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(height: 16)
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(badge ?? " ")
+                    .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(badgeColor ?? Color.secondary)
+                    .lineLimit(1)
             }
-            .foregroundStyle(orange)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(RoundedRectangle(cornerRadius: 9).fill(orange.opacity(0.10)))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(orange.opacity(0.22), lineWidth: 1))
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background(RoundedRectangle(cornerRadius: 9).fill(tint.opacity(0.09)))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(tint.opacity(0.18), lineWidth: 1))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private var launcherRow: some View {
+        let orange = Color(red: 0.98, green: 0.63, blue: 0.16)
+        let blue = Color(red: 0.27, green: 0.62, blue: 0.83)
+        let green = Color(red: 0.25, green: 0.72, blue: 0.53)
+        let lc = leetCodeStore
+        let lcBadge: String = {
+            if let p = lc.activeProblem { return "#\(p.number)" }
+            return "\(lc.todayCount)/\(lc.dailyGoal)" + (lc.streak > 0 ? " · \(lc.streak)🔥" : "")
+        }()
+        let lcBadgeColor: Color = lc.activeProblem == nil && lc.todayCount >= lc.dailyGoal ? .green
+            : (lc.streakAtRisk ? .red : orange)
+        return HStack(spacing: 6) {
+            launcherTile(icon: "chevron.left.forwardslash.chevron.right", title: "LeetCode",
+                         badge: lcBadge, badgeColor: lcBadgeColor, tint: orange,
+                         help: lc.activeProblem.map { "LeetCode · #\($0.number) \($0.title)" } ?? "Open LeetCode",
+                         action: openLeetCode)
+            launcherTile(icon: "scope", title: "Practice",
+                         badge: practiceStore.isActive ? practiceElapsedShort
+                             : (dueReviewBadge > 0 ? "\(dueReviewBadge) due" : nil),
+                         badgeColor: practiceStore.isActive ? blue : .orange, tint: blue,
+                         help: "Open Practice Mode", action: openPractice)
+            launcherTile(icon: "plus.forwardslash.minus", title: "Sprint",
+                         badge: zetamacStore.isGameActive ? "\(zetamacLiveTimeShort) · \(zetamacStore.liveScore)"
+                             : (zetamacStore.bestScore > 0 ? "best \(zetamacStore.bestScore)" : nil),
+                         badgeColor: green, tint: green,
+                         help: "Open Math Sprint", action: openZetamac)
+            launcherTile(icon: "chart.bar.doc.horizontal.fill", title: "Dashboard",
+                         badge: nil, tint: .secondary,
+                         help: "Open Dashboard", action: openDashboard)
+        }
         .padding(.horizontal, 12)
         .padding(.top, 8)
     }
 
     private var dueReviewBadge: Int { homeworkStoreForPractice.dueForReview.count }
 
-    private func tabChipButton(icon: String, tag: Int) -> some View {
+    private func tabChipButton(icon: String, tag: Int, help: String) -> some View {
         let selected = selectedTab == tag
         return Button { selectedTab = tag } label: {
             Image(systemName: icon)
@@ -372,6 +388,7 @@ struct PopoverContent: View {
         }
         .buttonStyle(.plain)
         .glassTabChip(selected: selected)
+        .help(help)
     }
 
     private var dayState: DayGateState {
@@ -389,6 +406,7 @@ struct PopoverContent: View {
                         dayStore: dayStore,
                         settings: settings,
                         sessionStore: sessionStore,
+                        onReviewYesterday: { showDayReview = true },
                         onBegin: {
                             withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
                                 dayStore.startDay()
@@ -424,6 +442,12 @@ struct PopoverContent: View {
                 CommitmentView(settings: settings, dayStore: dayStore, isShowing: $showCommitment)
                     .transition(.opacity.animation(.easeInOut(duration: 0.2)))
                     .zIndex(10)
+            }
+
+            if showDayReview {
+                DayReviewView(store: sessionStore, settings: settings, timer: timerManager, isShowing: $showDayReview)
+                    .transition(.opacity.animation(.easeInOut(duration: 0.15)))
+                    .zIndex(12)
             }
 
             if let target = reviewTarget {
@@ -463,12 +487,12 @@ struct PopoverContent: View {
     private var openBookContent: some View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
-                tabChipButton(icon: "timer", tag: 0)
-                tabChipButton(icon: "chart.bar.fill", tag: 1)
-                tabChipButton(icon: "checklist", tag: 2)
-                tabChipButton(icon: "brain.head.profile", tag: 3)
-                tabChipButton(icon: "heart.fill", tag: 5)
-                tabChipButton(icon: "gearshape.fill", tag: 4)
+                tabChipButton(icon: "timer", tag: 0, help: "Timer")
+                tabChipButton(icon: "chart.bar.fill", tag: 1, help: "Stats")
+                tabChipButton(icon: "function", tag: 2, help: "Problems")
+                tabChipButton(icon: "square.and.pencil", tag: 3, help: "Scratchpad")
+                tabChipButton(icon: "heart.fill", tag: 5, help: "Health")
+                tabChipButton(icon: "gearshape.fill", tag: 4, help: "Settings")
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
@@ -476,11 +500,17 @@ struct PopoverContent: View {
 
             Group {
                 switch selectedTab {
-                case 0: TimerView(
-                    timer: timerManager, store: sessionStore, settings: settings,
-                    dayStore: dayStore, showCommitment: $showCommitment,
-                    reviewTarget: $reviewTarget
-                )
+                case 0:
+                    GeometryReader { geo in
+                        ScrollView(.vertical, showsIndicators: false) {
+                            TimerView(
+                                timer: timerManager, store: sessionStore, settings: settings,
+                                dayStore: dayStore, showCommitment: $showCommitment,
+                                reviewTarget: $reviewTarget, showDayReview: $showDayReview
+                            )
+                            .frame(minHeight: geo.size.height)
+                        }
+                    }
                 case 1: StatsView(store: sessionStore, settings: settings)
                 case 2: ProblemsView(store: problemStore, homeworkStore: homeworkStore, settings: settings)
                 case 3: ScratchpadView(store: scratchStore)
@@ -488,135 +518,11 @@ struct PopoverContent: View {
                 default: SettingsView(settings: settings, timer: timerManager, store: sessionStore, openOnboarding: openOnboarding)
                 }
             }
-            .frame(height: 480)
+            .frame(height: 540)
 
             Divider()
 
-                leetCodeButton
-
-                // Practice Mode CTA — opens the Stat-110 pacing tracker in
-                // its own window. Title only (no "· Stat 110 pacing"
-                // subtitle that was crowding the row at narrow widths);
-                // when a session is active or reviews are due, the badge
-                // carries that info.
-                Button {
-                    openPractice()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "scope")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(practiceStore.isActive
-                             ? "Practice · \(practiceElapsedShort)"
-                             : "Practice Mode")
-                            .font(.system(size: 13, weight: .semibold))
-                            .lineLimit(1)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 4)
-                        if !practiceStore.isActive && dueReviewBadge > 0 {
-                            Text("\(dueReviewBadge) due")
-                                .font(.system(size: 10, weight: .semibold))
-                                .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.orange.opacity(0.22)))
-                                .foregroundStyle(.orange)
-                        }
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .foregroundStyle(Color(red: 0.27, green: 0.62, blue: 0.83))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(
-                        RoundedRectangle(cornerRadius: 9)
-                            .fill(Color(red: 0.27, green: 0.62, blue: 0.83).opacity(0.10))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 9)
-                            .stroke(Color(red: 0.27, green: 0.62, blue: 0.83).opacity(0.22), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.top, 6)
-
-                // Math Sprint CTA. Same cleanup — title only when idle,
-                // live "Sprint · MM:SS · N right" when mid-game. Clicking
-                // mid-game just brings the existing window forward
-                // (ZetamacWindowController reuses the window if alive),
-                // so the game is never restarted by this button.
-                Button {
-                    openZetamac()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "plus.forwardslash.minus")
-                            .font(.system(size: 13, weight: .semibold))
-                        if zetamacStore.isGameActive {
-                            Text("Sprint · \(zetamacLiveTimeShort) · \(zetamacStore.liveScore) right")
-                                .font(.system(size: 13, weight: .semibold))
-                                .lineLimit(1)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } else {
-                            Text("Math Sprint")
-                                .font(.system(size: 13, weight: .semibold))
-                                .lineLimit(1)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer(minLength: 4)
-                        if !zetamacStore.isGameActive && zetamacStore.bestScore > 0 {
-                            Text("best \(zetamacStore.bestScore)")
-                                .font(.system(size: 10, weight: .semibold))
-                                .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(RoundedRectangle(cornerRadius: 4).fill(Color.green.opacity(0.18)))
-                                .foregroundStyle(.green)
-                        }
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .foregroundStyle(Color(red: 0.25, green: 0.72, blue: 0.53))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(
-                        RoundedRectangle(cornerRadius: 9)
-                            .fill(Color(red: 0.25, green: 0.72, blue: 0.53).opacity(0.10))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 9)
-                            .stroke(Color(red: 0.25, green: 0.72, blue: 0.53).opacity(0.22), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.top, 6)
-
-                Button {
-                    openDashboard()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "chart.bar.doc.horizontal.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text("Open Dashboard")
-                            .font(.system(size: 13, weight: .semibold))
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .foregroundStyle(Color(red: 0.96, green: 0.36, blue: 0.36))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 9)
-                            .fill(Color(red: 0.96, green: 0.36, blue: 0.36).opacity(0.10))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 9)
-                            .stroke(Color(red: 0.96, green: 0.36, blue: 0.36).opacity(0.22), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
+            launcherRow
                 .padding(.bottom, 24)
         }
     }

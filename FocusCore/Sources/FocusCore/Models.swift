@@ -184,20 +184,25 @@ public enum FocusCategories {
         total.truncatingRemainder(dividingBy: openEndedSeconds)
     }
 
-    /// Countdown → "MM:SS" left; overtime → "+MM:SS"; life → elapsed.
+    /// Countdown → "MM:SS" left; overtime and life → total elapsed, so
+    /// finishing a block never looks like the clock reset to zero.
     public static func timeString(total: TimeInterval, remaining: TimeInterval) -> String {
         guard isOpenEnded(total: total) else { return clock(remaining, hours: false) }
-        let elapsed = total - remaining
-        let target = countdown(total: total)
-        return target > 0 ? "+" + clock(elapsed - target, hours: true) : clock(elapsed, hours: true)
+        return clock(total - remaining, hours: true)
     }
 
-    /// Countdown fills once; overtime stays full; life sweeps once per hour.
+    /// Seconds past the countdown target, or nil when not in overtime.
+    public static func overtime(total: TimeInterval, remaining: TimeInterval) -> TimeInterval? {
+        let target = countdown(total: total)
+        guard isOpenEnded(total: total), target > 0 else { return nil }
+        return max(0, total - remaining - target)
+    }
+
+    /// Countdown fills once; overtime and open-ended blocks stay full, since
+    /// there is no target to sweep toward.
     public static func progress(total: TimeInterval, remaining: TimeInterval) -> Double {
         guard total > 0 else { return 0 }
-        guard isOpenEnded(total: total) else { return 1.0 - remaining / total }
-        if countdown(total: total) > 0 { return 1 }
-        return (total - remaining).truncatingRemainder(dividingBy: 3600) / 3600
+        return isOpenEnded(total: total) ? 1 : 1.0 - remaining / total
     }
 
     private static func clock(_ t: TimeInterval, hours: Bool) -> String {

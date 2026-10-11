@@ -35,7 +35,7 @@ class AppSettings: ObservableObject {
     @Published var lifeTags: [String] {
         didSet { sd.set(lifeTags, forKey: FocusCategories.lifeTagsKey) }
     }
-    /// Category the ⌃⌥S quick-start hotkey tags a session with.
+    /// Category the ⌃⌥⌘S quick-start hotkey tags a session with.
     @Published var quickStartTag: String {
         didSet { sd.set(quickStartTag, forKey: "quickStartTag") }
     }

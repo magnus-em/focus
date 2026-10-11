@@ -56,8 +56,20 @@ struct HealthView: View {
                             if justLogged == id { withAnimation { justLogged = nil } }
                         }
                     } label: {
-                        Label(tracker.kinds.count == 1 ? "Log now" : kind.displayName, systemImage: "plus")
-                            .font(.system(size: tracker.kinds.count == 1 ? 13 : 11, weight: .semibold))
+                        Group {
+                            if tracker.kinds.count == 1 {
+                                Label("Log now", systemImage: "plus")
+                                    .font(.system(size: 13, weight: .semibold))
+                            } else {
+                                VStack(spacing: 0) {
+                                    Text("+\(kind.amount)")
+                                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                                    Text(kind.displayName.replacingOccurrences(of: " \(kind.amount)", with: ""))
+                                        .font(.system(size: 9, weight: .semibold))
+                                        .opacity(0.85)
+                                }
+                            }
+                        }
                             .lineLimit(1)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
@@ -138,14 +150,17 @@ struct HealthView: View {
         let w = weeks
         let thisWeek = w.last?.total ?? 0
         let lastWeek = w.dropLast().last?.total ?? 0
-        let prior = w.dropLast().suffix(8)
+        let firstWeek = store.events(tracker).last.map { store.weekStart($0.date) } ?? .distantFuture
+        let prior = w.dropLast().suffix(8).filter { $0.start >= firstWeek }
         let avg = prior.isEmpty ? 0 : Double(prior.map(\.total).reduce(0, +)) / Double(prior.count)
         let unit = tracker.unit
+        let dash = "—"
         return HStack(spacing: 8) {
             stat("\(thisWeek)\(unit)", "this week")
-            stat("\(lastWeek)\(unit)", "last week")
-            stat(unit.isEmpty ? String(format: "%.1f", avg) : "\(Int(avg.rounded()))\(unit)", "8-wk avg")
-            stat("\(store.longestGapDays(tracker))d", "longest gap")
+            stat(prior.isEmpty ? dash : "\(lastWeek)\(unit)", "last week")
+            stat(prior.isEmpty ? dash : unit.isEmpty ? String(format: "%.1f", avg) : "\(Int(avg.rounded()))\(unit)",
+                 prior.count < 8 ? "\(prior.count)-wk avg" : "8-wk avg")
+            stat(store.events(tracker).count < 2 ? dash : "\(store.longestGapDays(tracker))d", "longest gap")
         }
     }
 
@@ -179,7 +194,7 @@ struct HealthView: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .stride(by: .weekOfYear, count: 3)) { _ in
+                AxisMarks(values: weeks.reversed().enumerated().filter { $0.offset % 3 == 0 }.map(\.element.start)) { _ in
                     AxisValueLabel(format: .dateTime.month(.abbreviated).day()).font(.system(size: 8))
                 }
             }
@@ -203,7 +218,7 @@ struct HealthView: View {
             ForEach(w) { week in
                 HStack(spacing: 8) {
                     Text(week.start, format: .dateTime.month(.abbreviated).day())
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: 10).monospacedDigit())
                         .foregroundStyle(.secondary)
                         .frame(width: 44, alignment: .leading)
                     GeometryReader { geo in
@@ -214,10 +229,10 @@ struct HealthView: View {
                     }
                     .frame(height: 8)
                     Text("\(week.total)")
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 10, weight: .semibold).monospacedDigit())
                         .frame(width: 28, alignment: .trailing)
                     Text(String(format: "%.1fh", week.focusHours))
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: 10).monospacedDigit())
                         .foregroundStyle(.secondary)
                         .frame(width: 42, alignment: .trailing)
                 }

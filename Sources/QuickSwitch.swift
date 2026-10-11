@@ -3,10 +3,10 @@ import SwiftUI
 import FocusCore
 
 /// Every way to change what the timer is tracking without opening the
-/// popover: global hotkeys, the ⌃⌥A switcher panel, `focustracker://` URLs,
+/// popover: global hotkeys, the ⌃⌥⌘A switcher panel, `focustracker://` URLs,
 /// and commands arriving from other devices.
 ///
-/// Hotkeys (all ⌃⌥): S start/stop · A switcher · 1–9 switch to category N ·
+/// Hotkeys (all ⌃⌥⌘): S start/stop · A switcher · 1–9 switch to category N ·
 /// 0 stop · B break.
 /// URLs: focustracker://switch/<category>, focustracker://stop,
 /// focustracker://break[?minutes=N], focustracker://toggle, focustracker://switcher
@@ -25,7 +25,7 @@ final class QuickSwitch {
         self.settings = settings
         self.days = days
 
-        let mods = GlobalHotKey.controlModifier | GlobalHotKey.optionModifier
+        let mods = GlobalHotKey.controlModifier | GlobalHotKey.optionModifier | GlobalHotKey.commandModifier
         func bind(_ key: UInt32, _ action: @escaping () -> Void) {
             if let hk = GlobalHotKey(keyCode: key, modifiers: mods, handler: action) { hotKeys.append(hk) }
         }
@@ -91,9 +91,8 @@ final class QuickSwitch {
     }
 
     func startBreak(minutes: Double? = nil) {
-        let m = minutes ?? settings.shortBreakMinutes
-        timer.startManualBreak(minutes: m)
-        toast.show(icon: "cup.and.saucer.fill", title: "Break", detail: "\(Int(m))m")
+        timer.startManualBreak(minutes: minutes ?? 0)
+        toast.show(icon: "cup.and.saucer.fill", title: "Break", detail: minutes.map { "\(Int($0))m" } ?? "counting up")
     }
 
     func showSwitcher() { switcher.show() }

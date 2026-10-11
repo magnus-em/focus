@@ -37,6 +37,7 @@ struct DayOpenCoverView: View {
     @ObservedObject var dayStore: DayStore
     @ObservedObject var settings: AppSettings
     @ObservedObject var sessionStore: SessionStore
+    var onReviewYesterday: (() -> Void)? = nil
     let onBegin: () -> Void
 
     private var greeting: String {
@@ -101,6 +102,24 @@ struct DayOpenCoverView: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.return, modifiers: [])
+
+            if let onReviewYesterday {
+                let untracked = sessionStore.untrackedMinutes(on: sessionStore.reviewWindow().from)
+                if untracked >= 15 {
+                    Button(action: onReviewYesterday) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "clock.badge.questionmark").font(.system(size: 10))
+                            Text("\(Int(untracked) / 60)h \(Int(untracked) % 60)m untracked yesterday · fill in")
+                                .font(.system(size: 10.5, weight: .medium))
+                        }
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Capsule().fill(Color.secondary.opacity(0.1)))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 12)
+                }
+            }
 
             Spacer(minLength: 22)
 

@@ -58,12 +58,16 @@ struct SettingsView: View {
 
                 SectionLabel("INTERVALS")
                 IntervalRow(label: "Focus", value: $settings.workMinutes, range: 5...90, step: 5, unit: "min")
-                IntervalRow(label: "Break", value: $settings.shortBreakMinutes, range: 1...60, step: 1, unit: "min")
 
                 Divider()
 
                 SectionLabel("DAILY GOAL")
                 IntRow(label: "Daily Target", value: $settings.dailyGoal, range: 0...12, suffix: "h", zeroLabel: "Off")
+
+                Divider()
+
+                SectionLabel("CATEGORIES")
+                CategoriesEditor(settings: settings, store: store)
 
                 Divider()
 
@@ -164,7 +168,7 @@ struct SettingsView: View {
                     .labelsHidden()
                     .controlSize(.small)
                     .fixedSize()
-                    Text("⌃⌥S")
+                    Text("⌃⌥⌘S")
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
@@ -173,7 +177,7 @@ struct SettingsView: View {
                         .cornerRadius(4)
                 }
 
-                Text("⌃⌥A switcher · ⌃⌥1–9 switch category · ⌃⌥B break · ⌃⌥0 stop")
+                Text("⌃⌥⌘A switcher · ⌃⌥⌘1–9 switch category · ⌃⌥⌘B break · ⌃⌥⌘0 stop")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
 
@@ -181,7 +185,7 @@ struct SettingsView: View {
                     Text("Pause / resume hotkey")
                         .font(.system(size: 12, weight: .medium))
                     Spacer()
-                    Text("⌃⌥Space")
+                    Text("⌃⌥⌘Space")
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
@@ -845,5 +849,96 @@ private struct PracticeNewCapRow: View {
             .controlSize(.small)
             .labelsHidden()
         }
+    }
+}
+
+/// Order sets the ⌃⌥⌘1–9 hotkeys; Life categories are tracked but don't count toward the goal.
+private struct CategoriesEditor: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var store: SessionStore
+    @State private var newTag = ""
+
+    var body: some View {
+        let lifetime = Dictionary(store.minutesByTag(includeLife: true).map { ($0.tag, $0.minutes) },
+                                  uniquingKeysWith: +)
+        VStack(spacing: 4) {
+            ForEach(Array(settings.tags.enumerated()), id: \.element) { i, tag in
+                let isLife = settings.lifeTags.contains(tag)
+                HStack(spacing: 8) {
+                    Text(i < 9 ? "\(i + 1)" : "")
+                        .font(.system(size: 9, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 10)
+                    Circle().fill(categoryColor(tag)).frame(width: 7, height: 7)
+                    Text(tag).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Text(hours(lifetime[tag] ?? 0))
+                        .font(.system(size: 10).monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                    Spacer(minLength: 4)
+                    Picker("", selection: Binding(
+                        get: { isLife },
+                        set: { life in
+                            if life { if !isLife { settings.lifeTags.append(tag) } }
+                            else { settings.lifeTags.removeAll { $0 == tag } }
+                        }
+                    )) {
+                        Text("Focus").tag(false)
+                        Text("Life").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.mini)
+                    .fixedSize()
+                    .help("Focus counts toward the daily goal; Life is tracked only")
+                    Button {
+                        guard i > 0 else { return }
+                        settings.tags.swapAt(i, i - 1)
+                    } label: {
+                        Image(systemName: "arrow.up").font(.system(size: 9, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(i > 0 ? Color.secondary : Color.clear)
+                    .disabled(i == 0)
+                    .help("Move up (changes its hotkey number)")
+                    Button {
+                        settings.tags.removeAll { $0 == tag }
+                        settings.lifeTags.removeAll { $0 == tag }
+                    } label: {
+                        Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tertiary)
+                    .help("Remove category (past sessions keep their label)")
+                }
+                .padding(.vertical, 2)
+            }
+            HStack(spacing: 6) {
+                TextField("New category…", text: $newTag)
+                    .font(.system(size: 11))
+                    .textFieldStyle(.plain)
+                    .onSubmit(add)
+                if !newTag.isEmpty {
+                    Button("Add", action: add)
+                        .font(.system(size: 11, weight: .semibold))
+                        .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.secondary.opacity(0.06))
+            .cornerRadius(7)
+            .padding(.top, 4)
+        }
+    }
+
+    private func add() {
+        let t = newTag.trimmingCharacters(in: .whitespaces)
+        newTag = ""
+        guard !t.isEmpty, !settings.tags.contains(t) else { return }
+        settings.tags.append(t)
+    }
+
+    private func hours(_ m: Double) -> String {
+        m >= 60 ? "\(Int(m / 60))h" : m > 0 ? "\(Int(m))m" : ""
     }
 }

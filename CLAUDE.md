@@ -38,7 +38,7 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 | `Sources/TimerManager.swift` | Timer state machine. `Phase { work, shortBreak, longBreak }` (no rawValue — `displayName` returns "Focus" / "Break"). Phase transitions, partial-session save, manual break, pause-grace auto-finalize, crash-recovery checkpoint, site-blocking orchestration. |
 | `Sources/SiteBlocker.swift` | `/etc/hosts` + `pf` firewall blocking. Requires sudo helper at `/usr/local/bin/focustimer-blocker`. Cleanup on quit + next launch after crash. |
 | `Sources/GlobalHotKey.swift` | Carbon global hotkey wrapper. Bindings live in `QuickSwitch`. |
-| `Sources/QuickSwitch.swift` | Every no-popover way to change what's tracked. Hotkeys (⌃⌥): Space pause/resume, S start/stop (`settings.quickStartTag`, default HW), A switcher panel, 1–9 switch to category N, B break, 0 stop. URL scheme `focustracker://switch/<cat>`, `stop`, `break?minutes=N`, `toggle`, `switcher` (via `FocusAppDelegate`). Opens/reopens the day; `HotKeyToast` confirms. Toasts commands applied from other devices. |
+| `Sources/QuickSwitch.swift` | Every no-popover way to change what's tracked. Hotkeys (⌃⌥⌘): Space pause/resume, S start/stop (`settings.quickStartTag`, default HW), A switcher panel, 1–9 switch to category N, B break, 0 stop. URL scheme `focustracker://switch/<cat>`, `stop`, `break?minutes=N`, `toggle`, `switcher` (via `FocusAppDelegate`). Opens/reopens the day; `HotKeyToast` confirms. Toasts commands applied from other devices. |
 | `Sources/CompletionPanel.swift` | Simple 2.5s success toast (`show(label:)`) shown when a focus session completes. |
 | `Sources/Models.swift` | `WorkSession`, `WorkSession.SessionType` (with `isBreak`), `DailySummary`, `DayRecord`, `ProblemEntry` + enums, `ScratchItem`. |
 
@@ -84,15 +84,16 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 - **Nothing ends on its own.** When a countdown hits 0 the session rolls into overtime (`extendRunway`): chime + Keep Going / Take a Break panel, menu bar shows `+MM:SS`, tracking continues until a switch/stop. Breaks do the same. Only pause grace ends a session automatically.
 - **Open-ended encoding**: life blocks and overtime add `FocusCategories.openEndedSeconds` (24h) to `totalTime`, so the shared state's `endTime` is always in the future (peers treat a past `endTime` as finished). Display derives from `(total, remaining)` via `FocusCategories.timeString/progress`; `countdown(total:)` = total mod 24h (0 = life block).
 - **Category is sticky**: `currentLabel` survives completion, breaks, stop and pause-grace; it only changes when the user picks one.
-- **Manual break**: "Take a Break" button (idle on work phase) opens a sheet — 30 / 60 / 120 min / custom (5m steps, 5–480m). Saves any in-progress focus first.
-- **Stop / skip**: stop button mid-session saves partial work if ≥ 1 min; skip during a break saves break if ≥ 5 min, then returns to work.
+- **Two modes**: focus categories run a countdown (presets 15/25/45/60) that rolls into overtime; life categories and Break just count up (open-ended, ring stays full, "since h:mm").
+- **Break** is a chip in the Life row (and ⌃⌥⌘B): saves what's running, then counts up until a switch/stop. Stored as `.shortBreak`. A break with explicit minutes (URL `?minutes=N`, iPad sheet) still counts down, then keeps counting. `startBreak` commands with `minutes == 0` are open-ended on every device.
+- **Stop**: saves the running segment if ≥ 1 min. No skip button; switching a category ends a break.
 - **Pause grace**: pausing arms an auto-finalize that saves + ends the session after `pauseGraceMinutes` (default 10). Bathroom-break safe; longer absences auto-end.
 - **Crash recovery**: timer state checkpointed every 30s during work; on next launch the partial session is recovered into the store.
 - **In-session adjustment**: ±5 / ±10 min chips during active work.
 - **Quick presets**: 15 / 25 / 45 / 60m chips when idle on work.
 
 ### Categories (focus vs life)
-- `settings.tags` = all categories (order = ⌃⌥1–9; the switcher panel gives 10+ a letter key). `settings.lifeTags` (synced key `lifeTags`) = the life subset: tracked but not counted toward the goal. Toggle Focus/Life in the Stats tab category card.
+- `settings.tags` = all categories (order = ⌃⌥⌘1–9; the switcher panel gives 10+ a letter key). `settings.lifeTags` (synced key `lifeTags`) = the life subset: tracked but not counted toward the goal. Toggle Focus/Life in the Stats tab category card.
 - `WorkSession.isFocus` / `StoredWorkSession.isFocus` = work type and not a life label. All goal/streak/stats code uses `isFocus`; day logs and timelines show everything. `minutesByTag(includeLife:)` for full-day splits.
 - Life categories start open-ended (count up, no presets). Colors: `categoryColor(_:)` in `DashboardView.swift`.
 - Dashboard day timeline spans 0–24h; untracked gaps ≥ 5 min are dashed and clickable to back-fill a category or Break.

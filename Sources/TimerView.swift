@@ -8,17 +8,49 @@ struct TimerView: View {
     @ObservedObject var dayStore: DayStore
     @Binding var showCommitment: Bool
     @Binding var reviewTarget: DayRecord?
+    @Binding var showDayReview: Bool
     @ObservedObject private var syncMonitor = CloudSyncMonitor.shared
 
-    @State private var showBreakPicker = false
-    @State private var customBreakMinutes: Double = 30
-    @State private var selectedBreakKinds: Set<BreakKind> = []
+    @State private var showAllCategories = false
+
+    private static let focusRed = Color(red: 0.96, green: 0.36, blue: 0.36)
+    private static let breakBlue = Color(red: 0.27, green: 0.62, blue: 0.83)
+
+    private var isLifeLabel: Bool { FocusCategories.isLife(timer.currentLabel) }
 
     private var phaseColor: Color {
-        switch timer.currentPhase {
-        case .work:       return Color(red: 0.96, green: 0.36, blue: 0.36)
-        case .shortBreak, .longBreak: return Color(red: 0.27, green: 0.62, blue: 0.83)
-        }
+        if timer.isOnBreak { return Self.breakBlue }
+        return isLifeLabel ? categoryColor(timer.currentLabel) : Self.focusRed
+    }
+
+    private var phaseTitle: String {
+        if timer.isOnBreak { return "BREAK" }
+        return isLifeLabel ? "LIFE" : "FOCUS"
+    }
+
+    /// Life blocks and breaks have no target: they just count up.
+    private var isCountingUp: Bool {
+        timer.isActive && FocusCategories.isOpenEnded(total: timer.totalTime)
+            && FocusCategories.countdown(total: timer.totalTime) == 0
+    }
+
+    private var liveFocusMinutes: Double {
+        guard let s = timer.currentInProgressSession, s.isFocus else { return 0 }
+        return s.durationMinutes
+    }
+
+    private var todayFocusMinutes: Double { store.todayWorkMinutes + liveFocusMinutes }
+
+    private var todayBreakMinutes: Double {
+        store.todayBreakMinutes + (timer.currentInProgressBreak?.durationMinutes ?? 0)
+    }
+
+    private var overtime: TimeInterval? {
+        FocusCategories.overtime(total: timer.totalTime, remaining: timer.timeRemaining)
+    }
+
+    private var collapseCategories: Bool {
+        timer.isActive && (timer.isOnBreak || !timer.currentLabel.isEmpty) && !showAllCategories
     }
 
     var body: some View {
@@ -44,41 +76,21 @@ struct TimerView: View {
                     .foregroundStyle(.orange)
                     .help("Resume before this runs out, or the session is saved and ended")
             } else {
-                Text(timer.currentPhase.displayName.uppercased())
+                Text(phaseTitle)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .tracking(2)
                     .foregroundStyle(phaseColor)
             }
 
-            if !timer.isOnBreak {
-                if settings.tags.isEmpty {
-                    Text("Add categories in the Stats tab")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    glassChipGroup {
-                        FlowLayout(spacing: 5) {
-                            ForEach(settings.tags, id: \.self) { tag in
-                                let selected = timer.currentLabel == tag
-                                Button(tag) {
-                                    if timer.isActive && !timer.isOnBreak {
-                                        if !selected { timer.switchTo(tag) }
-                                    } else {
-                                        timer.currentLabel = selected ? "" : tag
-                                    }
-                                }
-                                    .font(.system(size: 10.5, weight: .medium))
-                                    .lineLimit(1)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 4)
-                                    .foregroundStyle(selected ? phaseColor : Color.secondary)
-                                    .glassChip(selected: selected, tint: phaseColor)
-                                    .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
+            if settings.tags.isEmpty {
+                Text("Add categories in Settings")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity)
+            } else if collapseCategories {
+                currentCategoryPill
+            } else {
+                categoryPicker
             }
 
             if timer.isBlockingActive {
@@ -113,18 +125,30 @@ struct TimerView: View {
                     .frame(width: 140, height: 140)
                 Circle()
                     .trim(from: 0, to: timer.progress)
-                    .stroke(phaseColor, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                    .stroke(phaseColor.opacity(isCountingUp ? 0.45 : 1), style: StrokeStyle(lineWidth: 8, lineCap: .round))
                     .frame(width: 140, height: 140)
                     .rotationEffect(.degrees(-90))
                     .animation(.linear(duration: 0.5), value: timer.progress)
 
                 VStack(spacing: 4) {
                     Text(timer.timeString)
-                        .font(.system(size: 34, weight: .medium, design: .monospaced))
+                        .font(.system(size: 34, weight: .medium, design: .rounded).monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: 116)
                         .contentTransition(.numericText())
                         .animation(.linear(duration: 0.3), value: timer.timeString)
 
-                    if !timer.isOnBreak && store.todaySessionCount > 0 {
+                    if isCountingUp, let start = timer.sessionStartTime {
+                        Text("since \(clockStr(start))")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundStyle(phaseColor)
+                    } else if let over = overtime {
+                        let target = Int(FocusCategories.countdown(total: timer.totalTime) / 60)
+                        Text("\(target)m done · +\(Int(over) / 60)m")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundStyle(timer.isOnBreak ? phaseColor : .green)
+                    } else if !timer.isOnBreak && store.todaySessionCount > 0 {
                         Text("Session \(store.todaySessionCount + (timer.isActive ? 1 : 0))")
                             .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(phaseColor.opacity(0.5))
@@ -144,19 +168,13 @@ struct TimerView: View {
                         tint: phaseColor
                     ) { timer.isRunning ? timer.pause() : timer.start() }
 
-                    controlSecondaryButton(
-                        systemImage: "forward.fill",
-                        help: "Skip"
-                    ) { timer.skip() }
                 }
             }
-
-            takeBreakSection
 
             Divider().padding(.horizontal, 8)
 
             if settings.dailyGoal > 0 {
-                let hoursToday = store.todayWorkMinutes / 60.0
+                let hoursToday = todayFocusMinutes / 60.0
                 let pct = min(1.0, hoursToday / Double(settings.dailyGoal))
                 let goalMet = hoursToday >= Double(settings.dailyGoal)
                 let barColor: Color = goalMet ? .green : phaseColor
@@ -169,7 +187,7 @@ struct TimerView: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Text(String(format: "%.1fh / %dh", hoursToday, settings.dailyGoal))
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
                             .foregroundStyle(goalMet ? Color.green : .primary)
                             .contentTransition(.numericText())
                         if goalMet {
@@ -194,7 +212,7 @@ struct TimerView: View {
 
             HStack {
                 VStack(spacing: 2) {
-                    Text(formatMinutes(store.todayWorkMinutes))
+                    Text(formatMinutes(todayFocusMinutes))
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .contentTransition(.numericText())
                     Text("Focus")
@@ -204,7 +222,7 @@ struct TimerView: View {
                 .frame(maxWidth: .infinity)
 
                 VStack(spacing: 2) {
-                    Text(formatMinutes(store.todayBreakMinutes))
+                    Text(formatMinutes(todayBreakMinutes))
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                         .contentTransition(.numericText())
@@ -214,155 +232,113 @@ struct TimerView: View {
                 }
                 .frame(maxWidth: .infinity)
 
+                let pending = todayFocusMinutes < 1
+                let streak = store.currentStreak + (store.todayWorkMinutes < 1 && !pending ? 1 : 0)
                 VStack(spacing: 2) {
-                    Text("\(store.currentStreak)d")
+                    Text("\(streak)d")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(store.currentStreak > 0 ? .orange : .secondary)
-                    Text("Streak")
+                        .foregroundStyle(streak > 0 ? Color.orange.opacity(pending ? 0.45 : 1) : .secondary)
+                    Text(pending && streak > 0 ? "Streak · today?" : "Streak")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
+                .help(pending && streak > 0 ? "Log some focus today to keep the streak" : "")
             }
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 20)
     }
 
-    @ViewBuilder
-    private var takeBreakSection: some View {
-        if !timer.isOnBreak {
-            if showBreakPicker {
-                inlineBreakPicker
-            } else {
-                Button {
-                    showBreakPicker = true
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "cup.and.saucer")
-                            .font(.system(size: 10))
-                        Text("Take a Break")
-                            .font(.system(size: 11, weight: .medium))
-                        if timer.isActive {
-                            Text("· ends session")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 5)
-                    .glassChip()
+    private var currentCategoryPill: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { showAllCategories = true }
+        } label: {
+            HStack(spacing: 5) {
+                Circle().fill(timer.isOnBreak ? Self.breakBlue : categoryColor(timer.currentLabel)).frame(width: 7, height: 7)
+                Text(timer.isOnBreak ? "Break" : timer.currentLabel)
+                    .font(.system(size: 12, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .glassChip()
+        }
+        .buttonStyle(.plain)
+        .help("Switch category (⌃⌥⌘A)")
+    }
+
+    private var categoryPicker: some View {
+        let focusTags = settings.tags.filter { !settings.lifeTags.contains($0) }
+        let lifeTags = settings.tags.filter { settings.lifeTags.contains($0) }
+        return VStack(spacing: 6) {
+            if !focusTags.isEmpty { chipFlow(focusTags, life: false) }
+            if !lifeTags.isEmpty {
+                HStack(spacing: 6) {
+                    Text("LIFE")
+                        .font(.system(size: 8.5, weight: .bold))
+                        .tracking(1)
+                        .foregroundStyle(.tertiary)
+                    Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 0.5)
                 }
+                .padding(.horizontal, 4)
+                chipFlow(lifeTags, life: true)
+            }
+            if timer.isActive {
+                Button("Done") {
+                    withAnimation(.easeInOut(duration: 0.2)) { showAllCategories = false }
+                }
+                .font(.system(size: 9.5, weight: .medium))
+                .foregroundStyle(.tertiary)
                 .buttonStyle(.plain)
             }
         }
     }
 
-    @ViewBuilder
-    private var inlineBreakPicker: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text("Take a Break")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    showBreakPicker = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            glassChipGroup {
-                HStack(spacing: 6) {
-                    ForEach(BreakKind.allCases) { kind in
-                        let sel = selectedBreakKinds.contains(kind)
-                        Button {
-                            if sel { selectedBreakKinds.remove(kind) }
-                            else   { selectedBreakKinds.insert(kind) }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: kind.icon).font(.system(size: 9))
-                                Text(kind.displayName).font(.system(size: 11, weight: .medium))
-                            }
+    private func chipFlow(_ tags: [String], life: Bool) -> some View {
+        glassChipGroup {
+            FlowLayout(spacing: 5) {
+                ForEach(tags, id: \.self) { tag in
+                    let selected = timer.currentLabel == tag && timer.isActive && !timer.isOnBreak
+                        || (!timer.isActive && timer.currentLabel == tag)
+                    let tint = categoryColor(tag)
+                    Button(tag) {
+                        if timer.isActive || life {
+                            if !selected { timer.switchTo(tag) }
+                            showAllCategories = false
+                        } else {
+                            timer.currentLabel = timer.currentLabel == tag ? "" : tag
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .foregroundStyle(sel ? Color(red: 0.27, green: 0.62, blue: 0.83) : Color.secondary)
-                        .glassChip(selected: sel, tint: Color(red: 0.27, green: 0.62, blue: 0.83))
-                        .buttonStyle(.plain)
                     }
-                }
-            }
-
-            glassChipGroup {
-                HStack(spacing: 6) {
-                    ForEach([10.0, 15.0, 30.0, 60.0, 120.0, 180.0], id: \.self) { mins in
-                        let label = mins < 60 ? "\(Int(mins))m" : "\(Int(mins / 60))h"
-                        Button(label) {
-                            startBreak(minutes: mins)
-                        }
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: life ? 10 : 11, weight: life ? .regular : .medium))
                         .lineLimit(1)
-                        .fixedSize()
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .foregroundStyle(Color(red: 0.27, green: 0.62, blue: 0.83))
-                        .glassChip()
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .foregroundStyle(selected ? tint : (life ? Color.secondary.opacity(0.8) : Color.primary.opacity(0.75)))
+                        .glassChip(selected: selected, tint: tint)
                         .buttonStyle(.plain)
+                }
+                if life {
+                    let onBreak = timer.isOnBreak && timer.isActive
+                    Button {
+                        if !onBreak { timer.startManualBreak(minutes: 0) }
+                        showAllCategories = false
+                    } label: {
+                        Label("Break", systemImage: "cup.and.saucer").labelStyle(.titleAndIcon)
                     }
+                        .font(.system(size: 10))
+                        .lineLimit(1)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .foregroundStyle(onBreak ? Self.breakBlue : Color.secondary.opacity(0.8))
+                        .glassChip(selected: onBreak, tint: Self.breakBlue)
+                        .buttonStyle(.plain)
+                        .help("Saves what's running, then counts up until you switch")
                 }
-            }
-
-            HStack(spacing: 8) {
-                Button {
-                    customBreakMinutes = max(5, customBreakMinutes - 5)
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 30, height: 26)
-                        .contentShape(Rectangle())
-                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.12)))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.22), lineWidth: 0.5))
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.downArrow, modifiers: [])
-
-                Text("\(Int(customBreakMinutes)) min")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .frame(minWidth: 54)
-
-                Button {
-                    customBreakMinutes = min(480, customBreakMinutes + 5)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 30, height: 26)
-                        .contentShape(Rectangle())
-                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.12)))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.22), lineWidth: 0.5))
-                }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.upArrow, modifiers: [])
-
-                Spacer()
-
-                Button("Start") {
-                    startBreak(minutes: customBreakMinutes)
-                }
-                .font(.system(size: 11, weight: .semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .foregroundStyle(Color(red: 0.27, green: 0.62, blue: 0.83))
-                .glassChip()
-                .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 4)
     }
 
     // Native glass button styles own their hit region, unlike a
@@ -425,7 +401,7 @@ struct TimerView: View {
             Circle()
                 .fill(.clear)
                 .frame(width: 124, height: 124)
-                .glassEffect(timer.isRunning ? .clear.tint(phaseColor.opacity(0.10)) : .clear, in: Circle())
+                .glassEffect(.clear, in: Circle())
         }
     }
 
@@ -443,6 +419,22 @@ struct TimerView: View {
                 }
             }
             Spacer()
+            let holes = store.untrackedMinutes(on: store.reviewWindow().from)
+            if holes >= 15 {
+                Button { showDayReview = true } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "clock.badge.questionmark").font(.system(size: 9))
+                        Text("Yesterday: \(Int(holes) / 60)h \(Int(holes) % 60)m untracked")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .glassChip()
+                }
+                .buttonStyle(.plain)
+                .help("Fill in the holes since yesterday")
+            }
             Button("End Day") {
                 withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
                     dayStore.endDay()
@@ -459,14 +451,6 @@ struct TimerView: View {
                 .buttonStyle(.plain)
         }
         .padding(.bottom, 4)
-    }
-
-    private func startBreak(minutes: Double) {
-        let kinds = BreakKind.allCases.filter { selectedBreakKinds.contains($0) }
-        showBreakPicker = false
-        let captured = kinds
-        selectedBreakKinds = []
-        timer.startManualBreak(minutes: minutes, kinds: captured)
     }
 
     private func formatMinutes(_ minutes: Double) -> String {

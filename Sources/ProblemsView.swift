@@ -21,19 +21,19 @@ struct ProblemsView: View {
         ZStack {
             ScrollView {
                 VStack(spacing: 12) {
+                    logButton
+
+                    if !store.needsReviewItems.isEmpty || !store.dueForReview.isEmpty {
+                        reviewCard
+                    }
+
                     if settings.interviewDate != nil {
                         countdownCard
                     }
 
                     goalSection
 
-                    if !store.needsReviewItems.isEmpty || !store.dueForReview.isEmpty {
-                        reviewCard
-                    }
-
                     progressCard
-
-                    logButton
 
                     Divider().padding(.horizontal, 8)
 
@@ -72,105 +72,6 @@ struct ProblemsView: View {
                 .zIndex(2)
             }
         }
-    }
-
-    // MARK: - (Removed) Homework section
-    //
-    // Was a separate collapsible tile at the bottom of this tab with the
-    // Stat 110 picker + "+" button. Confusing because there were two parallel
-    // problem systems. Homework now lives in Practice Mode; saved homework
-    // appears inline in `recentSection` alongside ProblemEntry items.
-
-    private var _removedHomeworkSection: some View {
-        EmptyView()
-        /* original:
-        let items = homeworkStore.byNewest
-        let cal = Calendar.current
-        let todayCount = items.filter { cal.isDateInToday($0.date) }.count
-        let goal = settings.homeworkDailyGoal
-        let purple = Color(red: 0.62, green: 0.45, blue: 0.92)
-        return VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.18)) { homeworkExpanded.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "book")
-                        .font(.system(size: 10))
-                        .foregroundStyle(purple)
-                    Text("HOMEWORK")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1)
-                        .foregroundStyle(.secondary)
-                    if goal > 0 {
-                        Text("\(todayCount)/\(goal) today")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(todayCount >= goal ? Color.green : purple)
-                    } else {
-                        Text("\(todayCount) today")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                    }
-                    Text("· \(items.count) total")
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                    Button {
-                        showStat110Picker = true
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "books.vertical").font(.system(size: 9))
-                            Text("Stat 110").font(.system(size: 9, weight: .semibold))
-                        }
-                        .foregroundStyle(purple)
-                        .padding(.horizontal, 6).padding(.vertical, 3)
-                        .background(purple.opacity(0.12))
-                        .cornerRadius(5)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Pick a problem from the Stat 110 catalog")
-
-                    Button {
-                        homeworkPrefill = nil
-                        showHomeworkLog = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(Color.secondary.opacity(0.10))
-                            .cornerRadius(5)
-                    }
-                    .buttonStyle(.plain)
-                    Image(systemName: homeworkExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-            }
-            .buttonStyle(.plain)
-
-            if homeworkExpanded {
-                Divider().padding(.horizontal, 10)
-                if items.isEmpty {
-                    Text("No homework problems logged. Use this for side problems you want to revisit — separate from interview tracking.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 12).padding(.vertical, 10)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(items) { item in
-                            HomeworkRow(item: item, onTap: { editingHomework = item })
-                            Divider().padding(.leading, 18)
-                        }
-                    }
-                }
-            }
-        }
-        .background(Color.secondary.opacity(0.04))
-        .cornerRadius(8)
-        */
     }
 
     // MARK: - Interview countdown

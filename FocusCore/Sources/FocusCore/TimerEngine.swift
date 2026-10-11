@@ -535,7 +535,8 @@ public final class FocusTimerEngine: ObservableObject {
         if let start = sessionStartTime { date = max(date, start) }
         if phase == .work { closeSegment(at: date) }
         cancelCompletionNotification()
-        beginSession(phase: .breakPhase, label: currentLabel, kinds: kinds, plannedSeconds: minutes * 60, at: date)
+        beginSession(phase: .breakPhase, label: currentLabel, kinds: kinds,
+                     plannedSeconds: minutes > 0 ? minutes * 60 : FocusCategories.openEndedSeconds, at: date)
     }
 
     public func apply(_ command: TimerCommand) {
@@ -546,8 +547,7 @@ public final class FocusTimerEngine: ObservableObject {
         case .stop:
             stop(at: command.createdAt)
         case .startBreak:
-            startBreak(minutes: command.minutes > 0 ? command.minutes : settings.breakMinutes,
-                       at: command.createdAt)
+            startBreak(minutes: command.minutes, at: command.createdAt)
         }
     }
 
@@ -600,7 +600,7 @@ public final class FocusTimerEngine: ObservableObject {
         resetSessionState()
         phase = .breakPhase
         currentBreakKinds = kinds
-        totalTime = minutes * 60
+        totalTime = minutes > 0 ? minutes * 60 : FocusCategories.openEndedSeconds
         timeRemaining = totalTime
         start()
         // start() already pushes state
