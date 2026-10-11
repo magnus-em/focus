@@ -67,8 +67,14 @@ class SessionStore: ObservableObject {
                 existing.typeRaw == typeRaw
             }
         )
-        if let dupes = try? context.fetch(descriptor),
-           dupes.contains(where: { $0.label == session.label }) {
+        if let dupe = (try? context.fetch(descriptor))?.first(where: { $0.label == session.label }) {
+            // Same block saved twice (peer + here, or a re-adopted state):
+            // keep the longer one rather than whichever landed first.
+            if session.durationMinutes > dupe.durationMinutes {
+                dupe.durationMinutes = session.durationMinutes
+                try? context.save()
+                refresh()
+            }
             return
         }
         context.insert(StoredWorkSession(value: session))

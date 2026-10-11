@@ -336,6 +336,7 @@ public final class FocusTimerEngine: ObservableObject {
             cancelCompletionNotification()
             return
         }
+        if rejectOlder(msg.startTime, source: "mp") { return }
         closeSegmentIfReplaced(by: msg.startTime)
         phase = (phaseEnum == .work) ? .work : .breakPhase
         totalTime = msg.totalSeconds
@@ -403,6 +404,7 @@ public final class FocusTimerEngine: ObservableObject {
             return
         }
 
+        if rejectOlder(state.startTime, source: "ck") { return }
         closeSegmentIfReplaced(by: state.startTime)
         phase = (remotePhase == .work) ? .work : .breakPhase
         totalTime = state.totalSeconds
@@ -464,6 +466,16 @@ public final class FocusTimerEngine: ObservableObject {
 
     /// A peer's state for a *different* session means it switched without
     /// necessarily knowing about ours — save ours (insertSession dedups).
+    /// A peer announcing a session that began before ours is behind (e.g. an
+    /// app relaunched with its old checkpoint): keep ours and re-announce it.
+    private func rejectOlder(_ theirStart: Date?, source: String) -> Bool {
+        guard isActive, let mine = sessionStartTime, let theirStart,
+              theirStart < mine.addingTimeInterval(-3) else { return false }
+        SyncLog.event("rejectOlderPeer", ["source": source, "theirs": "\(theirStart)", "mine": "\(mine)"])
+        pushSharedState()
+        return true
+    }
+
     private func closeSegmentIfReplaced(by newStart: Date?) {
         guard isActive, let start = sessionStartTime, let newStart,
               abs(newStart.timeIntervalSince(start)) > 3 else { return }

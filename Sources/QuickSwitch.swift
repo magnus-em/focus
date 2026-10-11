@@ -129,6 +129,16 @@ final class QuickSwitch {
         case "switcher": showSwitcher()
         case "recall": openRecall?()
         case "dashboard": openDashboard?()
+        case "log":
+            // focus://log?label=HW&from=<unix>&to=<unix> relabels that range (label=Break for a break).
+            guard let from = param("from").flatMap(Double.init).map(Date.init(timeIntervalSince1970:)),
+                  let to = param("to").flatMap(Double.init).map(Date.init(timeIntervalSince1970:)),
+                  to > from, to <= Date().addingTimeInterval(60), let raw = param("label") else { return }
+            let label = raw.caseInsensitiveCompare("Break") == .orderedSame ? nil
+                : tags.first { $0.caseInsensitiveCompare(raw) == .orderedSame } ?? raw
+            timer.sessionStore?.paint(start: from, end: to, label: label)
+            toast.show(icon: "pencil", title: "Logged \(label ?? "Break")",
+                       detail: "\(from.formatted(date: .omitted, time: .shortened))–\(to.formatted(date: .omitted, time: .shortened))")
         default: break
         }
     }

@@ -303,6 +303,7 @@ class TimerManager: ObservableObject {
             unblockIfNeeded()
             return
         }
+        if rejectOlder(msg.startTime, source: "mp") { return }
         closeSegmentIfReplaced(by: msg.startTime)
         currentPhase = (phaseEnum == .work) ? .work : .shortBreak
         totalTime = msg.totalSeconds
@@ -366,6 +367,7 @@ class TimerManager: ObservableObject {
             unblockIfNeeded()
             return
         }
+        if rejectOlder(state.startTime, source: "ck") { return }
         closeSegmentIfReplaced(by: state.startTime)
         currentPhase = (remotePhase == .work) ? .work : .shortBreak
         totalTime = state.totalSeconds
@@ -423,6 +425,16 @@ class TimerManager: ObservableObject {
                 breakKinds: currentBreakKinds.isEmpty ? nil : currentBreakKinds
             ))
         }
+    }
+
+    /// A peer announcing a session that began before ours is behind (e.g. an
+    /// app relaunched with its old checkpoint): keep ours and re-announce it.
+    private func rejectOlder(_ theirStart: Date?, source: String) -> Bool {
+        guard isActive, let mine = sessionStartTime, let theirStart,
+              theirStart < mine.addingTimeInterval(-3) else { return false }
+        SyncLog.event("rejectOlderPeer", ["source": source, "theirs": "\(theirStart)", "mine": "\(mine)"])
+        pushSharedState()
+        return true
     }
 
     /// A peer's state describing a *different* session than ours means it
