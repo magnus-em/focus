@@ -6,7 +6,7 @@ Last touched: 2026-09-27.
 
 ## In flight
 
-- **Phase 3 widgets on device.** Installed on the iPhone 2026-10-11; iPad still on the old build (wasn't reachable over Wi-Fi; plug in and `./install_ios.sh`). To verify on device: Control Center controls switch the Mac timer; Live Activity appears and follows Mac-side switches (relies on CloudKit push).
+- **Phase 3 widgets on device.** Installed on iPhone + iPad 2026-10-11. To verify on device: Control Center controls switch the Mac timer; Live Activity appears and follows Mac-side switches (relies on CloudKit push).
 
 ## Future / nice-to-have
 
