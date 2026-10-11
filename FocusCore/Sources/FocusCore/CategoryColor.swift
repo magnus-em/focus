@@ -18,3 +18,22 @@ public func categoryColor(_ tag: String) -> Color {
     default:         return Color(red: 0.30, green: 0.78, blue: 0.74)
     }
 }
+
+public func categoryIcon(_ category: String) -> String {
+    switch category.lowercased() {
+    case "sleep": return "bed.double.fill"
+    case "meals": return "fork.knife"
+    case "exercise": return "figure.run"
+    case "class": return "graduationcap.fill"
+    case "commute": return "tram.fill"
+    case "social": return "person.2.fill"
+    case "leisure": return "gamecontroller.fill"
+    case "chores": return "basket.fill"
+    case "admin": return "tray.full.fill"
+    case "swe": return "chevron.left.forwardslash.chevron.right"
+    case "quant": return "function"
+    case "ai": return "sparkles"
+    case "hw": return "pencil.and.list.clipboard"
+    default: return "scope"
+    }
+}

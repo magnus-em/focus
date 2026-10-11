@@ -169,9 +169,12 @@ public enum FocusCategories {
     /// timer state never shows an expired endTime, which peers treat as over.
     public static let openEndedSeconds: TimeInterval = 24 * 3600
 
+    /// Until a device has received the synced list, assume these.
+    public static let defaultLifeTags = ["Class", "Meals", "Leisure", "Sleep", "Chores", "Exercise", "Social", "Commute", "Admin"]
+
     public static func isLife(_ label: String?) -> Bool {
         guard let label, !label.isEmpty else { return false }
-        return UserDefaults.standard.stringArray(forKey: lifeTagsKey)?.contains(label) ?? false
+        return (UserDefaults.standard.stringArray(forKey: lifeTagsKey) ?? defaultLifeTags).contains(label)
     }
 
     // MARK: Timer display, derived only from (total, remaining) so every

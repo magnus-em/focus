@@ -249,9 +249,12 @@ class AppSettings: ObservableObject {
                          "Exercise", "Social", "Commute", "Admin"]
             tags = order.filter { tags.contains($0) || !["Quant", "SWE", "AI", "HW"].contains($0) }
                 + tags.filter { !order.contains($0) }
-            lifeTags = ["Class", "Meals", "Leisure", "Sleep", "Chores", "Exercise", "Social", "Commute", "Admin"]
+            lifeTags = FocusCategories.defaultLifeTags
             d.set(true, forKey: "didAddLifeCategories")
         }
+        // didSet doesn't fire in init, so the migrations above only wrote locally.
+        sd.set(tags, forKey: "tags")
+        sd.set(lifeTags, forKey: FocusCategories.lifeTagsKey)
 
         if tags.contains("AI/ML") {
             tags = tags.map { $0 == "AI/ML" ? "AI" : $0 }

@@ -27,7 +27,7 @@ struct SwitchCategoryControl: ControlWidget {
         AppIntentControlConfiguration(kind: "com.magnus.focus.switch", intent: SwitchControlConfiguration.self) { config in
             let name = config.category?.id ?? "HW"
             ControlWidgetButton(action: SwitchFocusIntent(category: FocusCategory(id: name))) {
-                Label(name, systemImage: icon(for: name))
+                Label(name, systemImage: categoryIcon(name))
             }
             .tint(categoryColor(name))
         }
@@ -62,25 +62,6 @@ struct StopControl: ControlWidget {
     }
 }
 
-private func icon(for category: String) -> String {
-    switch category.lowercased() {
-    case "sleep": return "bed.double.fill"
-    case "meals": return "fork.knife"
-    case "exercise": return "figure.run"
-    case "class": return "graduationcap.fill"
-    case "commute": return "tram.fill"
-    case "social": return "person.2.fill"
-    case "leisure": return "gamecontroller.fill"
-    case "chores": return "basket.fill"
-    case "admin": return "tray.full.fill"
-    case "swe": return "chevron.left.forwardslash.chevron.right"
-    case "quant": return "function"
-    case "ai": return "sparkles"
-    case "hw": return "pencil.and.list.clipboard"
-    default: return "scope"
-    }
-}
-
 // MARK: - Live Activity
 
 struct FocusLiveActivityWidget: Widget {
@@ -94,7 +75,7 @@ struct FocusLiveActivityWidget: Widget {
             let color = s.isBreak ? Color(red: 0.27, green: 0.62, blue: 0.83) : categoryColor(s.label)
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label(s.label, systemImage: s.isBreak ? "cup.and.saucer.fill" : icon(for: s.label))
+                    Label(s.label, systemImage: s.isBreak ? "cup.and.saucer.fill" : categoryIcon(s.label))
                         .font(.headline)
                         .foregroundStyle(color)
                 }
@@ -107,14 +88,14 @@ struct FocusLiveActivityWidget: Widget {
                     ActionRow(isBreak: s.isBreak)
                 }
             } compactLeading: {
-                Image(systemName: s.isBreak ? "cup.and.saucer.fill" : icon(for: s.label))
+                Image(systemName: s.isBreak ? "cup.and.saucer.fill" : categoryIcon(s.label))
                     .foregroundStyle(color)
             } compactTrailing: {
                 Text(timerInterval: s.since...Date.distantFuture, countsDown: false)
                     .monospacedDigit()
                     .frame(maxWidth: 52)
             } minimal: {
-                Image(systemName: s.isBreak ? "cup.and.saucer.fill" : icon(for: s.label))
+                Image(systemName: s.isBreak ? "cup.and.saucer.fill" : categoryIcon(s.label))
                     .foregroundStyle(color)
             }
         }

@@ -24,16 +24,16 @@ struct TimerScreen: View {
                     dayHeaderBar
                     if isWide {
                         HStack(alignment: .top, spacing: 20) {
-                            ringPanel.frame(maxWidth: .infinity)
                             VStack(spacing: 16) {
-                                controlsPanel
+                                nowCard
                                 prioritiesCard
                             }
                             .frame(maxWidth: .infinity)
+                            categoryGrid(wide: true).frame(maxWidth: .infinity)
                         }
                     } else {
-                        ringPanel
-                        controlsPanel
+                        nowCard
+                        categoryGrid(wide: false)
                         prioritiesCard
                     }
                     todayFooter
@@ -174,93 +174,82 @@ struct TimerScreen: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Ring panel
+    // MARK: - Now
 
-    private var ringPanel: some View {
-        PadCard(padding: 22) {
-            VStack(spacing: 16) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(engine.isRunning ? FocusColors.goalGreen : Color.gray.opacity(0.4))
-                        .frame(width: 8, height: 8)
-                    Text(engine.phase.displayName.uppercased())
-                        .font(.system(size: 11, weight: .bold))
-                        .tracking(1.4)
-                        .foregroundStyle(engine.phase == .work ? FocusColors.focusRed : FocusColors.breakBlue)
-                    if engine.isActive && !engine.isRunning {
-                        Text("PAUSED")
-                            .font(.system(size: 11, weight: .bold)).tracking(1.4)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+    private var runningName: String {
+        engine.isOnBreak ? "Break" : (engine.currentLabel.isEmpty ? "Focus" : engine.currentLabel)
+    }
 
-                ZStack {
-                    let ring = RingsView.Ring(
-                        id: "session",
-                        progress: engine.progress,
-                        color: engine.phase == .work ? FocusColors.focusRed : FocusColors.breakBlue,
-                        label: "",
-                        value: engine.timeString,
-                        goal: ""
-                    )
-                    RingsView(rings: [ring], lineWidth: 18, spacing: 6)
-                        .frame(width: 240, height: 240)
+    private var runningColor: Color {
+        engine.isOnBreak ? FocusColors.breakBlue : categoryColor(engine.currentLabel)
+    }
 
-                    VStack(spacing: 6) {
-                        Text(engine.timeString)
-                            .font(.system(size: 56, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                        if let label = engine.currentLabel.isEmpty ? nil : engine.currentLabel {
-                            Text(label).font(.callout).foregroundStyle(.secondary)
-                        }
-                        if engine.isActive {
-                            Text("Elapsed \(elapsedString)")
-                                .font(.caption2).foregroundStyle(.tertiary)
-                                .monospacedDigit()
-                        }
-                    }
-                }
+    /// Life categories and breaks count up; focus counts down, then overtime.
+    private var isCountdown: Bool {
+        engine.isActive && !FocusCategories.isOpenEnded(total: engine.totalTime)
+    }
 
-                if engine.phase == .work && !engine.isActive {
-                    presetChips
-                }
-                if engine.isActive {
-                    adjustChips
-                    Text(engine.elapsedSeconds >= 60
-                         ? "Stop will save \(Int(engine.elapsedSeconds / 60)) min."
-                         : "Stops under 1 min are discarded.")
-                        .font(.caption2).foregroundStyle(.tertiary)
-                }
-            }
-            .frame(maxWidth: .infinity)
+    private var nowSubtitle: String {
+        let since = engine.sessionStartTime.map { "since \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
+        if isCountdown { return "left · \(since)" }
+        if let over = FocusCategories.overtime(total: engine.totalTime, remaining: engine.timeRemaining) {
+            return "\(Int(over / 60))m past the target · \(since)"
         }
+        return since
     }
 
-    private var elapsedString: String {
-        let s = Int(engine.elapsedSeconds)
-        return String(format: "%02d:%02d", s / 60, s % 60)
-    }
-
-    private var stopButtonLabel: String {
-        if engine.phase == .breakPhase { return "Skip" }
-        if engine.elapsedSeconds >= 60 { return "Stop & Save" }
-        return "Stop"
-    }
-
-    private var presetChips: some View {
-        HStack(spacing: 8) {
-            ForEach([15, 25, 45, 60], id: \.self) { mins in
-                Button {
-                    engine.setSessionDuration(Double(mins))
-                } label: {
-                    Text("\(mins)m")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+    private var nowCard: some View {
+        PadCard(padding: 18) {
+            VStack(alignment: .leading, spacing: 12) {
+                if engine.isActive {
+                    HStack(spacing: 8) {
+                        Image(systemName: engine.isOnBreak ? "cup.and.saucer.fill" : categoryIcon(engine.currentLabel))
+                            .foregroundStyle(runningColor)
+                        Text(runningName).font(.title2.weight(.bold))
+                        Text(engine.isOnBreak || FocusCategories.isLife(engine.currentLabel) ? "LIFE" : "FOCUS")
+                            .font(.system(size: 10, weight: .bold)).tracking(1.2)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if !engine.isRunning {
+                            Text("PAUSED").font(.system(size: 11, weight: .bold)).tracking(1.2).foregroundStyle(.orange)
+                        }
+                    }
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(engine.timeString)
+                            .font(.system(size: 52, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(runningColor)
+                        Text(nowSubtitle).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    if isCountdown {
+                        ProgressView(value: engine.progress).tint(runningColor)
+                        adjustChips
+                    }
+                    if engine.isOnBreak { breakKindsRow }
+                    HStack(spacing: 10) {
+                        Button { Haptics.tap(); engine.toggleRunPause() } label: {
+                            Label(engine.isRunning ? "Pause" : "Resume",
+                                  systemImage: engine.isRunning ? "pause.fill" : "play.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(runningColor)
+                        Button { Haptics.warning(); engine.stop() } label: {
+                            Label("Stop", systemImage: "stop.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.secondary)
+                    }
+                } else {
+                    Text("Nothing running").font(.title2.weight(.bold))
+                    Text("Tap what you're doing. Focus counts down from \(Int(settings.workMinutes))m; life and Break count up.")
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
-                .buttonStyle(.bordered)
-                .tint(FocusColors.focusRed)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -281,102 +270,65 @@ struct TimerScreen: View {
         }
     }
 
-    // MARK: - Controls panel
+    // MARK: - Categories
 
-    private var controlsPanel: some View {
-        VStack(spacing: 12) {
-            primaryControlButtons
-
-            if engine.phase == .work && !engine.isActive {
-                tagPickerRow
-                Button {
-                    showBreakSheet = true
-                } label: {
-                    Label("Take a Break", systemImage: "cup.and.saucer")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                }
-                .buttonStyle(.bordered)
-                .tint(FocusColors.breakBlue)
+    private func categoryGrid(wide: Bool) -> some View {
+        let focusTags = settings.tags.filter { !FocusCategories.isLife($0) }
+        let lifeTags = settings.tags.filter { FocusCategories.isLife($0) }
+        let cols = { (n: Int) in Array(repeating: GridItem(.flexible(), spacing: 10), count: n) }
+        return VStack(alignment: .leading, spacing: 10) {
+            PadSectionHeader(title: "FOCUS")
+            LazyVGrid(columns: cols(2), spacing: 10) {
+                ForEach(focusTags, id: \.self) { tile($0, height: 64) }
             }
-
-            if engine.phase == .breakPhase {
-                breakKindsRow
+            HStack {
+                PadSectionHeader(title: "LIFE")
+                Spacer()
+                Button("Edit") { showLabelPicker = true }.font(.caption.weight(.semibold))
+            }
+            .padding(.top, 6)
+            LazyVGrid(columns: cols(wide ? 4 : 3), spacing: 10) {
+                ForEach(lifeTags, id: \.self) { tile($0, height: 54) }
+                breakTile
             }
         }
     }
 
-    private var primaryControlButtons: some View {
-        HStack(spacing: 10) {
-            if !engine.isActive {
-                Button { Haptics.medium(); engine.start() } label: {
-                    Label("Start", systemImage: "play.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(engine.phase == .work ? FocusColors.focusRed : FocusColors.breakBlue)
-            } else {
-                Button { Haptics.tap(); engine.toggleRunPause() } label: {
-                    Label(engine.isRunning ? "Pause" : "Resume",
-                          systemImage: engine.isRunning ? "pause.fill" : "play.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(engine.phase == .work ? FocusColors.focusRed : FocusColors.breakBlue)
-
-                Button {
-                    Haptics.warning()
-                    if engine.phase == .breakPhase { engine.skip() } else { engine.stop() }
-                } label: {
-                    Label(stopButtonLabel,
-                          systemImage: engine.phase == .breakPhase ? "forward.fill" : "stop.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                }
-                .buttonStyle(.bordered)
-                .tint(.secondary)
+    private func tile(_ tag: String, height: CGFloat) -> some View {
+        let selected = engine.isActive && !engine.isOnBreak && engine.currentLabel == tag
+        let color = categoryColor(tag)
+        return Button {
+            Haptics.medium()
+            engine.switchTo(tag)
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: categoryIcon(tag)).font(.system(size: height > 60 ? 20 : 16, weight: .semibold))
+                Text(tag).font(.system(size: height > 60 ? 15 : 13, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
             }
+            .frame(maxWidth: .infinity, minHeight: height)
+            .background(RoundedRectangle(cornerRadius: 14).fill(selected ? color : color.opacity(0.14)))
+            .foregroundStyle(selected ? Color.white : color)
         }
+        .buttonStyle(.plain)
     }
 
-    private var tagPickerRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(settings.tags, id: \.self) { tag in
-                    let selected = engine.currentLabel == tag
-                    Button {
-                        if engine.isActive && !engine.isOnBreak {
-                            if !selected { engine.switchTo(tag) }
-                        } else {
-                            engine.currentLabel = selected ? "" : tag
-                        }
-                    } label: {
-                        Text(tag)
-                            .font(.system(size: 13, weight: .semibold))
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(
-                                Capsule().fill(selected ? FocusColors.focusRed.opacity(0.18) : Color(.tertiarySystemFill))
-                            )
-                            .foregroundStyle(selected ? FocusColors.focusRed : .primary)
-                    }
-                }
-                Button {
-                    showLabelPicker = true
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 14))
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Capsule().fill(Color(.tertiarySystemFill)))
-                        .foregroundStyle(.secondary)
-                }
+    private var breakTile: some View {
+        let selected = engine.isActive && engine.isOnBreak
+        return Button {
+            Haptics.medium()
+            engine.startBreak(minutes: 0)
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: "cup.and.saucer.fill").font(.system(size: 16, weight: .semibold))
+                Text("Break").font(.system(size: 13, weight: .semibold))
             }
-            .padding(.horizontal, 2)
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .background(RoundedRectangle(cornerRadius: 14).fill(selected ? FocusColors.breakBlue : FocusColors.breakBlue.opacity(0.14)))
+            .foregroundStyle(selected ? Color.white : FocusColors.breakBlue)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Timed break…") { showBreakSheet = true }
         }
     }
 
