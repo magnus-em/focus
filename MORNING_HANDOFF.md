@@ -61,7 +61,7 @@ To actually unblock sync:
 ## To install on iPad in the morning
 
 ```bash
-cd /Users/magnusmelbourne/Documents/Code/focus_tracker/FocusPad
+cd ~/Code/focus/FocusPad
 xcodegen generate   # already done last night, but harmless
 open FocusPad.xcodeproj
 # In Xcode: select "Magnus's iPad" destination, hit Run.
