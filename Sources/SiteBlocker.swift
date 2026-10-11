@@ -75,7 +75,7 @@ enum SiteBlocker {
             toFile: domainFilePath, atomically: true, encoding: .utf8)
 
         // Generate pf rules: block DoH servers + resolved IPs of blocked domains
-        let pfRules = generatePFRules(domains: allDomains)
+        let pfRules = generatePFRules()
         try? pfRules.write(toFile: pfRulesPath, atomically: true, encoding: .utf8)
 
         runHelper("block")
@@ -110,10 +110,10 @@ enum SiteBlocker {
 
     // MARK: - pf Rules
 
-    /// Generate packet filter rules that:
-    /// 1. Block DNS-over-HTTPS servers (forces Chrome to use system DNS)
-    /// 2. Resolve and block actual IPs of blocked domains (catches remaining edge cases)
-    private static func generatePFRules(domains: [String]) -> String {
+    /// Blocks DNS-over-HTTPS servers so browsers fall back to system DNS, which reads /etc/hosts.
+    /// Blocked domains' own IPs are not firewalled: news and video sites sit on shared CDN
+    /// IPs (Fastly, Cloudflare, Akamai, Google), so that would take down unrelated sites.
+    private static func generatePFRules() -> String {
         var lines: [String] = []
 
         // Block DoH servers on port 443 — this disables DNS-over-HTTPS
@@ -122,54 +122,7 @@ enum SiteBlocker {
             lines.append("block drop quick proto tcp from any to \(ip) port 443")
         }
 
-        // Also resolve blocked domains and block their IPs directly
-        // This is a belt-and-suspenders approach for any browser that
-        // still manages to resolve outside /etc/hosts
-        for domain in domains {
-            let ips = resolveDomain(domain)
-            for ip in ips {
-                lines.append("block drop quick proto tcp from any to \(ip) port { 80, 443 }")
-            }
-            // Also resolve www variant
-            if !domain.hasPrefix("www.") {
-                let wwwIPs = resolveDomain("www.\(domain)")
-                for ip in wwwIPs {
-                    lines.append("block drop quick proto tcp from any to \(ip) port { 80, 443 }")
-                }
-            }
-        }
-
         return lines.joined(separator: "\n") + "\n"
-    }
-
-    /// Resolve a domain to its A record IPs using the system resolver
-    private static func resolveDomain(_ domain: String) -> [String] {
-        guard let host = CFHostCreateWithName(nil, domain as CFString).takeRetainedValue() as CFHost? else {
-            return []
-        }
-        var resolved = DarwinBoolean(false)
-        CFHostStartInfoResolution(host, .addresses, nil)
-        guard let addresses = CFHostGetAddressing(host, &resolved)?.takeUnretainedValue() as? [Data] else {
-            return []
-        }
-        var ips: [String] = []
-        for addr in addresses {
-            var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-            addr.withUnsafeBytes { ptr in
-                guard let baseAddr = ptr.baseAddress else { return }
-                let sockAddr = baseAddr.assumingMemoryBound(to: sockaddr.self)
-                if getnameinfo(sockAddr, socklen_t(addr.count),
-                               &hostname, socklen_t(hostname.count),
-                               nil, 0, NI_NUMERICHOST) == 0 {
-                    let ip = String(cString: hostname)
-                    // Only include IPv4 addresses (not 127.0.0.1 since we put that in /etc/hosts)
-                    if ip.contains(".") && ip != "127.0.0.1" {
-                        ips.append(ip)
-                    }
-                }
-            }
-        }
-        return ips
     }
 
     // MARK: - Helper Execution
@@ -247,6 +200,31 @@ enum SiteBlocker {
         }
         return related
     }
+
+    // MARK: - Presets
+
+    static let newsAndEntertainment = [
+        // News
+        "cnn.com", "foxnews.com", "msnbc.com", "nbcnews.com", "abcnews.go.com", "cbsnews.com",
+        "nytimes.com", "washingtonpost.com", "wsj.com", "usatoday.com", "latimes.com", "nypost.com",
+        "bbc.com", "bbc.co.uk", "theguardian.com", "dailymail.co.uk", "reuters.com", "apnews.com",
+        "bloomberg.com", "cnbc.com", "ft.com", "economist.com", "businessinsider.com", "forbes.com",
+        "npr.org", "politico.com", "axios.com", "thehill.com", "semafor.com", "huffpost.com",
+        "theatlantic.com", "newyorker.com", "vox.com", "slate.com", "time.com", "newsweek.com",
+        "vice.com", "buzzfeed.com", "breitbart.com", "drudgereport.com", "theverge.com",
+        "techcrunch.com", "wired.com", "arstechnica.com", "engadget.com", "news.ycombinator.com",
+        "news.google.com", "news.yahoo.com", "msn.com", "substack.com",
+        // Video & streaming
+        "youtube.com", "netflix.com", "hulu.com", "disneyplus.com", "max.com", "primevideo.com",
+        "peacocktv.com", "paramountplus.com", "twitch.tv", "crunchyroll.com", "kick.com",
+        // Social
+        "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com",
+        "threads.net", "bsky.app", "tumblr.com", "pinterest.com", "9gag.com", "imgur.com",
+        // Sports, celebrity, games, movies
+        "espn.com", "bleacherreport.com", "theathletic.com", "barstoolsports.com", "tmz.com",
+        "people.com", "eonline.com", "imdb.com", "rottentomatoes.com", "letterboxd.com",
+        "ign.com", "kotaku.com", "polygon.com", "gamespot.com",
+    ]
 
     // MARK: - Domain Cleaning
 

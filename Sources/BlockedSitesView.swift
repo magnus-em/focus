@@ -26,6 +26,16 @@ struct BlockedSitesView: View {
                 .disabled(newDomain.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
+            let missingPreset = SiteBlocker.newsAndEntertainment.filter { !settings.blockedSites.contains($0) }
+            if !missingPreset.isEmpty {
+                Button("Add news & entertainment (\(missingPreset.count))") {
+                    settings.blockedSites += missingPreset
+                }
+                .font(.system(size: 11))
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+
             // Domain list
             if !settings.blockedSites.isEmpty {
                 VStack(spacing: 0) {
