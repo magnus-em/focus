@@ -1,13 +1,15 @@
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 import FocusCore
 
 /// Every way to change what the timer is tracking without opening the
-/// popover: global hotkeys, the ⌃⌥⌘A switcher panel, `focustracker://` URLs,
+/// popover: global hotkeys, the ⌃⌥⌘J switcher panel, `focustracker://` URLs,
 /// and commands arriving from other devices.
 ///
-/// Hotkeys (all ⌃⌥⌘): S start/stop · A switcher · 1–9 switch to category N ·
-/// 0 stop · B break · R recall.
+/// Hotkeys (all ⌃⌥⌘, right hand only): J switcher · K start/stop · L break ·
+/// ; recall · 0 stop · Space pause. Categories take `categoryKeys` in order
+/// (U I O P M , . / …), the same keys the switcher panel shows.
 /// URLs: focustracker://switch/<category>, focustracker://stop,
 /// focustracker://break[?minutes=N], focustracker://toggle, focustracker://switcher,
 /// focustracker://recall
@@ -22,6 +24,15 @@ final class QuickSwitch {
     private lazy var switcher = SwitcherPanel(quick: self)
     var openRecall: (() -> Void)?
 
+    /// Right-hand keys for categories, in `settings.tags` order.
+    static let categoryKeys: [(key: Character, code: Int)] = [
+        ("u", kVK_ANSI_U), ("i", kVK_ANSI_I), ("o", kVK_ANSI_O), ("p", kVK_ANSI_P),
+        ("m", kVK_ANSI_M), (",", kVK_ANSI_Comma), (".", kVK_ANSI_Period), ("/", kVK_ANSI_Slash),
+        ("y", kVK_ANSI_Y), ("h", kVK_ANSI_H), ("n", kVK_ANSI_N),
+        ("7", kVK_ANSI_7), ("8", kVK_ANSI_8), ("9", kVK_ANSI_9), ("6", kVK_ANSI_6),
+        ("-", kVK_ANSI_Minus), ("=", kVK_ANSI_Equal),
+    ]
+
     init(timer: TimerManager, settings: AppSettings, days: DayStore) {
         self.timer = timer
         self.settings = settings
@@ -31,16 +42,16 @@ final class QuickSwitch {
         func bind(_ key: UInt32, _ action: @escaping () -> Void) {
             if let hk = GlobalHotKey(keyCode: key, modifiers: mods, handler: action) { hotKeys.append(hk) }
         }
-        bind(GlobalHotKey.spaceKey) { [weak timer] in timer?.toggleRunPause() }
-        bind(GlobalHotKey.sKey) { [weak self] in self?.toggle() }
-        bind(GlobalHotKey.aKey) { [weak self] in self?.showSwitcher() }
-        bind(GlobalHotKey.bKey) { [weak self] in self?.startBreak() }
-        bind(GlobalHotKey.rKey) { [weak self] in self?.openRecall?() }
-        bind(GlobalHotKey.digitKeys[0]) { [weak self] in self?.stop() }
-        for n in 1...9 {
-            bind(GlobalHotKey.digitKeys[n]) { [weak self] in
-                guard let self, n <= self.settings.tags.count else { return }
-                self.switchTo(self.settings.tags[n - 1])
+        bind(UInt32(kVK_Space)) { [weak timer] in timer?.toggleRunPause() }
+        bind(UInt32(kVK_ANSI_J)) { [weak self] in self?.showSwitcher() }
+        bind(UInt32(kVK_ANSI_K)) { [weak self] in self?.toggle() }
+        bind(UInt32(kVK_ANSI_L)) { [weak self] in self?.startBreak() }
+        bind(UInt32(kVK_ANSI_Semicolon)) { [weak self] in self?.openRecall?() }
+        bind(UInt32(kVK_ANSI_0)) { [weak self] in self?.stop() }
+        for (i, k) in Self.categoryKeys.enumerated() {
+            bind(UInt32(k.code)) { [weak self] in
+                guard let self, i < self.settings.tags.count else { return }
+                self.switchTo(self.settings.tags[i])
             }
         }
 
@@ -191,13 +202,12 @@ private struct SwitcherView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 6)
-            let letters = letterKeys
             ForEach(Array(quick.tags.enumerated()), id: \.offset) { i, tag in
-                row(key: i < 9 ? "\(i + 1)" : (letters[tag].map { String($0).uppercased() } ?? "·"),
+                row(key: i < QuickSwitch.categoryKeys.count ? String(QuickSwitch.categoryKeys[i].key).uppercased() : "·",
                     title: tag, current: tag == quick.currentLabel) { quick.switchTo(tag) }
             }
             Divider().padding(.vertical, 4)
-            row(key: "B", title: "Break", current: quick.isOnBreak) { quick.startBreak() }
+            row(key: "L", title: "Break", current: quick.isOnBreak) { quick.startBreak() }
             if quick.isActive {
                 row(key: "0", title: "Stop", current: false) { quick.stop() }
             }
@@ -212,32 +222,15 @@ private struct SwitcherView: View {
         .onKeyPress { press in
             let c = press.characters.lowercased()
             if press.key == .escape { dismiss(); return .handled }
-            if let n = Int(c), n >= 1, n <= min(9, quick.tags.count) {
-                run { quick.switchTo(quick.tags[n - 1]) }
-                return .handled
-            }
-            if c == "0" || c == "s" { run { quick.stop() }; return .handled }
-            if c == "b" { run { quick.startBreak() }; return .handled }
-            if let ch = c.first, let tag = letterKeys.first(where: { $0.value == ch })?.key {
-                run { quick.switchTo(tag) }
+            if c == "0" || c == "k" { run { quick.stop() }; return .handled }
+            if c == "l" { run { quick.startBreak() }; return .handled }
+            if c == "j" { dismiss(); return .handled }
+            if let ch = c.first, let i = QuickSwitch.categoryKeys.firstIndex(where: { $0.key == ch }), i < quick.tags.count {
+                run { quick.switchTo(quick.tags[i]) }
                 return .handled
             }
             return .ignored
         }
-    }
-
-    /// Categories past the ninth have no digit, so each gets the first letter
-    /// of its name not already taken (B and S are Break and Stop).
-    private var letterKeys: [String: Character] {
-        var taken: Set<Character> = ["b", "s"]
-        var out: [String: Character] = [:]
-        for tag in quick.tags.dropFirst(9) {
-            if let ch = tag.lowercased().first(where: { $0.isLetter && !taken.contains($0) }) {
-                out[tag] = ch
-                taken.insert(ch)
-            }
-        }
-        return out
     }
 
     private var statusLine: String {

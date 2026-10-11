@@ -141,7 +141,7 @@ struct SettingsView: View {
                 }
                 ToggleRow(label: "Reconstruct yesterday first", isOn: $settings.morningRecall)
                 IntRow(label: "Max reviews per day", value: $settings.recallDailyCap, range: 3...60)
-                Text("After a focus block, write what you learned from memory. Cards come back after 1, 3, 7, 14, 30 days. ⌃⌥⌘R opens Recall.")
+                Text("After a focus block, write what you learned from memory. Cards come back after 1, 3, 7, 14, 30 days. ⌃⌥⌘; opens Recall.")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -200,7 +200,7 @@ struct SettingsView: View {
                     .labelsHidden()
                     .controlSize(.small)
                     .fixedSize()
-                    Text("⌃⌥⌘S")
+                    Text("⌃⌥⌘K")
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
@@ -209,7 +209,7 @@ struct SettingsView: View {
                         .cornerRadius(4)
                 }
 
-                Text("⌃⌥⌘A switcher · ⌃⌥⌘1–9 switch category · ⌃⌥⌘B break · ⌃⌥⌘0 stop")
+                Text("⌃⌥⌘J switcher · ⌃⌥⌘U I O P M , . / switch category · ⌃⌥⌘L break · ⌃⌥⌘0 stop · ⌃⌥⌘; recall")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
 
@@ -884,7 +884,7 @@ private struct PracticeNewCapRow: View {
     }
 }
 
-/// Order sets the ⌃⌥⌘1–9 hotkeys; Life categories are tracked but don't count toward the goal.
+/// Order sets the ⌃⌥⌘ category hotkeys (U I O P M , . / …); Life categories are tracked but don't count toward the goal.
 private struct CategoriesEditor: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var store: SessionStore

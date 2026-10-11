@@ -389,7 +389,7 @@ struct PopoverContent: View {
             launcherTile(icon: "brain.head.profile", title: "Recall",
                          badge: recallDue > 0 ? "\(recallDue) due" : nil,
                          badgeColor: recallPurple, tint: recallPurple,
-                         help: "Open Recall (⌃⌥⌘R)", action: openRecall)
+                         help: "Open Recall (⌃⌥⌘;)", action: openRecall)
             launcherTile(icon: "plus.forwardslash.minus", title: "Sprint",
                          badge: zetamacStore.isGameActive ? "\(zetamacLiveTimeShort) · \(zetamacStore.liveScore)"
                              : (zetamacStore.bestScore > 0 ? "best \(zetamacStore.bestScore)" : nil),

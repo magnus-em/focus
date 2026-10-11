@@ -73,16 +73,6 @@ final class GlobalHotKey {
 
     // MARK: - Convenience constants
 
-    static let spaceKey: UInt32     = UInt32(kVK_Space)
-    static let pKey: UInt32         = UInt32(kVK_ANSI_P)
-    static let sKey: UInt32         = UInt32(kVK_ANSI_S)
-    static let aKey: UInt32         = UInt32(kVK_ANSI_A)
-    static let bKey: UInt32         = UInt32(kVK_ANSI_B)
-    static let rKey: UInt32         = UInt32(kVK_ANSI_R)
-    static let digitKeys: [UInt32]  = [
-        kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4,
-        kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9,
-    ].map { UInt32($0) }
     static let controlModifier: UInt32 = UInt32(controlKey)
     static let optionModifier: UInt32  = UInt32(optionKey)
     static let commandModifier: UInt32 = UInt32(cmdKey)

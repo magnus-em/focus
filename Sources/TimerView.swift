@@ -267,7 +267,7 @@ struct TimerView: View {
             .glassChip()
         }
         .buttonStyle(.plain)
-        .help("Switch category (⌃⌥⌘A)")
+        .help("Switch category (⌃⌥⌘J)")
     }
 
     private var categoryPicker: some View {
