@@ -26,6 +26,16 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
     /// so we don't re-apply stale CloudKit pulls of a state we previously saw.
     private var lastSeenVersion: Int
     private static let lastSeenVersionKey = "focusCore.timerSync.lastSeenVersion"
+    /// Rest of the last-seen stamp, so two devices pushing the same version
+    /// (neither had seen the other's) still order by (updatedAt, deviceID).
+    private static let lastSeenStampKey = "focusCore.timerSync.lastSeenStamp"
+    private var lastSeenStamp: (updatedAt: Double, device: String) {
+        get {
+            let a = UserDefaults.standard.array(forKey: Self.lastSeenStampKey)
+            return ((a?.first as? Double) ?? 0, (a?.last as? String) ?? "")
+        }
+        set { UserDefaults.standard.set([newValue.updatedAt, newValue.device], forKey: Self.lastSeenStampKey) }
+    }
 
     public var onRemoteChange: ((StoredTimerState) -> Void)?
 
@@ -162,6 +172,7 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
         try? ctx.save()
         lastSeenVersion = record.version
         UserDefaults.standard.set(lastSeenVersion, forKey: Self.lastSeenVersionKey)
+        lastSeenStamp = (record.updatedAt.timeIntervalSince1970, deviceID)
         SyncLog.event("ckPush", [
             "version": record.version,
             "phase": record.phase.rawValue,
@@ -204,12 +215,15 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
         if state.deviceID == deviceID && state.version <= lastSeenVersion {
             return
         }
-        guard state.version > lastSeenVersion else {
+        let stamp = (state.updatedAt.timeIntervalSince1970, state.deviceID)
+        guard state.version > lastSeenVersion
+              || (state.version == lastSeenVersion && stamp > lastSeenStamp) else {
             return
         }
         let priorLastSeen = lastSeenVersion
         lastSeenVersion = state.version
         UserDefaults.standard.set(lastSeenVersion, forKey: Self.lastSeenVersionKey)
+        lastSeenStamp = stamp
         // Don't fire onRemoteChange for our own state coming back — even if
         // the version bumped (shouldn't, since we already set lastSeenVersion
         // on push). Belt-and-suspenders.
