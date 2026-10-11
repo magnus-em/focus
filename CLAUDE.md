@@ -29,6 +29,7 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 | `Sources/AppSettings.swift` | All settings, UserDefaults-backed. Bundle id `com.magnus.focus`. |
 | `Sources/LeetCodeStore.swift` | LeetCode grind tracking derived from `ProblemStore` (every solve is a normal SWE `ProblemEntry`, matched to the catalog by URL slug, then title). Streaks, pace vs target/deadline, pattern coverage, difficulty mix vs 20/60/20 target, solve-time medians vs 15/25/40m, redo queue, milestones, Smart pick, stopwatch (persisted in UserDefaults), evening nudge notification. |
 | `Sources/RecallStore.swift` | Retrieval practice. SwiftData `StoredKnowledgeItem` (card: course, prompt, reference answer, kind, interval, nextDue), `StoredRecallAttempt` (response written before reveal, score 0–3, `hinted`, real `delayDays`), `StoredRecallNote` (free recall: `session` after a focus block, `yesterday` each morning). Due queue (most overdue first, capped at `recallDailyCap`), retention-by-delay buckets, weekly focus-vs-retention rows, hardest cards. Scheduler is `FocusCore/Recall.swift` (`RecallScheduler`: 1→3→7→14→30→60…; fluent skips a rung, partial/hint drops one, forgot → 1d). |
+| `Sources/BrowserStore.swift` | Chrome extension data. SwiftData `StoredBlockEvent` (domain, category at the time, `wasFocus`, reason, `bypassed`) and `StoredBrowsingSpan` (active-tab time per domain; same-domain spans < 90s apart merge; pruned after 120 days). |
 | `Sources/LeetCodeCatalog.swift` | All ~3.6k LeetCode algorithm problems from `Sources/Resources/leetcode.json` (LeetCode GraphQL + NeetCode pattern labels + Blind75/NC150/NC250/Grind75/Grind169 bitmask). One primary pattern per problem (NeetCode label, else ordered tag rules). "Update from LeetCode" refetches into `Focus/leetcode-catalog.json`; newer `generated` wins. |
 
 ### Logic / glue
@@ -38,6 +39,7 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 | `Sources/LockInApp.swift` | App entry (`@main FocusApp`). MenuBarExtra. `PopoverContent` wires all stores, hosts tab switcher + commitment overlay. |
 | `Sources/TimerManager.swift` | Timer state machine. `Phase { work, shortBreak, longBreak }` (no rawValue — `displayName` returns "Focus" / "Break"). Phase transitions, partial-session save, manual break, pause-grace auto-finalize, crash-recovery checkpoint, site-blocking orchestration. |
 | `Sources/SiteBlocker.swift` | `/etc/hosts` + `pf` firewall blocking. Requires sudo helper at `/usr/local/bin/focustimer-blocker`. Cleanup on quit + next launch after crash. |
+| `Sources/BrowserBridge.swift` | Loopback HTTP server (`NWListener`, 127.0.0.1:47821) for `ChromeExtension/`. `GET /state` (from `TimerManager.shouldBlockSites`, `bypassAllowed = !isFocusRunning`), `POST /events`. Refuses any request whose `Origin` isn't the extension (ID pinned by the manifest `key`). |
 | `Sources/GlobalHotKey.swift` | Carbon global hotkey wrapper. Bindings live in `QuickSwitch`. |
 | `Sources/QuickSwitch.swift` | Every no-popover way to change what's tracked. Hotkeys (⌃⌥⌘, all right-hand keys): Space pause/resume, K start/stop (`settings.quickStartTag`, default HW), J switcher panel, L break, ; Recall, 0 stop. Categories use `QuickSwitch.categoryKeys` in tag order (U I O P M , . / Y H N 7 8 9 6 - =), both as direct hotkeys and inside the switcher panel. URL scheme `focustracker://switch/<cat>`, `stop`, `break?minutes=N`, `toggle`, `switcher`, `recall` (via `FocusAppDelegate`). Opens/reopens the day; `HotKeyToast` confirms. Toasts commands applied from other devices. |
 | `Sources/RecallCoach.swift` | Optional Claude client (raw `URLSession`, `claude-opus-5-5`, structured JSON output, `fallbacks: "default"`). Key in Keychain service `com.magnus.focus.anthropic` (falls back to `ANTHROPIC_API_KEY`). `reviewNote` (feedback + ≤2 cards), `draftCards` (from pasted notes), `grade` (suggested score + what's missing), `hint` (progressive, never the answer). |
@@ -136,6 +138,13 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 
 ### Site blocking
 Requires admin password on first setup. Sets up sudoers entry + helper script. Modifies `/etc/hosts` + `pf` firewall while a focus session is active. Cleanup runs on quit and on next launch after a crash via `SiteBlocker.cleanupIfNeeded()`.
+
+### Chrome extension (`ChromeExtension/`)
+- Load unpacked from the repo folder; ID `dljnfclilnaccokglnomfjlbbanapflo` is pinned by `key` in the manifest. After editing it, hit reload on chrome://extensions (deploy.sh doesn't touch it).
+- Blocks the same domains at the same times as the hosts blocker (Settings → Site blocking), via a `declarativeNetRequest` redirect to `blocked.html`. Each load of the block page is one attempt; tabs swept when blocking starts aren't counted.
+- No unlocking while a focus category runs. During breaks/life categories: 30s wait + typed reason → 5 min unlock, logged as `bypassed`.
+- Events queue in `chrome.storage.local` while the app is down. Last known state is kept for 3 min of unreachability, then blocking stops.
+- Dashboard → Browser card: blocked count, during focus, per focus hour, bypassed, by category/site, time by site, sites during focus.
 
 ### LeetCode tracker
 - Daily goal = `settings.sweGoal` (falls back to 3). Target/deadline: `leetCodeTarget`, `leetCodeDeadline` (falls back to `interviewDate`).

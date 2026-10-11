@@ -7,13 +7,13 @@ import SwiftUI
 class DashboardWindowController: ObservableObject {
     private var window: NSWindow?
 
-    func open(sessionStore: SessionStore, problemStore: ProblemStore, homeworkStore: HomeworkStore, settings: AppSettings, dayStore: DayStore, timerManager: TimerManager) {
+    func open(sessionStore: SessionStore, problemStore: ProblemStore, homeworkStore: HomeworkStore, settings: AppSettings, dayStore: DayStore, timerManager: TimerManager, browserStore: BrowserStore) {
         if let w = window {
             w.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let view = DashboardView(sessionStore: sessionStore, problemStore: problemStore, homeworkStore: homeworkStore, settings: settings, dayStore: dayStore, timerManager: timerManager)
+        let view = DashboardView(sessionStore: sessionStore, problemStore: problemStore, homeworkStore: homeworkStore, settings: settings, dayStore: dayStore, timerManager: timerManager, browserStore: browserStore)
         let vc = NSHostingController(rootView: view)
         let w = NSWindow(contentViewController: vc)
         w.title = "Focus"
@@ -82,6 +82,7 @@ struct DashboardView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var dayStore: DayStore
     @ObservedObject var timerManager: TimerManager
+    @ObservedObject var browserStore: BrowserStore
 
     @State private var editingEvent: DayEvent? = nil
     @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
@@ -366,6 +367,7 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: 12) {
                 dayTimelineSection
                 statCards
+                browserSection
                 problemProgressSection
                 weeklySection
                 focusSplitSection
@@ -818,6 +820,120 @@ struct DashboardView: View {
         }
         .padding(12)
         .glassCard(cornerRadius: 10)
+    }
+
+    // MARK: - Browser (Chrome extension)
+
+    private var selectedDayFocusIntervals: [DateInterval] {
+        var sessions = selectedDayFocusSessions.filter(\.isFocus)
+        if isSelectedDayToday, let live = timerManager.currentInProgressSession, live.isFocus { sessions.append(live) }
+        return sessions.map { DateInterval(start: $0.startTime, duration: max(0, $0.durationMinutes * 60)) }
+    }
+
+    @ViewBuilder
+    private var browserSection: some View {
+        let cal = Calendar.current
+        let dayStart = cal.startOfDay(for: selectedDay)
+        let dayEnd = cal.date(byAdding: .day, value: 1, to: dayStart)!
+        let blocks = browserStore.blocks(on: selectedDay)
+        let daySpans = browserStore.spans(from: dayStart, to: dayEnd)
+        let byDomain = browserStore.secondsByDomain(daySpans)
+        let chromeMinutes = daySpans.reduce(0) { $0 + $1.seconds } / 60
+        let focusSpans = browserStore.spans(within: selectedDayFocusIntervals)
+        let focusByDomain = browserStore.secondsByDomain(focusSpans)
+        let focusHours = selectedDayFocusIntervals.reduce(0) { $0 + $1.duration } / 3600
+        let blockedSet = Set(settings.blockedSites.map(SiteBlocker.cleanDomain))
+
+        if !blocks.isEmpty || !daySpans.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    sectionLabel("BROWSER")
+                    Spacer()
+                    Text("\(fmtMins(chromeMinutes)) in Chrome")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    browserStat("\(blocks.count)", "blocked", color: red)
+                    browserStat("\(blocks.filter(\.wasFocus).count)", "during focus", color: amber)
+                    browserStat(focusHours >= 0.25 ? String(format: "%.1f", Double(blocks.filter(\.wasFocus).count) / focusHours) : "–",
+                                "per focus hr", color: blue)
+                    browserStat("\(blocks.filter(\.bypassed).count)", "bypassed", color: .secondary)
+                }
+
+                if !blocks.isEmpty {
+                    let byLabel = Dictionary(grouping: blocks, by: \.label).map { ($0.key, $0.value.count) }.sorted { $0.1 > $1.1 }
+                    HStack(spacing: 6) {
+                        ForEach(byLabel, id: \.0) { label, n in
+                            HStack(spacing: 4) {
+                                Circle().fill(label == "Break" ? blue : categoryColor(label)).frame(width: 6, height: 6)
+                                Text("\(label.isEmpty ? "—" : label) \(n)").font(.system(size: 10, design: .monospaced))
+                            }
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.08), in: Capsule())
+                        }
+                    }
+                    domainCounts(BrowserStore.countByDomain(blocks))
+                }
+
+                HStack(alignment: .top, spacing: 14) {
+                    if !byDomain.isEmpty {
+                        domainBars("TIME BY SITE", byDomain, blocked: blockedSet)
+                    }
+                    if !focusByDomain.isEmpty {
+                        domainBars("DURING FOCUS", focusByDomain, blocked: blockedSet)
+                    }
+                }
+            }
+            .padding(12)
+            .glassCard(cornerRadius: 10)
+        }
+    }
+
+    private func browserStat(_ value: String, _ label: String, color: Color) -> some View {
+        VStack(spacing: 1) {
+            Text(value).font(.system(size: 15, weight: .semibold, design: .rounded)).foregroundStyle(color)
+            Text(label).font(.system(size: 9)).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func domainCounts(_ counts: [(domain: String, count: Int)]) -> some View {
+        VStack(spacing: 3) {
+            ForEach(counts.prefix(5), id: \.domain) { entry in
+                HStack {
+                    Image(systemName: "hand.raised.fill").font(.system(size: 8)).foregroundStyle(red.opacity(0.8))
+                    Text(entry.domain).font(.system(size: 11))
+                    Spacer()
+                    Text("\(entry.count)×").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func domainBars(_ title: String, _ rows: [(domain: String, seconds: TimeInterval)], blocked: Set<String>) -> some View {
+        let top = Array(rows.prefix(6))
+        let maxSec = top.first?.seconds ?? 1
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.system(size: 9, weight: .bold)).tracking(1).foregroundStyle(.tertiary)
+            ForEach(top, id: \.domain) { row in
+                let isBlocked = blocked.contains { row.domain == $0 || row.domain.hasSuffix("." + $0) }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(row.domain).font(.system(size: 10)).lineLimit(1)
+                        Spacer()
+                        Text(fmtMins(row.seconds / 60)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                    }
+                    GeometryReader { geo in
+                        Capsule().fill((isBlocked ? red : blue).opacity(0.7))
+                            .frame(width: max(2, geo.size.width * CGFloat(row.seconds / maxSec)))
+                    }
+                    .frame(height: 3)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Stat cards

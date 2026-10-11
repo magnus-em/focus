@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var timer: TimerManager
     @ObservedObject var store: SessionStore
+    @ObservedObject private var bridge = BrowserBridge.shared
     var openOnboarding: (() -> Void)? = nil
     @Environment(\.modelContext) private var modelContext
     @State private var showResetConfirm = false
@@ -34,6 +35,21 @@ struct SettingsView: View {
                 settings[keyPath: key] = (c.hour ?? 21) * 60 + (c.minute ?? 0)
             }
         )
+    }
+
+    private var chromeExtensionRow: some View {
+        let connected = bridge.lastContact.map { Date().timeIntervalSince($0) < 120 } ?? false
+        return HStack(spacing: 6) {
+            Circle()
+                .fill(connected ? Color.green : Color.orange)
+                .frame(width: 7, height: 7)
+            Text(bridge.listenError.map { "Chrome bridge failed: \($0)" }
+                 ?? (connected ? "Chrome extension connected" : "Chrome extension not connected"))
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .help("Load the repo's ChromeExtension folder via chrome://extensions → Developer mode → Load unpacked.")
     }
 
     var body: some View {
@@ -256,6 +272,7 @@ struct SettingsView: View {
                             .buttonStyle(.plain)
                         }
                     }
+                    chromeExtensionRow
                     ToggleRow(label: "Block during breaks too", isOn: $settings.blockDuringBreaks)
                     BlockedSitesView(settings: settings)
                         .padding(.top, 2)

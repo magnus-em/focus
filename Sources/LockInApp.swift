@@ -64,6 +64,7 @@ struct FocusApp: App {
     @StateObject private var homeworkStore: HomeworkStore
     @StateObject private var scratchStore: ScratchStore
     @StateObject private var healthStore: HealthStore
+    @StateObject private var browserStore: BrowserStore
     @StateObject private var dayStore: DayStore
     @StateObject private var dashboardController: DashboardWindowController
     @StateObject private var onboardingController: OnboardingWindowController
@@ -151,9 +152,27 @@ struct FocusApp: App {
 
         SiteBlocker.cleanupIfNeeded()
 
+        let browser = BrowserStore(container: focusContainer)
+        _browserStore        = StateObject(wrappedValue: browser)
+        BrowserBridge.shared.stateProvider = {
+            BrowserBridge.State(
+                blocking: timer.shouldBlockSites,
+                domains: appSettings.blockedSites.map(SiteBlocker.cleanDomain).filter { !$0.isEmpty },
+                label: timer.isOnBreak ? "Break" : timer.currentLabel,
+                isFocus: timer.isFocusRunning,
+                onBreak: timer.isActive && timer.isOnBreak,
+                paused: timer.isActive && !timer.isRunning,
+                bypassAllowed: !timer.isFocusRunning,
+                sessionStart: timer.sessionStartTime.map { $0.timeIntervalSince1970 * 1000 },
+                todayBlocked: browser.blockCount(since: Calendar.current.startOfDay(for: Date()))
+            )
+        }
+        BrowserBridge.shared.onEvents = { browser.ingest($0) }
+        BrowserBridge.shared.start()
+
         CommitmentReminder.shared.install(dayStore: days, settings: appSettings) {
             dashboard.open(sessionStore: store, problemStore: problems, homeworkStore: homework,
-                           settings: appSettings, dayStore: days, timerManager: timer)
+                           settings: appSettings, dayStore: days, timerManager: timer, browserStore: browser)
         }
         CommitmentReminder.shared.onOtherTap = { id in
             if id == LeetCodeStore.nudgeID { leetCodeCtrl.open(store: leetCode, settings: appSettings) }
@@ -223,7 +242,8 @@ struct FocusApp: App {
                         homeworkStore: homeworkStore,
                         settings: settings,
                         dayStore: dayStore,
-                        timerManager: timerManager
+                        timerManager: timerManager,
+                        browserStore: browserStore
                     )
                 },
                 openOnboarding: { [self] in

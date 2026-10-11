@@ -563,6 +563,33 @@ public final class StoredRecallNote {
     }
 }
 
+/// A navigation the Chrome extension redirected to its block page.
+/// `label` is the category running when it happened.
+@Model
+public final class StoredBlockEvent {
+    public var id: UUID = UUID()
+    public var date: Date = Date()
+    public var domain: String = ""
+    public var label: String = ""
+    public var wasFocus: Bool = false
+    public var reason: String = ""
+    public var bypassed: Bool = false
+
+    public init() {}
+}
+
+/// Time the active Chrome tab spent on one domain while Chrome was focused
+/// and the user wasn't idle. Adjacent spans on the same domain are merged.
+@Model
+public final class StoredBrowsingSpan {
+    public var id: UUID = UUID()
+    public var start: Date = Date()
+    public var end: Date = Date()
+    public var domain: String = ""
+
+    public init() {}
+}
+
 // MARK: - Schema
 
 public enum FocusSchema {
@@ -581,5 +608,7 @@ public enum FocusSchema {
         StoredKnowledgeItem.self,
         StoredRecallAttempt.self,
         StoredRecallNote.self,
+        StoredBlockEvent.self,
+        StoredBrowsingSpan.self,
     ]
 }

@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Focus Blocker",
+  "version": "1.0.0",
+  "description": "Blocks distracting sites while the Focus app is tracking, and reports blocked attempts and browsing time back to it.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoGbtA8zDmVZ6Rbr6YhgJx9C+PvaRkIG+sqZOPugtlh3hkrZauFNigv0anRXXL7TZQa9dQxw8vNxJg2X3rHVGPTQeACt+V9WV/uFwv8L1wookI6PGfnD2NDh8RR5Zzb4cxbocjn7dy27tQpTfAafGrdwehNvJfEujTTa/L6fmSpnTQGRbczZ9nYXT8ZNf2aP8fF/xRS3UcC+J2g10+oAIiAi7Z+nPlrOVE+OEhWEsz/pNAmAlOBeyaaRuZ/FbhFMNVmEsK/VivU+5FhL3OoQp4auTATff1ki20HMTsupOWzZKLfkm8lvjV6XUoSSrd227xZGjpzPeShtsz9DTUDalawIDAQAB",
+  "permissions": ["declarativeNetRequest", "storage", "tabs", "alarms", "idle", "webNavigation"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Focus" },
+  "icons": { "128": "icon128.png" },
+  "web_accessible_resources": [{ "resources": ["blocked.html"], "matches": ["<all_urls>"] }]
+}

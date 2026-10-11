@@ -811,11 +811,17 @@ class TimerManager: ObservableObject {
         updateBlocking()
     }
 
+    /// Shared by the /etc/hosts blocker and the Chrome extension (`BrowserBridge`).
+    var shouldBlockSites: Bool {
+        guard let settings, settings.siteBlockingEnabled, !settings.blockedSites.isEmpty else { return false }
+        return isOnBreak ? (settings.blockDuringBreaks && isActive) : isActive
+    }
+
+    var isFocusRunning: Bool { isActive && !isOnBreak && !FocusCategories.isLife(currentLabel) }
+
     func updateBlocking() {
-        guard let settings, settings.siteBlockingEnabled, !settings.blockedSites.isEmpty else {
-            unblockIfNeeded(); return
-        }
-        let shouldBlock = isOnBreak ? (settings.blockDuringBreaks && isActive) : isActive
+        guard let settings else { unblockIfNeeded(); return }
+        let shouldBlock = shouldBlockSites
         if shouldBlock && !isBlockingActive {
             isBlockingActive = true
             let domains = settings.blockedSites

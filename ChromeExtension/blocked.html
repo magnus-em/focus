@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Blocked · Focus</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="block">
+  <main>
+    <div class="badge" id="label">Focus</div>
+    <h1><span id="domain">This site</span> is blocked</h1>
+    <p class="sub" id="context"></p>
+    <p class="count" id="count"></p>
+
+    <section id="reasons">
+      <div class="q">What pulled you here?</div>
+      <div class="chips">
+        <button data-r="bored">Bored</button>
+        <button data-r="stuck">Stuck</button>
+        <button data-r="habit">Habit</button>
+        <button data-r="tired">Tired</button>
+        <button data-r="needed">Actually needed it</button>
+      </div>
+    </section>
+
+    <button class="primary" id="leave">Back to work</button>
+
+    <section id="unblocked" hidden>
+      <p>The block is off now.</p>
+      <a class="secondary" id="continue">Continue to site</a>
+    </section>
+
+    <section id="bypass" hidden>
+      <button class="link" id="bypassOpen">Unlock for 5 minutes…</button>
+      <div id="bypassForm" hidden>
+        <input id="bypassReason" placeholder="What do you need it for?" maxlength="200" autocomplete="off">
+        <button class="secondary" id="bypassGo" disabled>Wait 30s</button>
+      </div>
+    </section>
+    <p class="locked" id="locked" hidden>No unlocking during a focus block. Switch to a break or life category in Focus first.</p>
+  </main>
+  <script src="blocked.js"></script>
+</body>
+</html>
