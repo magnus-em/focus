@@ -10,9 +10,12 @@ fi
 cd "$(dirname "$0")/FocusPad"
 DD=/tmp/focuspad-dd
 xcodegen generate >/dev/null
+rm -rf "$DD/Build/Products/Debug-iphoneos/FocusPad.app"
+set -o pipefail
 xcodebuild -project FocusPad.xcodeproj -scheme FocusPad -configuration Debug \
     -destination 'generic/platform=iOS' -derivedDataPath "$DD" \
-    -allowProvisioningUpdates -allowProvisioningDeviceRegistration build | grep -E "error:|BUILD" || true
+    -allowProvisioningUpdates -allowProvisioningDeviceRegistration build | grep -E "error:|BUILD" \
+    || { echo "Build failed"; exit 1; }
 APP="$DD/Build/Products/Debug-iphoneos/FocusPad.app"
 [ -d "$APP" ] || { echo "Build failed"; exit 1; }
 
