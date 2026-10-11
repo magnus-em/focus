@@ -4,15 +4,15 @@ import SwiftUI
 import FocusCore
 
 /// Every way to change what the timer is tracking without opening the
-/// popover: global hotkeys, the ⌃⌥⌘J switcher panel, `focustracker://` URLs,
+/// popover: global hotkeys, the ⌃⌥⌘J switcher panel, `focus://` URLs,
 /// and commands arriving from other devices.
 ///
 /// Hotkeys (all ⌃⌥⌘, right hand only): J switcher · K start/stop · L break ·
 /// ; recall · 0 stop · Space pause. Categories take `categoryKeys` in order
 /// (U I O P M , . / …), the same keys the switcher panel shows.
-/// URLs: focustracker://switch/<category>, focustracker://stop,
-/// focustracker://break[?minutes=N], focustracker://toggle, focustracker://switcher,
-/// focustracker://recall
+/// URLs: focus://switch/<category>, focus://stop,
+/// focus://break[?minutes=N], focus://toggle, focus://switcher,
+/// focus://recall
 final class QuickSwitch {
     static var shared: QuickSwitch?
 
@@ -112,7 +112,8 @@ final class QuickSwitch {
     func showSwitcher() { switcher.show() }
 
     func handle(url: URL) {
-        guard url.scheme == "focustracker" else { return }
+        // focustracker:// is the old scheme, kept so existing shortcuts still work.
+        guard url.scheme == "focus" || url.scheme == "focustracker" else { return }
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         let param: (String) -> String? = { name in query.first { $0.name == name }?.value }
         let pathArg = url.pathComponents.dropFirst().first

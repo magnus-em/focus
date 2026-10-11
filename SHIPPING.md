@@ -26,7 +26,7 @@ though they share data and code):
 2. **My Apps** → blue **+** → **New App**
 3. Pick the platform (iOS for iPad, macOS for Mac)
 4. Fill in:
-   - **Name**: "Focus" (must be unique on the App Store) — if taken, use "Focus Tracker" or similar
+   - **Name**: "Focus" (must be unique on the App Store)
    - **Primary language**: English
    - **Bundle ID**: pick from dropdown
      - Mac: `com.magnus.focus`

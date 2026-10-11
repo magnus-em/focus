@@ -215,7 +215,7 @@ enum SiteBlocker {
         "techcrunch.com", "wired.com", "arstechnica.com", "engadget.com", "news.ycombinator.com",
         "news.google.com", "news.yahoo.com", "msn.com", "substack.com",
         // Video & streaming
-        "youtube.com", "netflix.com", "hulu.com", "disneyplus.com", "max.com", "primevideo.com",
+        "netflix.com", "hulu.com", "disneyplus.com", "max.com", "primevideo.com",
         "peacocktv.com", "paramountplus.com", "twitch.tv", "crunchyroll.com", "kick.com",
         // Social
         "x.com", "twitter.com", "reddit.com", "instagram.com", "facebook.com", "tiktok.com",

@@ -69,6 +69,7 @@ cat > "$APP_DIR/Info.plist" <<'EOF'
             <string>com.magnus.focus</string>
             <key>CFBundleURLSchemes</key>
             <array>
+                <string>focus</string>
                 <string>focustracker</string>
             </array>
         </dict>
