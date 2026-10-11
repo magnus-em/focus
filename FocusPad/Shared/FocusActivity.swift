@@ -9,6 +9,8 @@ struct FocusActivityAttributes: ActivityAttributes {
         /// Focus (counts toward the goal) vs a life category.
         var isFocus: Bool
         var since: Date
+        /// One-tap switch targets, most used first (not the running one).
+        var quick: [String]? = nil
     }
 }
 

@@ -72,7 +72,7 @@ struct FocusLiveActivityWidget: Widget {
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { ctx in
             let s = ctx.state
-            let color = s.isBreak ? Color(red: 0.27, green: 0.62, blue: 0.83) : categoryColor(s.label)
+            let color = s.isBreak ? breakBlue : categoryColor(s.label)
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     Label(s.label, systemImage: s.isBreak ? "cup.and.saucer.fill" : categoryIcon(s.label))
@@ -85,7 +85,7 @@ struct FocusLiveActivityWidget: Widget {
                         .multilineTextAlignment(.trailing)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    ActionRow(isBreak: s.isBreak)
+                    QuickRow(state: s)
                 }
             } compactLeading: {
                 Image(systemName: s.isBreak ? "cup.and.saucer.fill" : categoryIcon(s.label))
@@ -102,51 +102,65 @@ struct FocusLiveActivityWidget: Widget {
     }
 }
 
+private let breakBlue = Color(red: 0.27, green: 0.62, blue: 0.83)
+
 private struct LockScreenCard: View {
     let state: FocusActivityAttributes.ContentState
 
     var body: some View {
-        let color = state.isBreak ? Color(red: 0.27, green: 0.62, blue: 0.83) : categoryColor(state.label)
+        let color = state.isBreak ? breakBlue : categoryColor(state.label)
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Circle().fill(color).frame(width: 10, height: 10)
                 Text(state.label).font(.title3.weight(.semibold))
-                if !state.isFocus && !state.isBreak {
-                    Text("life").font(.caption2).foregroundStyle(.secondary)
-                }
+                Text("since \(state.since.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Text(timerInterval: state.since...Date.distantFuture, countsDown: false)
                     .font(.title3.monospacedDigit().weight(.semibold))
                     .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 90, alignment: .trailing)
             }
-            Text("since \(state.since.formatted(date: .omitted, time: .shortened))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            ActionRow(isBreak: state.isBreak)
+            QuickRow(state: state)
         }
         .padding(14)
         .foregroundStyle(.white)
     }
 }
 
-/// Break / Stop right on the card; switching categories is the control's job.
-private struct ActionRow: View {
-    let isBreak: Bool
+/// Switch to a frequent category, take a break, or stop, in one row.
+private struct QuickRow: View {
+    let state: FocusActivityAttributes.ContentState
 
     var body: some View {
-        HStack(spacing: 8) {
-            if !isBreak {
-                Button(intent: TakeBreakIntent(minutes: 0)) {
-                    Label("Break", systemImage: "cup.and.saucer.fill").frame(maxWidth: .infinity)
+        HStack(spacing: 6) {
+            ForEach(state.quick ?? [], id: \.self) { tag in
+                Button(intent: SwitchFocusIntent(category: FocusCategory(id: tag))) {
+                    VStack(spacing: 2) {
+                        Image(systemName: categoryIcon(tag)).font(.system(size: 14, weight: .semibold))
+                        Text(tag).font(.system(size: 10, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(categoryColor(tag).opacity(0.35)))
                 }
-                .tint(Color(red: 0.27, green: 0.62, blue: 0.83))
+                .buttonStyle(.plain)
             }
-            Button(intent: StopFocusIntent()) {
-                Label("Stop", systemImage: "stop.fill").frame(maxWidth: .infinity)
+            if !state.isBreak {
+                iconButton("cup.and.saucer.fill", color: breakBlue, intent: TakeBreakIntent(minutes: 0))
             }
-            .tint(.gray)
+            iconButton("stop.fill", color: .gray, intent: StopFocusIntent())
         }
-        .buttonStyle(.borderedProminent)
-        .font(.subheadline.weight(.medium))
+        .foregroundStyle(.white)
+    }
+
+    private func iconButton(_ symbol: String, color: Color, intent: some AppIntent) -> some View {
+        Button(intent: intent) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 40, height: 40)
+                .background(RoundedRectangle(cornerRadius: 10).fill(color.opacity(0.5)))
+        }
+        .buttonStyle(.plain)
     }
 }

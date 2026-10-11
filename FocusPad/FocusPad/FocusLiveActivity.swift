@@ -1,6 +1,7 @@
 import ActivityKit
 import Combine
 import Foundation
+import SwiftData
 import FocusCore
 
 /// Keeps one Live Activity in step with the timer: shown while anything is
@@ -16,7 +17,8 @@ enum FocusLiveActivity {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let state = FocusActivityAttributes.ContentState(
             label: label.isEmpty ? "Focus" : label, isBreak: isBreak,
-            isFocus: !isBreak && !FocusCategories.isLife(label), since: since
+            isFocus: !isBreak && !FocusCategories.isLife(label), since: since,
+            quick: quickCategories(excluding: isBreak ? nil : label)
         )
         if let a = current {
             guard a.content.state != state else { return }
@@ -25,6 +27,24 @@ enum FocusLiveActivity {
             _ = try? Activity.request(attributes: FocusActivityAttributes(),
                                       content: ActivityContent(state: state, staleDate: nil))
         }
+    }
+
+    /// Most-switched-to categories over the last two weeks, topped up from
+    /// the category list so a new device still gets buttons.
+    private static func quickCategories(excluding running: String?, limit: Int = 4) -> [String] {
+        let since = Date().addingTimeInterval(-14 * 86400)
+        let work = WorkSession.SessionType.work.rawValue
+        let descriptor = FetchDescriptor<StoredWorkSession>(
+            predicate: #Predicate { $0.startTime > since && $0.typeRaw == work }
+        )
+        let rows = (try? ModelContext(FocusPadApp.sharedContainer).fetch(descriptor)) ?? []
+        var counts: [String: Int] = [:]
+        for r in rows { if let l = r.label, !l.isEmpty { counts[l, default: 0] += 1 } }
+        let tags = SharedStore.tags
+        let rank = { (t: String) in tags.firstIndex(of: t) ?? tags.count }
+        var out = counts.sorted { $0.value != $1.value ? $0.value > $1.value : rank($0.key) < rank($1.key) }.map(\.key).filter { tags.isEmpty || tags.contains($0) }
+        out += tags.filter { !out.contains($0) }
+        return Array(out.filter { $0 != running }.prefix(limit))
     }
 
     static func end() async {
