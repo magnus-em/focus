@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# iCloud Desktop & Documents evicts files to the cloud, which hangs git and SwiftPM.
+case "$(cd "$(dirname "$0")" && pwd -P)" in
+    "$HOME"/Documents/*|"$HOME"/Desktop/*|"$HOME"/Library/Mobile\ Documents/*)
+        echo "error: this repo is inside iCloud-synced folders. It lives at ~/Code/focus_tracker." >&2
+        exit 1 ;;
+esac
+
 if [ -d /Applications/Xcode.app ]; then
     export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi

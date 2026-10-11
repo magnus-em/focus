@@ -4,6 +4,10 @@ macOS menu bar focus timer with day tracking, problem logging, and a standalone 
 
 Built for a quant + SWE interview prep workflow: focus sessions tagged by category (Quant / SWE / AI), problems logged by domain with confidence/difficulty, daily commitment + voice oath, hours-based daily goal.
 
+## Location
+
+The repo lives at `~/Code/focus_tracker` (moved out of `~/Documents` on 2026-10-11). Never put it back under `~/Documents` or `~/Desktop`: iCloud Desktop & Documents evicts files to the cloud, and git/SwiftPM hang on the placeholders. `build.sh` refuses to run from those folders.
+
 ## Build & install
 
 ```bash
@@ -140,7 +144,7 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 Requires admin password on first setup. Sets up sudoers entry + helper script. Modifies `/etc/hosts` + `pf` firewall while a focus session is active. Cleanup runs on quit and on next launch after a crash via `SiteBlocker.cleanupIfNeeded()`.
 
 ### Chrome extension (`ChromeExtension/`)
-- Load unpacked from the repo folder; ID `dljnfclilnaccokglnomfjlbbanapflo` is pinned by `key` in the manifest. After editing it, hit reload on chrome://extensions (deploy.sh doesn't touch it).
+- Load unpacked from `~/Code/focus_tracker/ChromeExtension`; ID `dljnfclilnaccokglnomfjlbbanapflo` is pinned by `key` in the manifest. After editing it, hit reload on chrome://extensions (deploy.sh doesn't touch it).
 - Blocks the same domains at the same times as the hosts blocker (Settings → Site blocking), via a `declarativeNetRequest` redirect to `blocked.html`. Each load of the block page is one attempt; tabs swept when blocking starts aren't counted.
 - No unlocking while a focus category runs. During breaks/life categories: 30s wait + typed reason → 5 min unlock, logged as `bypassed`.
 - Events queue in `chrome.storage.local` while the app is down. Last known state is kept for 3 min of unreachability, then blocking stops.
