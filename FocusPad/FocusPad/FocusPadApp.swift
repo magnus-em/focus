@@ -40,11 +40,13 @@ struct FocusPadApp: App {
         if recovered > 0 { print("[FocusPad] startup recovered \(recovered) orphan session(s) for CK sync") }
 
         let s = PadSettings()
+        SharedStore.defaults.set(s.tags, forKey: "tags")
         _settings = StateObject(wrappedValue: s)
-        _engine = StateObject(wrappedValue: FocusTimerEngine(
-            container: c,
-            settings: s.engineSettings
-        ))
+        let e = FocusTimerEngine(container: c, settings: s.engineSettings)
+        _engine = StateObject(wrappedValue: e)
+        // Set up here, not in onAppear, so a background CloudKit wake (Mac
+        // switched) updates the Lock Screen too.
+        FocusLiveActivity.follow(e)
     }
 
     var body: some Scene {
@@ -53,6 +55,7 @@ struct FocusPadApp: App {
                 .environmentObject(settings)
                 .environmentObject(engine)
                 .onAppear { Self.liveEngine = engine }
+                .onChange(of: settings.tags) { _, tags in SharedStore.defaults.set(tags, forKey: "tags") }
         }
         .modelContainer(container)
     }

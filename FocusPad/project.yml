@@ -16,12 +16,15 @@ targets:
     platform: iOS
     sources:
       - path: FocusPad
+      - path: Shared
     resources:
       - path: Resources
         optional: true
     dependencies:
       - package: FocusCore
         product: FocusCore
+      - target: FocusWidgets
+        embed: true
     info:
       path: FocusPad/Info.plist
       properties:
@@ -39,6 +42,9 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        NSSupportsLiveActivities: true
+        UIBackgroundModes:
+          - remote-notification
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         NSLocalNetworkUsageDescription: "Focus uses your local network to sync the timer instantly between your iPad and Mac on the same Wi-Fi."
@@ -56,3 +62,33 @@ targets:
         ENABLE_PREVIEWS: YES
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) FOCUS_APP
+
+  FocusWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: FocusWidgets
+      - path: Shared
+    dependencies:
+      - package: FocusCore
+        product: FocusCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    info:
+      path: FocusWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Focus
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.magnus.focus.iPad.widgets
+        CODE_SIGN_ENTITLEMENTS: FocusWidgets/FocusWidgets.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: MUR9TJXP6S
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: NO

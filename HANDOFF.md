@@ -6,11 +6,10 @@ Last touched: 2026-09-27.
 
 ## In flight
 
-_(nothing in flight right now)_
+- **iPhone install + Phase 3 widgets (built, not yet on a device).** Xcode has no Apple account signed in, so `-allowProvisioningUpdates` can't register the iPhone or create the new app group / push capabilities. Steps: Xcode → Settings → Accounts → sign in; plug in iPhone, trust, Developer Mode on; `./install_ios.sh`. Then verify on device: Control Center controls switch the Mac timer; Live Activity appears and follows Mac-side switches (relies on CloudKit push).
 
 ## Future / nice-to-have
 
-- **iPad push for CloudKit**: `FocusPad.entitlements` has no `aps-environment`, so the iPad never gets CloudKit pushes and only pulls Mac changes on launch/foreground. Fix needs Xcode signed in: FocusPad target → + Capability → Push Notifications (+ Background Modes → Remote notifications), then add `UIBackgroundModes: [remote-notification]` to `FocusPad/project.yml`. CLI `-allowProvisioningUpdates` fails with "No Accounts".
 
 ## Done in last session — already reflected in CLAUDE.md
 - Hours-based goal, day tracking, single break model, manual breaks, breaks-as-sessions, commitment-on-by-default, gutted CompletionPanel, removed flow decision, dashboard breaks in log, consistency + best-week metrics, sessions count demoted everywhere.

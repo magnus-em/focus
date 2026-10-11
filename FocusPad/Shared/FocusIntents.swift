@@ -1,11 +1,18 @@
 import AppIntents
-import UIKit
+import Foundation
 import FocusCore
+#if FOCUS_APP
+import UIKit
+#endif
 
-/// Siri / Shortcuts / Action Button / Spotlight entry points. They only
-/// append a `TimerCommand` (timestamped now); whichever device is running
-/// the timer applies it, so a suspended phone with stale timer state can't
-/// clobber the session on the Mac.
+/// Siri / Shortcuts / Action Button / Control Center / Live Activity entry
+/// points. They only append a `TimerCommand` (timestamped now); whichever
+/// device is running the timer applies it, so a suspended phone with stale
+/// timer state can't clobber the session on the Mac.
+///
+/// Compiled into the widget extension too (controls and Live Activity
+/// buttons reference them), but as `LiveActivityIntent`s they always run in
+/// the app's process, where the store is.
 struct FocusCategory: AppEntity {
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Category"
     static var defaultQuery = FocusCategoryQuery()
@@ -15,27 +22,32 @@ struct FocusCategory: AppEntity {
 }
 
 struct FocusCategoryQuery: EntityStringQuery {
-    private var tags: [String] { UserDefaults.standard.stringArray(forKey: "tags") ?? [] }
-
     func entities(for identifiers: [String]) async throws -> [FocusCategory] {
         identifiers.map(FocusCategory.init)
     }
 
     func entities(matching string: String) async throws -> [FocusCategory] {
-        tags.filter { $0.localizedCaseInsensitiveContains(string) }.map(FocusCategory.init)
+        SharedStore.tags.filter { $0.localizedCaseInsensitiveContains(string) }.map(FocusCategory.init)
     }
 
     func suggestedEntities() async throws -> [FocusCategory] {
-        tags.map(FocusCategory.init)
+        SharedStore.tags.map(FocusCategory.init)
     }
 }
 
+#if FOCUS_APP
 @MainActor
 enum FocusCommandSender {
     static func send(_ action: TimerCommand.Action, label: String = "", minutes: Double = 0) async {
         TimerCommand.send(action, label: label, minutes: minutes,
                           deviceID: TimerStateSync.persistedDeviceID(),
                           container: FocusPadApp.sharedContainer)
+        // Show the change on the Lock Screen now rather than after the round trip.
+        switch action {
+        case .switchTo: await FocusLiveActivity.show(label: label, isBreak: false, since: Date())
+        case .startBreak: await FocusLiveActivity.show(label: "Break", isBreak: true, since: Date())
+        case .stop: await FocusLiveActivity.end()
+        }
         if let engine = FocusPadApp.liveEngine, UIApplication.shared.applicationState == .active {
             engine.stateSync.pokeForRemote()
             return
@@ -47,45 +59,59 @@ enum FocusCommandSender {
         if task != .invalid { UIApplication.shared.endBackgroundTask(task) }
     }
 }
+#endif
 
-struct SwitchFocusIntent: AppIntent {
+struct SwitchFocusIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Switch Focus"
     static var description = IntentDescription("Start tracking a category. Whatever was being tracked is saved up to now.")
 
     @Parameter(title: "Category") var category: FocusCategory
 
+    init() {}
+    init(category: FocusCategory) { self.category = category }
+
     static var parameterSummary: some ParameterSummary { Summary("Switch to \(\.$category)") }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        #if FOCUS_APP
         await FocusCommandSender.send(.switchTo, label: category.id)
+        #endif
         return .result(dialog: "Tracking \(category.id).")
     }
 }
 
-struct StopFocusIntent: AppIntent {
+struct StopFocusIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Stop Focus Timer"
     static var description = IntentDescription("Stop and save whatever is being tracked.")
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        #if FOCUS_APP
         await FocusCommandSender.send(.stop)
+        #endif
         return .result(dialog: "Stopped.")
     }
 }
 
-struct TakeBreakIntent: AppIntent {
+struct TakeBreakIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Take a Break"
-    static var description = IntentDescription("Save the current focus and start a break.")
+    static var description = IntentDescription("Save the current focus and start a break. 0 minutes = open-ended.")
 
-    @Parameter(title: "Minutes", default: 10, inclusiveRange: (5, 480)) var minutes: Int
+    @Parameter(title: "Minutes", default: 0, inclusiveRange: (0, 480)) var minutes: Int
+
+    init() {}
+    init(minutes: Int) { self.minutes = minutes }
 
     static var parameterSummary: some ParameterSummary { Summary("Take a \(\.$minutes) minute break") }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        #if FOCUS_APP
         await FocusCommandSender.send(.startBreak, minutes: Double(minutes))
-        return .result(dialog: "Break for \(minutes) minutes.")
+        #endif
+        return .result(dialog: minutes > 0 ? "Break for \(minutes) minutes." : "On a break.")
     }
 }
 
+#if FOCUS_APP
 struct FocusShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -112,3 +138,4 @@ struct FocusShortcuts: AppShortcutsProvider {
         )
     }
 }
+#endif

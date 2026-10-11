@@ -58,9 +58,11 @@ enum PadTab: String, Identifiable, CaseIterable, Hashable {
 /// reads that state, with `.id()` forcing a fresh NavigationStack per tab.
 struct RootView: View {
     @State private var selection: PadTab = .timer
+    /// On iPhone the split view collapses to a stack; this is which side shows.
+    @State private var compactColumn: NavigationSplitViewColumn = .detail
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(preferredCompactColumn: $compactColumn) {
             sidebar
         } detail: {
             NavigationStack {
@@ -101,6 +103,7 @@ struct RootView: View {
         Button {
             Haptics.tap()
             selection = tab
+            compactColumn = .detail
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: tab.symbol)

@@ -73,7 +73,7 @@ public final class FocusTimerEngine: ObservableObject {
     private var ticker: AnyCancellable?
     public let stateSync: TimerStateSync
     public let localBroadcast: LocalTimerBroadcast
-    private var sessionStartTime: Date?
+    @Published public private(set) var sessionStartTime: Date?
     private var elapsedBeforePause: TimeInterval = 0
     private var lastResumeTime: Date?
     private static let checkpointKey = "focusTimerEngineCheckpoint"
