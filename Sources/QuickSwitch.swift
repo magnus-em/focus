@@ -23,6 +23,7 @@ final class QuickSwitch {
     private var hotKeys: [GlobalHotKey] = []
     private lazy var switcher = SwitcherPanel(quick: self)
     var openRecall: (() -> Void)?
+    var openDashboard: (() -> Void)?
 
     /// Right-hand keys for categories, in `settings.tags` order.
     static let categoryKeys: [(key: Character, code: Int)] = [
@@ -127,6 +128,7 @@ final class QuickSwitch {
         case "toggle": toggle()
         case "switcher": showSwitcher()
         case "recall": openRecall?()
+        case "dashboard": openDashboard?()
         default: break
         }
     }

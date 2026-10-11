@@ -405,7 +405,7 @@ class TimerManager: ObservableObject {
 
     /// Save the current session as ending at `date` (if ≥ 1 min). Leaves
     /// timer state alone — callers reset it.
-    private func closeSegment(at date: Date) {
+    private func closeSegment(at date: Date, notify: Bool = true) {
         guard let start = sessionStartTime else { return }
         let e = elapsed(until: date)
         guard e >= 60 else { return }
@@ -415,7 +415,7 @@ class TimerManager: ObservableObject {
                 type: .work, label: currentLabel.isEmpty ? nil : currentLabel
             )
             sessionStore?.addSession(session)
-            onFocusSegmentSaved?(session)
+            if notify { onFocusSegmentSaved?(session) }
         } else {
             sessionStore?.addSession(WorkSession(
                 startTime: start, durationMinutes: e / 60.0,
@@ -476,6 +476,23 @@ class TimerManager: ObservableObject {
         beginSession(phase: .work, label: label, kinds: [],
                      plannedSeconds: FocusCategories.isLife(label) ? FocusCategories.openEndedSeconds : workDuration,
                      at: date)
+    }
+
+    /// Hand [from, to) of the running block to `label` (nil = break): the
+    /// block is saved up to `from`, the span is logged, and the same
+    /// category carries on from `to`.
+    func carveOut(from: Date, to: Date, as label: String?) {
+        guard isRunning, let start = sessionStartTime, from >= start else { return }
+        let end = min(to, Date())
+        guard end.timeIntervalSince(from) >= 60 else { return }
+        let phase = currentPhase, resume = currentLabel, kinds = currentBreakKinds
+        cancelPauseGrace()
+        closeSegment(at: from, notify: false)
+        sessionStore?.fill(start: from, end: end, label: label)
+        let openEnded = phase != .work || FocusCategories.isLife(resume)
+        beginSession(phase: phase, label: resume, kinds: kinds,
+                     plannedSeconds: openEnded ? FocusCategories.openEndedSeconds : workDuration, at: end)
+        updateBlocking()
     }
 
     func stop(at date: Date) {

@@ -106,6 +106,17 @@ class AppSettings: ObservableObject {
     @Published var recallDailyCap: Int {
         didSet { sd.set(recallDailyCap, forKey: "recallDailyCap") }
     }
+    /// On return from `awayPromptMinutes`+ away from the Mac, ask what it was.
+    @Published var awayPrompts: Bool {
+        didSet { sd.set(awayPrompts, forKey: "awayPrompts") }
+    }
+    @Published var awayPromptMinutes: Int {
+        didSet { sd.set(awayPromptMinutes, forKey: "awayPromptMinutes") }
+    }
+    /// Nudge when the day is open, you're at the Mac and nothing is running.
+    @Published var idleNudge: Bool {
+        didSet { sd.set(idleNudge, forKey: "idleNudge") }
+    }
     @Published var interviewDate: Date? {
         didSet {
             sd.set(interviewDate?.timeIntervalSince1970 ?? 0, forKey: "interviewDate")
@@ -180,6 +191,9 @@ class AppSettings: ObservableObject {
             "recallMinMinutes": 20,
             "morningRecall": true,
             "recallDailyCap": 12,
+            "awayPrompts": true,
+            "awayPromptMinutes": 15,
+            "idleNudge": true,
         ])
         workMinutes = d.double(forKey: "workMinutes")
         shortBreakMinutes = d.double(forKey: "shortBreakMinutes")
@@ -217,6 +231,9 @@ class AppSettings: ObservableObject {
         recallMinMinutes = d.integer(forKey: "recallMinMinutes")
         morningRecall = d.bool(forKey: "morningRecall")
         recallDailyCap = d.integer(forKey: "recallDailyCap")
+        awayPrompts = d.bool(forKey: "awayPrompts")
+        awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
+        idleNudge = d.bool(forKey: "idleNudge")
         let epoch = d.double(forKey: "interviewDate")
         interviewDate = epoch > 0 ? Date(timeIntervalSince1970: epoch) : nil
         hasCompletedOnboarding = d.bool(forKey: "hasCompletedOnboarding")
@@ -284,6 +301,9 @@ class AppSettings: ObservableObject {
         recallMinMinutes = d.integer(forKey: "recallMinMinutes")
         morningRecall = d.bool(forKey: "morningRecall")
         recallDailyCap = d.integer(forKey: "recallDailyCap")
+        awayPrompts = d.bool(forKey: "awayPrompts")
+        awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
+        idleNudge = d.bool(forKey: "idleNudge")
         let epoch = d.double(forKey: "interviewDate")
         interviewDate = epoch > 0 ? Date(timeIntervalSince1970: epoch) : nil
     }

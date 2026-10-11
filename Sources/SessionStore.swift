@@ -100,6 +100,33 @@ class SessionStore: ObservableObject {
         }
     }
 
+    /// Relabel [start, end) as `label` (nil = break): saved sessions are
+    /// trimmed or split around it, then the span is filled.
+    func paint(start: Date, end: Date, label: String?) {
+        guard end.timeIntervalSince(start) >= 60 else { return }
+        let earliest = start.addingTimeInterval(-2 * 86400)
+        let descriptor = FetchDescriptor<StoredWorkSession>(
+            predicate: #Predicate { $0.startTime < end && $0.startTime > earliest }
+        )
+        for m in (try? context.fetch(descriptor)) ?? [] {
+            let s = m.startTime, e = s.addingTimeInterval(m.durationMinutes * 60)
+            guard e > start else { continue }
+            if e.timeIntervalSince(end) >= 60 {
+                let tail = WorkSession(startTime: end, durationMinutes: e.timeIntervalSince(end) / 60,
+                                       type: m.type, label: m.label, breakKinds: m.breakKinds)
+                context.insert(StoredWorkSession(value: tail))
+            }
+            if start.timeIntervalSince(s) >= 60 {
+                m.durationMinutes = start.timeIntervalSince(s) / 60
+            } else {
+                context.delete(m)
+            }
+        }
+        try? context.save()
+        refresh()
+        fill(start: start, end: end, label: label)
+    }
+
     func clearAllData() {
         try? context.delete(model: StoredWorkSession.self)
         try? context.save()

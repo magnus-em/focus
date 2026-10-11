@@ -205,6 +205,11 @@ struct FocusApp: App {
         }
 
         QuickSwitch.shared = QuickSwitch(timer: timer, settings: appSettings, days: days)
+        QuickSwitch.shared?.openDashboard = {
+            dashboard.open(sessionStore: store, problemStore: problems, homeworkStore: homework,
+                           settings: appSettings, dayStore: days, timerManager: timer, browserStore: browser)
+        }
+        AwayCoach.shared = AwayCoach(timer: timer, store: store, settings: appSettings, days: days)
         QuickSwitch.shared?.openRecall = {
             recallCtrl.open(store: recall, settings: appSettings, sessionStore: store)
         }

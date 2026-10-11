@@ -95,6 +95,11 @@ struct DashboardView: View {
 
     private var isSelectedDayToday: Bool { Calendar.current.isDateInToday(selectedDay) }
 
+    /// The week card ends today unless an older day is picked, so clicking
+    /// a row inside the week doesn't shift the week under the cursor.
+    @State private var weekEndOverride: Date?
+    private var weekEndDay: Date { weekEndOverride ?? Calendar.current.startOfDay(for: Date()) }
+
     private var selectedDayRecord: DayRecord? { dayStore.record(for: selectedDay) }
 
     private var selectedDayCommitmentText: String? {
@@ -366,6 +371,12 @@ struct DashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 dayTimelineSection
+                WhereTimeWentSection(
+                    store: sessionStore, settings: settings,
+                    live: [timerManager.currentInProgressSession, timerManager.currentInProgressBreak].compactMap { $0 },
+                    endDay: weekEndDay, selectedDay: selectedDay,
+                    onSelectDay: { selectedDay = $0 }
+                )
                 statCards
                 browserSection
                 problemProgressSection
@@ -383,6 +394,12 @@ struct DashboardView: View {
                 lifetimeSection
             }
             .padding(14)
+        }
+        .onChange(of: selectedDay) { _, day in
+            let cal = Calendar.current
+            let weekStart = cal.date(byAdding: .day, value: -6, to: weekEndDay)!
+            guard day < weekStart || day > weekEndDay else { return }
+            weekEndOverride = cal.isDateInToday(day) ? nil : day
         }
     }
 

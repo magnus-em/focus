@@ -4,8 +4,26 @@ import FocusCore
 struct TimeGap: Identifiable, Equatable {
     let start: Date
     let end: Date
+    /// Nobody was at the Mac for this whole stretch.
+    var away = false
     var id: Date { start }
     var minutes: Double { end.timeIntervalSince(start) / 60 }
+
+    /// Cut at the edges of away spans (≥ 30 min) so "at the Mac" and
+    /// "away" parts get filled separately.
+    func splitByPresence(_ monitor: PresenceMonitor = .shared) -> [TimeGap] {
+        let spans = monitor.spans(from: start, to: end, minMinutes: 30)
+        guard !spans.isEmpty else { return [self] }
+        var out: [TimeGap] = []
+        var cursor = start
+        for s in spans {
+            if s.start.timeIntervalSince(cursor) >= 300 { out.append(TimeGap(start: cursor, end: s.start)) }
+            out.append(TimeGap(start: max(cursor, s.start), end: s.end, away: true))
+            cursor = s.end
+        }
+        if end.timeIntervalSince(cursor) >= 300 { out.append(TimeGap(start: cursor, end: end)) }
+        return out
+    }
 }
 
 extension SessionStore {
@@ -49,7 +67,8 @@ extension SessionStore {
         }
         var ranked = counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.map(\.key).filter { $0.isEmpty || tags.contains($0) }
         let hour = cal.component(.hour, from: mid)
-        if (hour < 6 || gap.minutes >= 300), tags.contains("Sleep"), !ranked.contains("Sleep") {
+        if (hour < 6 || gap.minutes >= 300), tags.contains("Sleep") {
+            ranked.removeAll { $0 == "Sleep" }
             ranked.insert("Sleep", at: 0)
         }
         return ranked.prefix(limit).map { $0.isEmpty ? nil : $0 }
@@ -105,7 +124,7 @@ struct DayReviewView: View {
     }
 
     private var gaps: [TimeGap] {
-        store.untrackedGaps(from: window.from, to: window.to, live: live)
+        store.untrackedGaps(from: window.from, to: window.to, live: live).flatMap { $0.splitByPresence() }
     }
 
     var body: some View {
@@ -216,6 +235,12 @@ private struct GapRow: View {
                     .fixedSize()
                     .help("Fill only part of this gap; the rest stays open")
                 Spacer()
+                if gap.away {
+                    Label("Away from Mac", systemImage: "moon.zzz")
+                        .font(.system(size: 9.5, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .help("The Mac was locked, asleep or untouched for this whole stretch")
+                }
                 Text(fmt(until.timeIntervalSince(gap.start) / 60))
                     .font(.system(size: 11, weight: .semibold).monospacedDigit())
                     .foregroundStyle(.secondary)

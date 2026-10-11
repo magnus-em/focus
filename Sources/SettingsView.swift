@@ -150,6 +150,19 @@ struct SettingsView: View {
 
                 Divider()
 
+                SectionLabel("AWAY & GAPS")
+                ToggleRow(label: "Ask when I come back", isOn: $settings.awayPrompts)
+                if settings.awayPrompts {
+                    IntRow(label: "After being away", value: $settings.awayPromptMinutes, range: 5...120, suffix: "min")
+                }
+                ToggleRow(label: "Nudge when nothing's running", isOn: $settings.idleNudge)
+                Text("Away = screen locked, display off, Mac asleep, or no keyboard/mouse for 10 min. A card asks what that time was; nothing changes unless you pick something.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Divider()
+
                 SectionLabel("RECALL")
                 ToggleRow(label: "Recall prompt after focus", isOn: $settings.recallAfterSession)
                 if settings.recallAfterSession {
