@@ -39,6 +39,9 @@ class TimerManager: ObservableObject {
     var sessionStore: SessionStore?
     /// Fired after a command from another device (phone Shortcut, etc.) is applied.
     var onCommandApplied: ((TimerCommand) -> Void)?
+    /// Fired when a focus segment is saved because the user switched, stopped
+    /// or took a break (not on auto-finalize or crash recovery).
+    var onFocusSegmentSaved: ((WorkSession) -> Void)?
     var settings: AppSettings? { didSet { observeSettingsChanges() } }
 
     /// Cross-device live-timer sync. Set externally after init.
@@ -407,10 +410,12 @@ class TimerManager: ObservableObject {
         let e = elapsed(until: date)
         guard e >= 60 else { return }
         if currentPhase == .work {
-            sessionStore?.addSession(WorkSession(
+            let session = WorkSession(
                 startTime: start, durationMinutes: e / 60.0,
                 type: .work, label: currentLabel.isEmpty ? nil : currentLabel
-            ))
+            )
+            sessionStore?.addSession(session)
+            onFocusSegmentSaved?(session)
         } else {
             sessionStore?.addSession(WorkSession(
                 startTime: start, durationMinutes: e / 60.0,

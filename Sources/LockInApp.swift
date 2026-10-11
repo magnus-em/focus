@@ -75,6 +75,8 @@ struct FocusApp: App {
     @StateObject private var zetamacController: ZetamacWindowController
     @StateObject private var leetCodeStore: LeetCodeStore
     @StateObject private var leetCodeController: LeetCodeWindowController
+    @StateObject private var recallStore: RecallStore
+    @StateObject private var recallController: RecallWindowController
 
     init() {
         // Must observe before focusContainer (lazy) starts mirroring, or the setup event is missed.
@@ -135,6 +137,17 @@ struct FocusApp: App {
         let leetCodeCtrl = LeetCodeWindowController()
         _leetCodeStore       = StateObject(wrappedValue: leetCode)
         _leetCodeController  = StateObject(wrappedValue: leetCodeCtrl)
+        let recall = RecallStore(container: focusContainer)
+        let recallCtrl = RecallWindowController()
+        _recallStore         = StateObject(wrappedValue: recall)
+        _recallController    = StateObject(wrappedValue: recallCtrl)
+        timer.onFocusSegmentSaved = { session in
+            guard appSettings.recallAfterSession, session.isFocus,
+                  session.durationMinutes >= Double(appSettings.recallMinMinutes) else { return }
+            DispatchQueue.main.async {
+                RecallPanel.shared.show(session: session, store: recall, settings: appSettings)
+            }
+        }
 
         SiteBlocker.cleanupIfNeeded()
 
@@ -173,6 +186,9 @@ struct FocusApp: App {
         }
 
         QuickSwitch.shared = QuickSwitch(timer: timer, settings: appSettings, days: days)
+        QuickSwitch.shared?.openRecall = {
+            recallCtrl.open(store: recall, settings: appSettings, sessionStore: store)
+        }
 
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
@@ -199,6 +215,7 @@ struct FocusApp: App {
                 homeworkStoreForPractice: homeworkStore,
                 zetamacStore: zetamacStore,
                 leetCodeStore: leetCodeStore,
+                recallStore: recallStore,
                 openDashboard: { [self] in
                     dashboardController.open(
                         sessionStore: sessionStore,
@@ -223,6 +240,9 @@ struct FocusApp: App {
                 },
                 openLeetCode: { [self] in
                     leetCodeController.open(store: leetCodeStore, settings: settings)
+                },
+                openRecall: { [self] in
+                    recallController.open(store: recallStore, settings: settings, sessionStore: sessionStore)
                 }
             )
             .modelContainer(focusContainer)
@@ -250,13 +270,16 @@ struct PopoverContent: View {
     @ObservedObject var homeworkStoreForPractice: HomeworkStore
     @ObservedObject var zetamacStore: ZetamacStore
     @ObservedObject var leetCodeStore: LeetCodeStore
+    @ObservedObject var recallStore: RecallStore
     let openDashboard: () -> Void
     let openOnboarding: () -> Void
     let openPractice: () -> Void
     let openZetamac: () -> Void
     let openLeetCode: () -> Void
+    let openRecall: () -> Void
 
     @State private var selectedTab = 0
+    @State private var showYesterdayRecall = false
     @State private var showCommitment = false
     @State private var reviewTarget: DayRecord? = nil
     @State private var showDayReview = false
@@ -363,6 +386,10 @@ struct PopoverContent: View {
                              : (dueReviewBadge > 0 ? "\(dueReviewBadge) due" : nil),
                          badgeColor: practiceStore.isActive ? blue : .orange, tint: blue,
                          help: "Open Practice Mode", action: openPractice)
+            launcherTile(icon: "brain.head.profile", title: "Recall",
+                         badge: recallDue > 0 ? "\(recallDue) due" : nil,
+                         badgeColor: recallPurple, tint: recallPurple,
+                         help: "Open Recall (⌃⌥⌘R)", action: openRecall)
             launcherTile(icon: "plus.forwardslash.minus", title: "Sprint",
                          badge: zetamacStore.isGameActive ? "\(zetamacLiveTimeShort) · \(zetamacStore.liveScore)"
                              : (zetamacStore.bestScore > 0 ? "best \(zetamacStore.bestScore)" : nil),
@@ -377,6 +404,11 @@ struct PopoverContent: View {
     }
 
     private var dueReviewBadge: Int { homeworkStoreForPractice.dueForReview.count }
+    private var recallDue: Int { recallStore.dueCount(cap: settings.recallDailyCap) }
+
+    private var needsYesterdayRecall: Bool {
+        settings.morningRecall && recallStore.needsYesterdayRecall(sessionStore: sessionStore)
+    }
 
     private func tabChipButton(icon: String, tag: Int, help: String) -> some View {
         let selected = selectedTab == tag
@@ -406,12 +438,16 @@ struct PopoverContent: View {
                         dayStore: dayStore,
                         settings: settings,
                         sessionStore: sessionStore,
-                        onReviewYesterday: { showDayReview = true },
+                        onReviewYesterday: {
+                            if needsYesterdayRecall { showYesterdayRecall = true } else { showDayReview = true }
+                        },
                         onBegin: {
                             withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
                                 dayStore.startDay()
                             }
-                            if settings.commitmentEnabled && settings.needsCommitmentToday {
+                            if needsYesterdayRecall {
+                                showYesterdayRecall = true
+                            } else if settings.commitmentEnabled && settings.needsCommitmentToday {
                                 showCommitment = true
                             }
                         }
@@ -437,6 +473,11 @@ struct PopoverContent: View {
                 }
             }
             .animation(.spring(response: 0.55, dampingFraction: 0.85), value: dayState)
+            .onChange(of: showDayReview) { _, open in
+                if !open && dayStore.isDayStarted && settings.commitmentEnabled && settings.needsCommitmentToday {
+                    showCommitment = true
+                }
+            }
 
             if showCommitment {
                 CommitmentView(settings: settings, dayStore: dayStore, isShowing: $showCommitment)
@@ -448,6 +489,25 @@ struct PopoverContent: View {
                 DayReviewView(store: sessionStore, settings: settings, timer: timerManager, isShowing: $showDayReview)
                     .transition(.opacity.animation(.easeInOut(duration: 0.15)))
                     .zIndex(12)
+            }
+
+            if showYesterdayRecall {
+                YesterdayRecallView(
+                    recall: recallStore,
+                    store: sessionStore,
+                    onFillGaps: {
+                        showYesterdayRecall = false
+                        showDayReview = true
+                    },
+                    onDone: {
+                        showYesterdayRecall = false
+                        if dayStore.isDayStarted && settings.commitmentEnabled && settings.needsCommitmentToday {
+                            showCommitment = true
+                        }
+                    }
+                )
+                .transition(.opacity.animation(.easeInOut(duration: 0.15)))
+                .zIndex(13)
             }
 
             if let target = reviewTarget {

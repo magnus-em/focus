@@ -28,6 +28,7 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 | `Sources/CommitmentStore.swift` | AVFoundation voice oath recorder. Audio at `oaths/YYYY-MM-DD.m4a`. |
 | `Sources/AppSettings.swift` | All settings, UserDefaults-backed. Bundle id `com.magnus.focus`. |
 | `Sources/LeetCodeStore.swift` | LeetCode grind tracking derived from `ProblemStore` (every solve is a normal SWE `ProblemEntry`, matched to the catalog by URL slug, then title). Streaks, pace vs target/deadline, pattern coverage, difficulty mix vs 20/60/20 target, solve-time medians vs 15/25/40m, redo queue, milestones, Smart pick, stopwatch (persisted in UserDefaults), evening nudge notification. |
+| `Sources/RecallStore.swift` | Retrieval practice. SwiftData `StoredKnowledgeItem` (card: course, prompt, reference answer, kind, interval, nextDue), `StoredRecallAttempt` (response written before reveal, score 0–3, `hinted`, real `delayDays`), `StoredRecallNote` (free recall: `session` after a focus block, `yesterday` each morning). Due queue (most overdue first, capped at `recallDailyCap`), retention-by-delay buckets, weekly focus-vs-retention rows, hardest cards. Scheduler is `FocusCore/Recall.swift` (`RecallScheduler`: 1→3→7→14→30→60…; fluent skips a rung, partial/hint drops one, forgot → 1d). |
 | `Sources/LeetCodeCatalog.swift` | All ~3.6k LeetCode algorithm problems from `Sources/Resources/leetcode.json` (LeetCode GraphQL + NeetCode pattern labels + Blind75/NC150/NC250/Grind75/Grind169 bitmask). One primary pattern per problem (NeetCode label, else ordered tag rules). "Update from LeetCode" refetches into `Focus/leetcode-catalog.json`; newer `generated` wins. |
 
 ### Logic / glue
@@ -39,6 +40,8 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 | `Sources/SiteBlocker.swift` | `/etc/hosts` + `pf` firewall blocking. Requires sudo helper at `/usr/local/bin/focustimer-blocker`. Cleanup on quit + next launch after crash. |
 | `Sources/GlobalHotKey.swift` | Carbon global hotkey wrapper. Bindings live in `QuickSwitch`. |
 | `Sources/QuickSwitch.swift` | Every no-popover way to change what's tracked. Hotkeys (⌃⌥⌘): Space pause/resume, S start/stop (`settings.quickStartTag`, default HW), A switcher panel, 1–9 switch to category N, B break, 0 stop. URL scheme `focustracker://switch/<cat>`, `stop`, `break?minutes=N`, `toggle`, `switcher` (via `FocusAppDelegate`). Opens/reopens the day; `HotKeyToast` confirms. Toasts commands applied from other devices. |
+| `Sources/RecallCoach.swift` | Optional Claude client (raw `URLSession`, `claude-opus-5-5`, structured JSON output, `fallbacks: "default"`). Key in Keychain service `com.magnus.focus.anthropic` (falls back to `ANTHROPIC_API_KEY`). `reviewNote` (feedback + ≤2 cards), `draftCards` (from pasted notes), `grade` (suggested score + what's missing), `hint` (progressive, never the answer). |
+| `Sources/RecallPanel.swift` | Corner panel when a focus block ≥ `recallMinMinutes` ends (`TimerManager.onFocusSegmentSaved`, i.e. switch/stop/break — not pause auto-finalize or crash recovery). Non-activating: never steals keystrokes; click to type. Write → Claude feedback + card drafts, or manual card without a key. Untouched prompts vanish after 10 min. |
 | `Sources/CompletionPanel.swift` | Simple 2.5s success toast (`show(label:)`) shown when a focus session completes. |
 | `Sources/Models.swift` | `WorkSession`, `WorkSession.SessionType` (with `isBreak`), `DailySummary`, `DayRecord`, `ProblemEntry` + enums, `ScratchItem`. |
 
@@ -55,6 +58,7 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 | `Sources/SettingsView.swift` | All settings UI. |
 | `Sources/BlockedSitesView.swift` | Domain list editor for site blocking. |
 | `Sources/LeetCodeView.swift` | Standalone LeetCode window (`LeetCodeWindowController`), opened from the popover's LeetCode button. Left: searchable/filterable browser. Right: Grind tab (today ring, stopwatch, problem card + attempt history, Smart/Random pick, redo queue, pace) and Stats tab (28-day chart, pattern grid, mix, speed, quality, lists, milestones). |
+| `Sources/RecallView.swift` | Standalone Recall window (`RecallWindowController`; launcher tile, ⌃⌥⌘R, `focustracker://recall`). Review (prompt → typed answer → hint/reveal → optional Claude check → grade 1–4), Cards (browser + editor + "Draft from notes"), Journal (recall notes + feedback), Progress (unaided %, 1wk+ retention, recall coverage, delay buckets chart, week table). |
 | `Sources/DashboardView.swift` | Standalone NSWindow. Left: today's log (focus + breaks + problems, newest-first, click focus/problem rows to edit). Right: stat cards, problem progress, 14-day chart, focus split, insights, weak areas, lifetime row. `DashboardWindowController.open(...)` opens/refocuses. |
 
 ## Data model
@@ -108,6 +112,13 @@ Built for a quant + SWE interview prep workflow: focus sessions tagged by catego
 - **Start Day** button at top of TimerView. Records `dayStart` and (if commitment enabled) shows the commitment overlay.
 - **End Day** button replaces it once started. Records `dayEnd`.
 - App relaunch mid-day: if day is already started and commitment not done today, the overlay shows automatically.
+
+### Recall (retrieval practice)
+- Three loops: write-from-memory after each focus block, spaced retrieval of cards, and reconstruct-yesterday-before-the-timeline when opening the day (`YesterdayRecallView` in `DayReviewView.swift`; runs before the commitment overlay, and before "fill in yesterday"; "Skip today" stored in UserDefaults `yesterdayRecallSkippedDay`).
+- Only unaided Got it / Fluent counts as recall success; any hint caps the attempt at Partial. The typed response is saved as-is; Claude's suggestion is stored separately (`aiScore`, `aiFeedback`) and the user picks the grade.
+- No composite "memory score": metrics stay separate and are framed as retrieval of studied material.
+- Settings → Recall: `recallAfterSession`, `recallMinMinutes` (20), `morningRecall`, `recallDailyCap` (12), Claude key. Device-local (not in `SyncedDefaults.syncedKeys`).
+- Testing views with a throwaway container: pass `cloudKitDatabase: .none`. The default `.automatic` mirrors to the real iCloud container and the rows come back into `default.store`.
 
 ### Commitment
 - ON by default. Written commitment (required) + optional voice oath (AVFoundation, requires mic permission).
@@ -167,6 +178,7 @@ Requires admin password on first setup. Sets up sudoers entry + helper script. M
 - [x] Native Liquid Glass on macOS 26 (`glassEffect`, `GlassEffectContainer`, `.buttonStyle(.glass/.glassProminent)` on timer controls, tinted glass on selected chips); material fallback on 14–15
 - [x] Grind 75 picker in Log Problem
 - [x] Health tab (habit log, first habit: fap)
+- [x] Recall: post-session free recall, spaced retrieval cards, morning yesterday reconstruction, optional Claude coach
 
 ### In flight (see HANDOFF.md)
 _(none)_

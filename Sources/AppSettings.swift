@@ -92,6 +92,20 @@ class AppSettings: ObservableObject {
     @Published var problemSources: [String] {
         didSet { sd.set(problemSources, forKey: "problemSources") }
     }
+    /// Ask for a from-memory recall when a focus block of `recallMinMinutes`+ ends.
+    @Published var recallAfterSession: Bool {
+        didSet { sd.set(recallAfterSession, forKey: "recallAfterSession") }
+    }
+    @Published var recallMinMinutes: Int {
+        didSet { sd.set(recallMinMinutes, forKey: "recallMinMinutes") }
+    }
+    /// Reconstruct yesterday before the timeline is shown, when opening the day.
+    @Published var morningRecall: Bool {
+        didSet { sd.set(morningRecall, forKey: "morningRecall") }
+    }
+    @Published var recallDailyCap: Int {
+        didSet { sd.set(recallDailyCap, forKey: "recallDailyCap") }
+    }
     @Published var interviewDate: Date? {
         didSet {
             sd.set(interviewDate?.timeIntervalSince1970 ?? 0, forKey: "interviewDate")
@@ -162,6 +176,10 @@ class AppSettings: ObservableObject {
             "sweWeeklyGoal": 0,
             "homeworkDailyGoal": 10,
             "problemSources": ["QuantGuide", "LeetCode"],
+            "recallAfterSession": true,
+            "recallMinMinutes": 20,
+            "morningRecall": true,
+            "recallDailyCap": 12,
         ])
         workMinutes = d.double(forKey: "workMinutes")
         shortBreakMinutes = d.double(forKey: "shortBreakMinutes")
@@ -195,6 +213,10 @@ class AppSettings: ObservableObject {
         sweWeeklyGoal = d.integer(forKey: "sweWeeklyGoal")
         homeworkDailyGoal = d.integer(forKey: "homeworkDailyGoal")
         problemSources = d.stringArray(forKey: "problemSources") ?? ["QuantGuide", "LeetCode"]
+        recallAfterSession = d.bool(forKey: "recallAfterSession")
+        recallMinMinutes = d.integer(forKey: "recallMinMinutes")
+        morningRecall = d.bool(forKey: "morningRecall")
+        recallDailyCap = d.integer(forKey: "recallDailyCap")
         let epoch = d.double(forKey: "interviewDate")
         interviewDate = epoch > 0 ? Date(timeIntervalSince1970: epoch) : nil
         hasCompletedOnboarding = d.bool(forKey: "hasCompletedOnboarding")
@@ -258,6 +280,10 @@ class AppSettings: ObservableObject {
         sweWeeklyGoal = d.integer(forKey: "sweWeeklyGoal")
         homeworkDailyGoal = d.integer(forKey: "homeworkDailyGoal")
         problemSources = d.stringArray(forKey: "problemSources") ?? problemSources
+        recallAfterSession = d.bool(forKey: "recallAfterSession")
+        recallMinMinutes = d.integer(forKey: "recallMinMinutes")
+        morningRecall = d.bool(forKey: "morningRecall")
+        recallDailyCap = d.integer(forKey: "recallDailyCap")
         let epoch = d.double(forKey: "interviewDate")
         interviewDate = epoch > 0 ? Date(timeIntervalSince1970: epoch) : nil
     }

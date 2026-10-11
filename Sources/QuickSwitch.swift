@@ -7,9 +7,10 @@ import FocusCore
 /// and commands arriving from other devices.
 ///
 /// Hotkeys (all ⌃⌥⌘): S start/stop · A switcher · 1–9 switch to category N ·
-/// 0 stop · B break.
+/// 0 stop · B break · R recall.
 /// URLs: focustracker://switch/<category>, focustracker://stop,
-/// focustracker://break[?minutes=N], focustracker://toggle, focustracker://switcher
+/// focustracker://break[?minutes=N], focustracker://toggle, focustracker://switcher,
+/// focustracker://recall
 final class QuickSwitch {
     static var shared: QuickSwitch?
 
@@ -19,6 +20,7 @@ final class QuickSwitch {
     private let toast = HotKeyToast()
     private var hotKeys: [GlobalHotKey] = []
     private lazy var switcher = SwitcherPanel(quick: self)
+    var openRecall: (() -> Void)?
 
     init(timer: TimerManager, settings: AppSettings, days: DayStore) {
         self.timer = timer
@@ -33,6 +35,7 @@ final class QuickSwitch {
         bind(GlobalHotKey.sKey) { [weak self] in self?.toggle() }
         bind(GlobalHotKey.aKey) { [weak self] in self?.showSwitcher() }
         bind(GlobalHotKey.bKey) { [weak self] in self?.startBreak() }
+        bind(GlobalHotKey.rKey) { [weak self] in self?.openRecall?() }
         bind(GlobalHotKey.digitKeys[0]) { [weak self] in self?.stop() }
         for n in 1...9 {
             bind(GlobalHotKey.digitKeys[n]) { [weak self] in
@@ -111,6 +114,7 @@ final class QuickSwitch {
         case "break": startBreak(minutes: param("minutes").flatMap(Double.init))
         case "toggle": toggle()
         case "switcher": showSwitcher()
+        case "recall": openRecall?()
         default: break
         }
     }

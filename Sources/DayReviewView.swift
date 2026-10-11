@@ -312,3 +312,170 @@ private struct DayStrip: View {
         }
     }
 }
+
+/// Morning free recall: write yesterday from memory first, then see what
+/// was actually tracked (and what you wrote after each block) side by side.
+struct YesterdayRecallView: View {
+    @ObservedObject var recall: RecallStore
+    @ObservedObject var store: SessionStore
+    let onFillGaps: () -> Void
+    let onDone: () -> Void
+
+    @State private var text = ""
+    @State private var revealed = false
+    @State private var showFullRecollection = false
+    @FocusState private var focused: Bool
+
+    private let day: Date = Calendar.current.date(byAdding: .day, value: -1, to: Calendar.current.startOfDay(for: Date()))!
+    private var dayEnd: Date { Calendar.current.date(byAdding: .day, value: 1, to: day)! }
+    private var weekday: String { day.formatted(.dateTime.weekday(.wide)) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if revealed { revealStage } else { writeStage }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(.regularMaterial)
+    }
+
+    private var writeStage: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: "sunrise")
+                .font(.system(size: 22, weight: .light))
+                .foregroundStyle(.orange)
+                .padding(.top, 18)
+            Text("Before you look")
+                .font(.system(size: 17, weight: .semibold, design: .serif))
+            Text("Reconstruct \(weekday) from memory, in order: what you worked on, what you learned, who you talked to, what stood out.")
+                .font(.system(size: 11.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            TextEditor(text: $text)
+                .font(.system(size: 12))
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+                .focused($focused)
+            Text("Free recall first; the timeline comes after. Forgetting ordinary hours is normal.")
+                .font(.system(size: 9.5))
+                .foregroundStyle(.tertiary)
+            HStack {
+                Button("Skip today") {
+                    recall.skipYesterdayRecall()
+                    onDone()
+                }
+                .controlSize(.small)
+                Spacer()
+                Button("Reveal \(weekday)") {
+                    recall.addNote(kind: .yesterday, text: text)
+                    withAnimation(.easeOut(duration: 0.2)) { revealed = true }
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.bottom, 28)
+        }
+        .padding(.horizontal, 16)
+        .onAppear { focused = true }
+    }
+
+    private var blocks: [WorkSession] {
+        store.sessions
+            .filter { $0.startTime < dayEnd && $0.startTime.addingTimeInterval($0.durationMinutes * 60) > day }
+            .sorted { $0.startTime < $1.startTime }
+    }
+
+    private var revealStage: some View {
+        let gaps = store.untrackedGaps(from: day, to: dayEnd)
+        let untracked = gaps.reduce(0) { $0 + $1.minutes }
+        let sessionNotes = recall.notes(on: day, kind: .session)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(weekday), as tracked")
+                    .font(.system(size: 15, weight: .bold))
+                Spacer()
+                Button("Done") { onDone() }
+                    .controlSize(.small)
+                    .keyboardShortcut(.cancelAction)
+            }
+            .padding(.top, 14)
+
+            DayStrip(from: day, to: dayEnd, sessions: blocks, gaps: gaps)
+                .frame(height: 14)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("YOU REMEMBERED")
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .tracking(1)
+                    .foregroundStyle(.secondary)
+                Text(text)
+                    .font(.system(size: 11))
+                    .lineLimit(showFullRecollection ? nil : 3)
+                    .onTapGesture { showFullRecollection.toggle() }
+            }
+            .padding(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.08)))
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(blocks) { s in
+                        let note = sessionNotes.first { n in
+                            n.sessionStart.map { abs($0.timeIntervalSince(s.startTime)) < 90 } ?? false
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(s.startTime.formatted(date: .omitted, time: .shortened))
+                                    .font(.system(size: 10).monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 52, alignment: .leading)
+                                Circle()
+                                    .fill(s.type != .work ? Color(red: 0.27, green: 0.62, blue: 0.83) : categoryColor(s.label ?? ""))
+                                    .frame(width: 6, height: 6)
+                                Text(s.type != .work ? "Break" : (s.label ?? "Focus"))
+                                    .font(.system(size: 11.5, weight: s.isFocus ? .semibold : .regular))
+                                Spacer()
+                                Text("\(Int(s.durationMinutes) / 60 > 0 ? "\(Int(s.durationMinutes) / 60)h " : "")\(Int(s.durationMinutes) % 60)m")
+                                    .font(.system(size: 10).monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let note {
+                                Text("“\(note.text)”")
+                                    .font(.system(size: 10.5))
+                                    .italic()
+                                    .foregroundStyle(recallPurple)
+                                    .padding(.leading, 58)
+                                    .lineLimit(4)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Text("Anything missing from your version? No need to score it — noticing is the practice.")
+                .font(.system(size: 9.5))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                if untracked >= 15 {
+                    Button("Fill \(Int(untracked) / 60)h \(Int(untracked) % 60)m untracked") { onFillGaps() }
+                        .controlSize(.small)
+                }
+                Spacer()
+                Button("Continue") { onDone() }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.orange)
+                    .keyboardShortcut(.return, modifiers: .command)
+            }
+            .padding(.bottom, 28)
+        }
+        .padding(.horizontal, 16)
+    }
+}

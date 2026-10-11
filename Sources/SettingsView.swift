@@ -20,6 +20,8 @@ struct SettingsView: View {
     @State private var manualLabel: String = ""
     @State private var manualLogged = false
     @State private var dedupResult: String = ""
+    @State private var claudeKey = ""
+    @State private var claudeKeySet = RecallCoach.isConfigured
 
     private func timeBinding(_ key: ReferenceWritableKeyPath<AppSettings, Int>) -> Binding<Date> {
         Binding(
@@ -129,6 +131,36 @@ struct SettingsView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+
+                Divider()
+
+                SectionLabel("RECALL")
+                ToggleRow(label: "Recall prompt after focus", isOn: $settings.recallAfterSession)
+                if settings.recallAfterSession {
+                    IntRow(label: "For blocks of at least", value: $settings.recallMinMinutes, range: 5...120, suffix: "min")
+                }
+                ToggleRow(label: "Reconstruct yesterday first", isOn: $settings.morningRecall)
+                IntRow(label: "Max reviews per day", value: $settings.recallDailyCap, range: 3...60)
+                Text("After a focus block, write what you learned from memory. Cards come back after 1, 3, 7, 14, 30 days. ⌃⌥⌘R opens Recall.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    SecureField(claudeKeySet ? "Claude API key saved" : "Claude API key (optional)", text: $claudeKey)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 11))
+                    Button(claudeKey.isEmpty && claudeKeySet ? "Remove" : "Save") {
+                        RecallCoach.setAPIKey(claudeKey.isEmpty ? nil : claudeKey)
+                        claudeKey = ""
+                        claudeKeySet = RecallCoach.isConfigured
+                    }
+                    .controlSize(.small)
+                    .disabled(claudeKey.isEmpty && !claudeKeySet)
+                }
+                Text("With a key, Claude checks your recall, drafts cards, grades answers and gives hints. Stored in the Keychain.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Divider()
 

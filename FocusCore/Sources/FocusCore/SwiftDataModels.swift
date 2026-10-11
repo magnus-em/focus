@@ -482,6 +482,87 @@ public final class StoredTimerCommand {
     public init() {}
 }
 
+// MARK: - Recall (retrieval practice)
+
+/// A concept to reconstruct from memory: a prompt that doesn't give the
+/// answer away, plus a reference answer to check against. Scheduled by
+/// `RecallScheduler`.
+@Model
+public final class StoredKnowledgeItem {
+    public var id: UUID = UUID()
+    public var createdAt: Date = Date()
+    /// Focus category it belongs to ("Quant", "SWE", a class name…).
+    public var course: String = ""
+    public var topic: String = ""
+    public var prompt: String = ""
+    public var answer: String = ""
+    public var kindRaw: String = KnowledgeKind.concept.rawValue
+    /// Where the reference answer comes from (lecture, textbook section…).
+    public var source: String = ""
+    /// Reference answer was drafted by Claude and not yet checked by the user.
+    public var answerByAI: Bool = false
+    public var intervalDays: Double = 0
+    public var nextDue: Date = Date()
+    public var reps: Int = 0
+    public var lapses: Int = 0
+    public var archived: Bool = false
+    /// The recall note it was made from, if any.
+    public var noteID: UUID? = nil
+
+    public init() {}
+
+    public var kind: KnowledgeKind {
+        get { KnowledgeKind(rawValue: kindRaw) ?? .concept }
+        set { kindRaw = newValue.rawValue }
+    }
+}
+
+/// One retrieval attempt. `response` is what the user produced before
+/// seeing the answer; it's never overwritten by hints or feedback.
+@Model
+public final class StoredRecallAttempt {
+    public var id: UUID = UUID()
+    public var itemID: UUID = UUID()
+    public var date: Date = Date()
+    public var response: String = ""
+    public var score: Int = 0
+    public var hinted: Bool = false
+    /// Days since the item was last reviewed (or created) — the real delay
+    /// the retrieval spanned, used for retention-by-delay stats.
+    public var delayDays: Double = 0
+    /// Claude's suggested score, -1 when not asked.
+    public var aiScore: Int = -1
+    public var aiFeedback: String = ""
+    public var secondsToAnswer: Double = 0
+
+    public init() {}
+
+    public var grade: RecallGrade { RecallGrade(rawValue: score) ?? .forgot }
+    /// Correct and produced without any cue — the only kind that counts as retrieval success.
+    public var isUnaidedSuccess: Bool { score >= RecallGrade.got.rawValue && !hinted }
+}
+
+/// Free recall written from memory: right after a focus block ("session"),
+/// or the next morning about the previous day ("yesterday").
+@Model
+public final class StoredRecallNote {
+    public var id: UUID = UUID()
+    public var date: Date = Date()
+    public var kindRaw: String = RecallNoteKind.session.rawValue
+    public var text: String = ""
+    public var label: String = ""
+    public var sessionStart: Date? = nil
+    public var sessionMinutes: Double = 0
+    public var aiFeedback: String = ""
+
+    public init() {}
+
+    public var kind: RecallNoteKind {
+        get { RecallNoteKind(rawValue: kindRaw) ?? .session }
+        set { kindRaw = newValue.rawValue }
+    }
+}
+
 // MARK: - Schema
 
 public enum FocusSchema {
@@ -497,5 +578,8 @@ public enum FocusSchema {
         StoredMasteryAttempt.self,
         StoredHealthEvent.self,
         StoredTimerCommand.self,
+        StoredKnowledgeItem.self,
+        StoredRecallAttempt.self,
+        StoredRecallNote.self,
     ]
 }
