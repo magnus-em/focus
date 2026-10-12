@@ -78,6 +78,8 @@ cat > "$APP_DIR/Info.plist" <<'EOF'
     <string>14.0</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Talk through your morning review instead of typing it.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Knows when you're in class so it tracks Class instead of guessing from your screen.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>Turns your spoken morning review into text.</string>
 </dict>
@@ -94,11 +96,10 @@ EOF
 XCBUILD_DD="/tmp/FocusDerivedData"
 PROFILE="$XCBUILD_DD/Build/Products/Debug/Focus.app/Contents/embedded.provisionprofile"
 if [ ! -f "$PROFILE" ] || [ Focus.entitlements -nt "$PROFILE" ]; then
-    # Focus.xcodeproj is gitignored; a fresh clone has to generate it.
-    if [ ! -d Focus.xcodeproj ]; then
-        echo "Generating Focus.xcodeproj via xcodegen..."
-        xcodegen generate --spec project.yml >/dev/null
-    fi
+    # Focus.xcodeproj is gitignored and goes stale as files are added, so
+    # regenerate it every time it's needed.
+    echo "Generating Focus.xcodeproj via xcodegen..."
+    xcodegen generate --spec project.yml >/dev/null
     echo "Regenerating provisioning profile via xcodebuild..."
     rm -rf "$XCBUILD_DD"
     xcodebuild -project Focus.xcodeproj -scheme Focus -configuration Debug \

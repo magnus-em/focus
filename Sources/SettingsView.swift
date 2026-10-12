@@ -1023,6 +1023,7 @@ private struct CategoriesEditor: View {
 private struct ScreenSettings: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject private var watcher = ScreenWatcher.shared
+    @ObservedObject private var calendar = ClassCalendar.shared
 
     var body: some View {
         ToggleRow(label: "Watch what's on screen", isOn: $settings.screenWatch)
@@ -1038,6 +1039,9 @@ private struct ScreenSettings: View {
                     Button("Grant…") { watcher.requestPermission() }.controlSize(.small)
                 }
             }
+            Text("Classes: \(calendar.status)")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             let accepted = UserDefaults.standard.integer(forKey: ScreenCoach.acceptedKey)
             let declined = UserDefaults.standard.integer(forKey: ScreenCoach.declinedKey)
             if accepted + declined > 0 {

@@ -1,5 +1,6 @@
 import AppKit
 import CloudKit
+import EventKit
 import FoundationModels
 import FocusCore
 import ScreenCaptureKit
@@ -598,6 +599,7 @@ final class ScreenCoach {
             return timer.currentLabel
         }
         watcher.start(settings: settings)
+        ClassCalendar.shared.start()
         let reset: (Notification) -> Void = { [weak self] _ in
             Task { @MainActor in
                 self?.watcher.resetEvidence()
@@ -653,7 +655,14 @@ final class ScreenCoach {
 
     private func consider() {
         guard settings.screenSuggest, days.isDayStarted, !panel.isBusy,
-              !(AwayCoach.shared?.isBusy ?? false),
+              !(AwayCoach.shared?.isBusy ?? false) else { return }
+        // In class you're in Class, whatever the screen shows.
+        if timer.isActive, !timer.isOnBreak, timer.currentLabel == "Class" { return }
+        if let lecture = ClassCalendar.shared.currentClass() {
+            suggestClass(lecture)
+            return
+        }
+        guard
               let run = trailingRun(notBefore: timer.isActive ? timer.sessionStartTime : nil) else { return }
         if timer.isActive && !timer.isRunning { return }
         let running: String? = timer.isActive ? (timer.isOnBreak ? "Break" : timer.currentLabel) : nil
@@ -694,6 +703,32 @@ final class ScreenCoach {
             self?.decline(run.category)
             close?()
         }
+    }
+
+    private var classPrompted: Set<String> = []
+
+    /// One card per calendar class: switch to Class from when it started.
+    private func suggestClass(_ lecture: EKEvent) {
+        let key = "\(lecture.eventIdentifier ?? "")@\(lecture.startDate.timeIntervalSince1970)"
+        guard !classPrompted.contains(key), settings.tags.contains("Class") else { return }
+        classPrompted.insert(key)
+        let running: String? = timer.isActive ? (timer.isOnBreak ? "Break" : timer.currentLabel) : nil
+        let clock = { (d: Date) in d.formatted(date: .omitted, time: .shortened) }
+        let m = AwayPromptModel(
+            icon: "graduationcap",
+            title: "In class: \(lecture.title ?? "Class")",
+            subtitle: "\(clock(lecture.startDate)) – \(clock(lecture.endDate)) · from your calendar",
+            question: "Track this as Class? It starts from \(clock(lecture.startDate)).",
+            keep: running.map { "Still \($0)" },
+            options: ["Class"], tags: settings.tags
+        )
+        m.onPick = { [weak self] label in
+            guard let self else { return }
+            if let label { self.timer.switchTo(label, at: lecture.startDate) } else { self.timer.startManualBreak(minutes: 0, at: lecture.startDate) }
+            self.panel.dismiss()
+        }
+        m.onKeep = { [weak self] in self?.panel.dismiss() }
+        panel.show(m)
     }
 
     private func decline(_ category: String) {
