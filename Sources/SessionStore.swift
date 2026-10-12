@@ -94,6 +94,13 @@ class SessionStore: ObservableObject {
         }
     }
 
+    func delete(id: UUID) {
+        let target = id
+        try? context.delete(model: StoredWorkSession.self, where: #Predicate { $0.id == target })
+        try? context.save()
+        refresh()
+    }
+
     func updateBreakKinds(id: UUID, kinds: [BreakKind]) {
         let target = id
         let predicate = #Predicate<StoredWorkSession> { $0.id == target }

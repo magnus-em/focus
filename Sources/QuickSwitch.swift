@@ -139,6 +139,11 @@ final class QuickSwitch {
             timer.sessionStore?.paint(start: from, end: to, label: label)
             toast.show(icon: "pencil", title: "Logged \(label ?? "Break")",
                        detail: "\(from.formatted(date: .omitted, time: .shortened))–\(to.formatted(date: .omitted, time: .shortened))")
+        case "unlog":
+            // focus://unlog?id=<session UUID> deletes one saved session.
+            guard let id = param("id").flatMap(UUID.init(uuidString:)) else { return }
+            timer.sessionStore?.delete(id: id)
+            toast.show(icon: "trash", title: "Session removed", detail: "")
         default: break
         }
     }

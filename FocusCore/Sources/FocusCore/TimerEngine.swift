@@ -238,6 +238,7 @@ public final class FocusTimerEngine: ObservableObject {
     /// within 3s of our push, we'd drop it.
 
     private func pushSharedState() {
+        SharedSessionMemory.mark(sessionStartTime)
         let sharedPhase: StoredTimerState.Phase
         switch phase {
         case .work:       sharedPhase = isActive ? .work : .idle
@@ -343,6 +344,8 @@ public final class FocusTimerEngine: ObservableObject {
         currentLabel = msg.label
         currentBreakKinds = msg.breakKindsRaw.compactMap { BreakKind(rawValue: $0) }
         sessionStartTime = msg.startTime
+        SharedSessionMemory.mark(msg.startTime)
+        knowledgeStale = false
         if msg.isRunning, let end = msg.endTime, end.timeIntervalSinceNow > -5 {
             // "Running" with end far in the past = stale snapshot from a peer
             // we hadn't synced with in a while. Don't start a ticker that will
@@ -411,6 +414,8 @@ public final class FocusTimerEngine: ObservableObject {
         currentLabel = state.label
         currentBreakKinds = state.breakKinds
         sessionStartTime = state.startTime
+        SharedSessionMemory.mark(state.startTime)
+        knowledgeStale = false
 
         if state.isRunning, let end = state.endTime, end.timeIntervalSinceNow > -5 {
             // See note in applyRemoteMessage: stale running-snapshots with
@@ -476,14 +481,24 @@ public final class FocusTimerEngine: ObservableObject {
         return true
     }
 
+    /// Set after sleep/suspension or a checkpoint restore; cleared once the
+    /// shared state is applied again or a session is begun here.
+    private var knowledgeStale = false
+    private var lastAliveAt = Date()
+
     private func closeSegmentIfReplaced(by newStart: Date?) {
         guard isActive, let start = sessionStartTime, let newStart,
               abs(newStart.timeIntervalSince(start)) > 3 else { return }
+        if knowledgeStale && SharedSessionMemory.wasShared(start) {
+            SyncLog.event("skipStaleSegment", ["start": "\(start)", "replacedBy": "\(newStart)"])
+            return
+        }
         closeSegment(at: newStart > start ? newStart : Date())
     }
 
     private func beginSession(phase newPhase: Phase, label: String, kinds: [BreakKind],
                               plannedSeconds: TimeInterval, at date: Date) {
+        knowledgeStale = false
         let lead = max(0, Date().timeIntervalSince(date))
         ticker?.cancel(); ticker = nil
         isRunning = false
@@ -662,6 +677,10 @@ public final class FocusTimerEngine: ObservableObject {
     }
 
     private func tick() {
+        let now = Date()
+        // Ticks stop while suspended/asleep: past that, others may have moved on.
+        if now.timeIntervalSince(lastAliveAt) > 120 { knowledgeStale = true }
+        lastAliveAt = now
         guard let resume = lastResumeTime else { return }
         let elapsed = elapsedBeforePause + Date().timeIntervalSince(resume)
         elapsedSeconds = elapsed
@@ -863,6 +882,7 @@ public final class FocusTimerEngine: ObservableObject {
         timeRemaining = total - elapsed
         elapsedBeforePause = elapsed
         sessionStartTime = Date(timeIntervalSince1970: startEpoch)
+        knowledgeStale = true
         currentLabel = label ?? ""
         if wasRunning {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in

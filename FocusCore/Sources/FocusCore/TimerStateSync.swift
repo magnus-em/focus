@@ -277,3 +277,22 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
         return v
     }
 }
+
+/// Which session start this device last saw in (or pushed to) the shared
+/// timer state. A device that slept through changes and wakes with a session
+/// that was shared shouldn't save it again when it learns it was replaced:
+/// whoever replaced it knew it and already saved it. (Saving it anyway once
+/// logged a stale 2.5h "Productive Leisure" from an iPad asleep since morning.)
+public enum SharedSessionMemory {
+    static let key = "focusCore.timerSync.lastSharedStart"
+
+    public static func mark(_ start: Date?) {
+        guard let start else { return }
+        UserDefaults.standard.set(start.timeIntervalSince1970, forKey: key)
+    }
+
+    public static func wasShared(_ start: Date) -> Bool {
+        let t = UserDefaults.standard.double(forKey: key)
+        return t > 0 && abs(t - start.timeIntervalSince1970) < 3
+    }
+}

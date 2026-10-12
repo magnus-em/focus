@@ -206,6 +206,7 @@ class TimerManager: ObservableObject {
     // MARK: - Cross-device state sync
 
     private func pushSharedState() {
+        SharedSessionMemory.mark(sessionStartTime)
         guard let stateSync else { return }
         let sharedPhase: StoredTimerState.Phase
         switch currentPhase {
@@ -310,6 +311,8 @@ class TimerManager: ObservableObject {
         currentLabel = msg.label
         currentBreakKinds = msg.breakKindsRaw.compactMap { BreakKind(rawValue: $0) }
         sessionStartTime = msg.startTime
+        SharedSessionMemory.mark(msg.startTime)
+        knowledgeStale = false
         if msg.isRunning, let end = msg.endTime, end.timeIntervalSinceNow > -5 {
             // Stale "running" snapshot (endTime in the past): don't auto-
             // complete and save a phantom session — show frozen instead.
@@ -374,6 +377,8 @@ class TimerManager: ObservableObject {
         currentLabel = state.label
         currentBreakKinds = state.breakKinds
         sessionStartTime = state.startTime
+        SharedSessionMemory.mark(state.startTime)
+        knowledgeStale = false
         if state.isRunning, let end = state.endTime, end.timeIntervalSinceNow > -5 {
             // Stale "running" snapshot (endTime in the past): treat as paused.
             let remaining = max(0, end.timeIntervalSinceNow)
@@ -440,14 +445,24 @@ class TimerManager: ObservableObject {
     /// A peer's state describing a *different* session than ours means it
     /// switched; the peer may not have known about ours, so save it here
     /// (SessionStore dedups if the peer saved it too).
+    /// Set after sleep/suspension or a checkpoint restore; cleared once the
+    /// shared state is applied again or a session is begun here.
+    private var knowledgeStale = false
+    private var lastAliveAt = Date()
+
     private func closeSegmentIfReplaced(by newStart: Date?) {
         guard isActive, let start = sessionStartTime, let newStart,
               abs(newStart.timeIntervalSince(start)) > 3 else { return }
+        if knowledgeStale && SharedSessionMemory.wasShared(start) {
+            SyncLog.event("skipStaleSegment", ["start": "\(start)", "replacedBy": "\(newStart)"])
+            return
+        }
         closeSegment(at: newStart > start ? newStart : Date())
     }
 
     /// Begin a session that logically started at `date`, already running.
     private func beginSession(phase: Phase, label: String, kinds: [BreakKind], plannedSeconds: TimeInterval, at date: Date) {
+        knowledgeStale = false
         let lead = max(0, Date().timeIntervalSince(date))
         timer?.cancel(); timer = nil
         isRunning = false
@@ -676,6 +691,10 @@ class TimerManager: ObservableObject {
     // MARK: - Timer logic
 
     private func tick() {
+        let now = Date()
+        // Ticks stop while suspended/asleep: past that, others may have moved on.
+        if now.timeIntervalSince(lastAliveAt) > 120 { knowledgeStale = true }
+        lastAliveAt = now
         guard let resumeTime = lastResumeTime else { return }
         let elapsed = elapsedBeforePause + Date().timeIntervalSince(resumeTime)
         timeRemaining = max(0, totalTime - elapsed)
@@ -985,6 +1004,7 @@ class TimerManager: ObservableObject {
         timeRemaining      = remaining
         elapsedBeforePause = elapsed
         sessionStartTime   = Date(timeIntervalSince1970: startEpoch)
+        knowledgeStale = true
         currentLabel       = label ?? ""
 
         if wasRunning {
