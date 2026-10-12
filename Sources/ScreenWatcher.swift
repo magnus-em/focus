@@ -45,6 +45,9 @@ final class ScreenWatcher: ObservableObject {
     private var tick: Timer?
     private var busy = false
     private var cache: [String: (category: String?, summary: String)] = [:]
+    /// The small model flips between neighbors (Math/Reading) on the same
+    /// window; a window's label only changes after 3 disagreements in a row.
+    private var windowLabel: [String: (category: String, against: Int)] = [:]
     private var unsavedSamples = 0
     private var lastSampleAt = Date.distantPast
     private var activationObserver: NSObjectProtocol?
@@ -196,8 +199,11 @@ final class ScreenWatcher: ObservableObject {
         return out
     }
 
+    /// Block edges can move a little as new snapshots smooth older ones, so
+    /// any name keyed inside the block still counts.
     func name(for a: ScreenActivity) -> String {
-        activityNames[a.start]?.name ?? a.topTitle
+        if let n = activityNames[a.start] { return n.name }
+        return activityNames.filter { $0.key >= a.start && $0.key < a.end }.min { $0.key < $1.key }?.value.name ?? a.topTitle
     }
 
     /// Names one block per sample: the live one as it grows, then any unnamed.
@@ -207,8 +213,11 @@ final class ScreenWatcher: ObservableObject {
         let blocks = activities(from: now.addingTimeInterval(-36 * 3600), to: now)
             .filter { $0.category != nil && $0.end.timeIntervalSince($0.start) >= 120 }
         let stale = blocks.reversed().first { b in
-            guard let n = activityNames[b.start] else { return true }
-            return Double(b.spans.count) >= Double(n.spanCount) * 1.25 && now.timeIntervalSince(n.at) > 120
+            guard let (key, n) = activityNames.filter({ $0.key >= b.start && $0.key < b.end }).min(by: { $0.key < $1.key })
+            else { return true }
+            // Rename rarely: when the block has doubled, at most every 10 minutes.
+            if key != b.start { activityNames[b.start] = n; activityNames[key] = nil }
+            return b.spans.count >= n.spanCount * 2 && now.timeIntervalSince(n.at) > 600
         }
         guard let b = stale else { return }
         naming = true
@@ -293,8 +302,22 @@ final class ScreenWatcher: ObservableObject {
         guard #available(macOS 26.0, *), Self.modelAvailable, !text.isEmpty || !title.isEmpty else {
             return (nil, fallbackSummary)
         }
-        let result = await ScreenModel.classify(app: app, title: title, text: text, categories: candidates)
+        var result = await ScreenModel.classify(app: app, title: title, text: text, categories: candidates)
             ?? (nil, fallbackSummary)
+        let window = Self.memoryKey(bundle: bundle, title: title)
+        if let c = result.0, !title.isEmpty {
+            if let held = windowLabel[window], held.category != c, candidates.contains(held.category) {
+                if held.against + 1 >= 3 {
+                    windowLabel[window] = (c, 0)
+                } else {
+                    windowLabel[window] = (held.category, held.against + 1)
+                    result.0 = held.category
+                }
+            } else {
+                windowLabel[window] = (c, 0)
+            }
+            if windowLabel.count > 300 { windowLabel.removeAll() }
+        }
         if cache.count > 400 { cache.removeAll() }
         cache[key] = result
         return result
@@ -319,10 +342,17 @@ struct ScreenActivity: Identifiable {
     var id: Date { start }
     var minutes: Double { end.timeIntervalSince(start) / 60 }
 
+    /// Most frequent first; ties keep first-seen order so redraws don't reshuffle.
     private func ranked(_ values: [String]) -> [String] {
         var counts: [String: Int] = [:]
-        for v in values where !v.isEmpty { counts[v, default: 0] += 1 }
-        return counts.sorted { $0.value > $1.value }.map(\.key)
+        var order: [String] = []
+        for v in values where !v.isEmpty {
+            if counts[v] == nil { order.append(v) }
+            counts[v, default: 0] += 1
+        }
+        return order.enumerated().sorted {
+            counts[$0.element]! != counts[$1.element]! ? counts[$0.element]! > counts[$1.element]! : $0.offset < $1.offset
+        }.map(\.element)
     }
     var distinctSummaries: [String] { Array(ranked(spans.map(\.summary)).prefix(10)) }
     var distinctTitles: [String] { Array(ranked(spans.map { $0.title.isEmpty ? $0.app : "\($0.app): \($0.title)" }).prefix(6)) }

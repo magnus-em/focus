@@ -355,7 +355,12 @@ struct DashboardView: View {
                 dayTimelineSection
                 ScreenActivitySection(
                     watcher: screenWatcher, day: selectedDay,
-                    sessions: (sessionStore.sessions + [timerManager.currentInProgressSession, timerManager.currentInProgressBreak].compactMap { $0 })
+                    // The running block counts from its start to now: pauses inside
+                    // it shouldn't read as "untracked" against the screen.
+                    sessions: (sessionStore.sessions + [timerManager.currentInProgressSession, timerManager.currentInProgressBreak]
+                        .compactMap { $0 }
+                        .map { WorkSession(startTime: $0.startTime, durationMinutes: Date().timeIntervalSince($0.startTime) / 60,
+                                           type: $0.type, label: $0.label) })
                         .filter { Calendar.current.isDate($0.startTime, inSameDayAs: selectedDay)
                             || Calendar.current.isDate($0.startTime.addingTimeInterval($0.durationMinutes * 60), inSameDayAs: selectedDay) }
                 )
