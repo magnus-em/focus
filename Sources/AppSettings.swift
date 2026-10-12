@@ -110,6 +110,17 @@ class AppSettings: ObservableObject {
     @Published var journalShortcut: String {
         didSet { sd.set(journalShortcut, forKey: "journalShortcut") }
     }
+    /// Capture + read the frontmost window every 30s (`ScreenWatcher`).
+    @Published var screenWatch: Bool {
+        didSet { sd.set(screenWatch, forKey: "screenWatch") }
+    }
+    /// Offer a backdated switch when the screen shows another category.
+    @Published var screenSuggest: Bool {
+        didSet { sd.set(screenSuggest, forKey: "screenSuggest") }
+    }
+    @Published var screenSuggestMinutes: Int {
+        didSet { sd.set(screenSuggestMinutes, forKey: "screenSuggestMinutes") }
+    }
     /// On return from `awayPromptMinutes`+ away from the Mac, ask what it was.
     @Published var awayPrompts: Bool {
         didSet { sd.set(awayPrompts, forKey: "awayPrompts") }
@@ -197,6 +208,9 @@ class AppSettings: ObservableObject {
             "recallDailyCap": 12,
             "journalShortcut": "",
             "awayPrompts": true,
+            "screenWatch": true,
+            "screenSuggest": true,
+            "screenSuggestMinutes": 3,
             "awayPromptMinutes": 15,
             "idleNudge": true,
         ])
@@ -238,6 +252,9 @@ class AppSettings: ObservableObject {
         recallDailyCap = d.integer(forKey: "recallDailyCap")
         journalShortcut = d.string(forKey: "journalShortcut") ?? ""
         awayPrompts = d.bool(forKey: "awayPrompts")
+        screenWatch = d.bool(forKey: "screenWatch")
+        screenSuggest = d.bool(forKey: "screenSuggest")
+        screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
         let epoch = d.double(forKey: "interviewDate")
@@ -312,6 +329,9 @@ class AppSettings: ObservableObject {
         recallDailyCap = d.integer(forKey: "recallDailyCap")
         journalShortcut = d.string(forKey: "journalShortcut") ?? ""
         awayPrompts = d.bool(forKey: "awayPrompts")
+        screenWatch = d.bool(forKey: "screenWatch")
+        screenSuggest = d.bool(forKey: "screenSuggest")
+        screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
         let epoch = d.double(forKey: "interviewDate")

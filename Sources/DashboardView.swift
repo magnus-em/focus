@@ -63,6 +63,7 @@ struct DashboardView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var dayStore: DayStore
     @ObservedObject var timerManager: TimerManager
+    @ObservedObject private var screenWatcher = ScreenWatcher.shared
     @ObservedObject var browserStore: BrowserStore
 
     @State private var editingEvent: DayEvent? = nil
@@ -808,6 +809,8 @@ struct DashboardView: View {
                 liveBreak: isSelectedDayToday ? timerManager.currentInProgressBreak : nil,
                 red: red, blue: blue,
                 tags: settings.tags,
+                screen: screenWatcher.spans(from: Calendar.current.startOfDay(for: selectedDay),
+                                            to: Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: selectedDay))!),
                 onFill: { start, end, label in
                     sessionStore.addSession(WorkSession(
                         startTime: start, durationMinutes: end.timeIntervalSince(start) / 60,
@@ -1852,9 +1855,32 @@ private struct DayTimelineCanvas: View {
     let red: Color
     let blue: Color
     let tags: [String]
+    let screen: [ScreenSpan]
     let onFill: (Date, Date, String?) -> Void
 
     @State private var fillingGap: Gap?
+    private let screenLaneWidth: CGFloat = 8
+
+    private struct ScreenBar {
+        let start: Date
+        let end: Date
+        let category: String?
+        let summaries: [String]
+    }
+
+    /// Adjacent spans with the same label merged, so the lane stays light.
+    private var screenBars: [ScreenBar] {
+        var out: [ScreenBar] = []
+        for s in screen.sorted(by: { $0.start < $1.start }) {
+            if let last = out.last, last.category == s.category, s.start.timeIntervalSince(last.end) < 120 {
+                let sums = last.summaries.contains(s.summary) ? last.summaries : last.summaries + [s.summary]
+                out[out.count - 1] = ScreenBar(start: last.start, end: s.end, category: last.category, summaries: sums)
+            } else {
+                out.append(ScreenBar(start: s.start, end: s.end, category: s.category, summaries: [s.summary]))
+            }
+        }
+        return out
+    }
 
     struct Gap: Identifiable, Equatable {
         let start: Date
@@ -2016,11 +2042,16 @@ private struct DayTimelineCanvas: View {
                 .cornerRadius(4)
 
                 GeometryReader { geo in
+                    let lane = screen.isEmpty ? 0 : screenLaneWidth + 4
+                    let width = geo.size.width - lane
                     ForEach(gaps) { gap in
-                        gapView(gap, range: range, totalHeight: height, width: geo.size.width)
+                        gapView(gap, range: range, totalHeight: height, width: width)
                     }
                     ForEach(Array(laidOut.enumerated()), id: \.offset) { _, item in
-                        block(item, range: range, totalHeight: height, width: geo.size.width)
+                        block(item, range: range, totalHeight: height, width: width)
+                    }
+                    ForEach(Array(screenBars.enumerated()), id: \.offset) { _, bar in
+                        screenBar(bar, totalHeight: height, x: geo.size.width - screenLaneWidth)
                     }
                 }
                 .frame(height: height)
@@ -2063,6 +2094,18 @@ private struct DayTimelineCanvas: View {
             )
             .frame(width: laneWidth, height: h)
             .offset(x: x, y: y)
+    }
+
+    private func screenBar(_ bar: ScreenBar, totalHeight: CGFloat, x: CGFloat) -> some View {
+        let dayStart = Calendar.current.startOfDay(for: day)
+        let y = CGFloat(bar.start.timeIntervalSince(dayStart) / 86400) * totalHeight
+        let h = max(2, CGFloat(bar.end.timeIntervalSince(bar.start) / 86400) * totalHeight)
+        let when = "\(bar.start.formatted(date: .omitted, time: .shortened))–\(bar.end.formatted(date: .omitted, time: .shortened))"
+        return RoundedRectangle(cornerRadius: 2)
+            .fill(bar.category.map(categoryColor) ?? Color.secondary.opacity(0.35))
+            .frame(width: screenLaneWidth, height: h)
+            .offset(x: x, y: y)
+            .help("Screen \(when) · \(bar.category ?? "Unlabeled")\n" + bar.summaries.prefix(4).joined(separator: "\n"))
     }
 
     private func gapView(_ gap: Gap, range: (start: Int, end: Int), totalHeight: CGFloat, width: CGFloat) -> some View {

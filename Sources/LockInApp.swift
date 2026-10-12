@@ -210,6 +210,7 @@ struct FocusApp: App {
                            settings: appSettings, dayStore: days, timerManager: timer, browserStore: browser)
         }
         AwayCoach.shared = AwayCoach(timer: timer, store: store, settings: appSettings, days: days)
+        ScreenCoach.shared = ScreenCoach(timer: timer, settings: appSettings, days: days)
         QuickSwitch.shared?.openRecall = {
             recallCtrl.open(store: recall, settings: appSettings, sessionStore: store)
         }
@@ -220,6 +221,7 @@ struct FocusApp: App {
             queue: .main
         ) { _ in
             timer.saveOnQuit()
+            MainActor.assumeIsolated { ScreenWatcher.shared.save() }
             if SiteBlocker.hasStaleEntries() { SiteBlocker.unblockAll() }
         }
     }

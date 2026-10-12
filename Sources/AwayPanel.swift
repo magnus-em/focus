@@ -20,6 +20,8 @@ final class AwayCoach {
     private var lastNudge = Date.distantPast
     private var nudgesOffDay: Date?
 
+    var isBusy: Bool { panel.isBusy }
+
     init(timer: TimerManager, store: SessionStore, settings: AppSettings, days: DayStore) {
         self.timer = timer
         self.store = store
@@ -55,7 +57,7 @@ final class AwayCoach {
     // MARK: - Away
 
     private func handleReturn(_ span: AwaySpan) {
-        guard settings.awayPrompts, !panel.isBusy else { return }
+        guard settings.awayPrompts, !panel.isBusy, !(ScreenCoach.shared?.isBusy ?? false) else { return }
         let minMinutes = Double(settings.awayPromptMinutes)
         let overnight = span.minutes >= 180 && spansNight(span)
 
@@ -132,6 +134,7 @@ final class AwayCoach {
         let now = Date()
         let cal = Calendar.current
         guard settings.idleNudge, days.isDayStarted, !timer.isActive, !monitor.isAway, !panel.isBusy,
+              !(ScreenCoach.shared?.isBusy ?? false),
               now.timeIntervalSince(lastNudge) >= 20 * 60,
               nudgesOffDay.map({ !cal.isDateInToday($0) }) ?? true else { return }
 

@@ -150,6 +150,11 @@ struct SettingsView: View {
 
                 Divider()
 
+                SectionLabel("SCREEN")
+                ScreenSettings(settings: settings)
+
+                Divider()
+
                 SectionLabel("AWAY & GAPS")
                 ToggleRow(label: "Ask when I come back", isOn: $settings.awayPrompts)
                 if settings.awayPrompts {
@@ -1012,5 +1017,37 @@ private struct CategoriesEditor: View {
 
     private func hours(_ m: Double) -> String {
         m >= 60 ? "\(Int(m / 60))h" : m > 0 ? "\(Int(m))m" : ""
+    }
+}
+
+private struct ScreenSettings: View {
+    @ObservedObject var settings: AppSettings
+    @ObservedObject private var watcher = ScreenWatcher.shared
+
+    var body: some View {
+        ToggleRow(label: "Watch what's on screen", isOn: $settings.screenWatch)
+        if settings.screenWatch {
+            ToggleRow(label: "Suggest switching categories", isOn: $settings.screenSuggest)
+            if settings.screenSuggest {
+                IntRow(label: "After the screen shows it for", value: $settings.screenSuggestMinutes, range: 2...20, suffix: "min")
+            }
+            HStack(spacing: 6) {
+                Text(watcher.status).font(.system(size: 11)).foregroundStyle(.secondary)
+                Spacer()
+                if watcher.status.hasPrefix("Needs") {
+                    Button("Grant…") { watcher.requestPermission() }.controlSize(.small)
+                }
+            }
+            let accepted = UserDefaults.standard.integer(forKey: ScreenCoach.acceptedKey)
+            let declined = UserDefaults.standard.integer(forKey: ScreenCoach.declinedKey)
+            if accepted + declined > 0 {
+                Text("Suggestions accepted: \(accepted) of \(accepted + declined)")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+        Text("Every 30s the front window is read on-device with Apple Vision and labeled by Apple Intelligence. Screenshots and text are never saved or sent anywhere; only the window title and a one-line summary are kept on this Mac for 30 days. Passwords, Messages, Mail, WhatsApp, Telegram and FaceTime are never captured. Picking \"Still X\" teaches it.")
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
