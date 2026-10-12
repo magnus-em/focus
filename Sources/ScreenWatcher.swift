@@ -15,6 +15,8 @@ struct ScreenSpan: Codable, Equatable, Identifiable {
     var title: String
     var summary: String
     var category: String?
+    /// Keyboard/mouse in use at some snapshot in this span (nil in old data).
+    var active: Bool?
     var id: Date { start }
 }
 
@@ -153,9 +155,11 @@ final class ScreenWatcher: ObservableObject {
         guard let settings, settings.screenWatch else { status = "Off"; return }
         guard !busy else { return }
         guard !PresenceMonitor.shared.isAway else { status = "Paused while you're away"; return }
+        let idle = PresenceMonitor.idleSeconds
+        guard idle < 300 else { status = "Paused, no keyboard or mouse for 5 min"; return }
         // During Chores etc. a lit screen says nothing, but hands on the
         // keyboard/mouse mean you're back, so watch (and suggest) again.
-        if let c = runningCategory(), Self.offScreenCategories.contains(c), PresenceMonitor.idleSeconds > 30 {
+        if let c = runningCategory(), Self.offScreenCategories.contains(c), idle > 30 {
             status = "Paused during \(c) until you use the Mac"
             return
         }
@@ -166,7 +170,8 @@ final class ScreenWatcher: ObservableObject {
         let now = Date()
 
         if Self.privateApps.contains(bundle) {
-            record(ScreenSample(date: now, app: appName, bundleID: bundle, title: "", summary: "Private", category: nil))
+            record(ScreenSample(date: now, app: appName, bundleID: bundle, title: "", summary: "Private", category: nil,
+                                active: idle < 90))
             return
         }
 
@@ -189,7 +194,7 @@ final class ScreenWatcher: ObservableObject {
         let (category, summary) = await classify(app: appName, bundle: bundle, title: shot.title, text: text)
         status = Self.modelAvailable ? "Watching" : "Watching · Apple Intelligence off, learning from your choices only"
         record(ScreenSample(date: now, app: appName, bundleID: bundle, title: shot.title,
-                            summary: summary, category: category))
+                            summary: summary, category: category, active: PresenceMonitor.idleSeconds < 90))
     }
 
     private func record(_ s: ScreenSample) {
@@ -201,16 +206,22 @@ final class ScreenWatcher: ObservableObject {
            s.date.timeIntervalSince(last.end) < Self.interval {
             last.end = end
             last.summary = s.summary
+            last.active = (last.active ?? false) || s.active
             spans[spans.count - 1] = last
         } else {
             if let last = spans.last, last.end > s.date { spans[spans.count - 1].end = s.date }
             spans.append(ScreenSpan(start: s.date, end: end, app: s.app, bundleID: s.bundleID,
-                                    title: s.title, summary: s.summary, category: s.category))
+                                    title: s.title, summary: s.summary, category: s.category, active: s.active))
         }
         unsavedSamples += 1
         if unsavedSamples >= 4 { save() }
         onSample?(s)
         Task { await updateNotes() }
+    }
+
+    /// After sleep, lid close, lock or display off the old evidence is stale.
+    func resetEvidence() {
+        samples.removeAll()
     }
 
     func save() {
@@ -293,12 +304,20 @@ final class ScreenWatcher: ObservableObject {
     /// Spans grouped into stretches of one kind of work. Blips under a minute
     /// between two spans of the same category don't split a block.
     /// Mac blocks and iPhone/iPad blocks, oldest first.
+    /// While an iPad screen-notes block runs, Mac snapshots with no keyboard or
+    /// mouse input are just a lit screen nobody's looking at: drop them so the
+    /// same time isn't logged twice. Used-at-the-same-time stays.
     func activities(from: Date, to: Date) -> [ScreenActivity] {
-        (macActivities(from: from, to: to) + deviceBlocks(from: from, to: to)).sorted { $0.start < $1.start }
+        let devices = deviceBlocks(from: from, to: to)
+        let watched = devices.filter { $0.deviceNotes != nil }.map { DateInterval(start: $0.start, end: max($0.end, $0.start)) }
+        let mac = macActivities(from: from, to: to, excluding: watched)
+        return (mac + devices).sorted { $0.start < $1.start }
     }
 
-    private func macActivities(from: Date, to: Date) -> [ScreenActivity] {
-        let list = spans(from: from, to: to).sorted { $0.start < $1.start }
+    private func macActivities(from: Date, to: Date, excluding watched: [DateInterval] = []) -> [ScreenActivity] {
+        let list = spans(from: from, to: to).sorted { $0.start < $1.start }.filter { s in
+            s.active != false || !watched.contains { $0.intersects(DateInterval(start: s.start, end: max(s.end, s.start))) }
+        }
         var smoothed = list.map(\.category)
         if list.count >= 3 {
             for i in 1..<(list.count - 1) {
@@ -544,6 +563,9 @@ struct ScreenSample {
     let title: String
     let summary: String
     let category: String?
+    /// Keyboard/mouse used in the last 90s: only these count as evidence for
+    /// a suggestion (a PDF left open while you walk away isn't "doing Math").
+    var active = true
     var memoryKey: String { ScreenWatcher.memoryKey(bundle: bundleID, title: title) }
 }
 
@@ -561,6 +583,7 @@ final class ScreenCoach {
     private let days: DayStore
     private let panel = AwayPanel()
     private var snoozed: [String: Date] = [:]
+    private var observers: [NSObjectProtocol] = []
 
     static let acceptedKey = "screenSuggest.accepted"
     static let declinedKey = "screenSuggest.declined"
@@ -575,6 +598,19 @@ final class ScreenCoach {
             return timer.currentLabel
         }
         watcher.start(settings: settings)
+        let reset: (Notification) -> Void = { [weak self] _ in
+            Task { @MainActor in
+                self?.watcher.resetEvidence()
+                self?.panel.dismiss()
+            }
+        }
+        let ws = NSWorkspace.shared.notificationCenter
+        observers = [
+            ws.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main, using: reset),
+            ws.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main, using: reset),
+            DistributedNotificationCenter.default().addObserver(
+                forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main, using: reset),
+        ]
     }
 
     /// AwayCoach checks this from main-thread timers that aren't actor-annotated.
@@ -587,17 +623,21 @@ final class ScreenCoach {
         let summary: String
     }
 
-    /// Trailing stretch where ≥ 80% of samples say the same category; two
-    /// misses in a row or a 3-minute hole ends it.
-    private func trailingRun() -> Run? {
+    /// Trailing stretch where ≥ 80% of active samples say the same category.
+    /// Two misses in a row, a 60s hole (sleep, away, paused) or the moment you
+    /// picked the current category ends it: what was on screen before your
+    /// own choice isn't evidence against it.
+    private func trailingRun(notBefore floor: Date?) -> Run? {
         let samples = watcher.samples
-        guard let last = samples.last, let c = last.category else { return nil }
+        guard let last = samples.last, last.active, let c = last.category else { return nil }
         var start = last.date, hits = 0, total = 0, missStreak = 0
         var keys: Set<String> = []
         var newer = last.date
         for s in samples.reversed() {
-            if newer.timeIntervalSince(s.date) > 180 { break }
+            if newer.timeIntervalSince(s.date) > 60 { break }
+            if let floor, s.date < floor { break }
             newer = s.date
+            guard s.active else { continue }
             total += 1
             if s.category == c {
                 hits += 1; missStreak = 0; start = s.date; keys.insert(s.memoryKey)
@@ -613,7 +653,8 @@ final class ScreenCoach {
 
     private func consider() {
         guard settings.screenSuggest, days.isDayStarted, !panel.isBusy,
-              !(AwayCoach.shared?.isBusy ?? false), let run = trailingRun() else { return }
+              !(AwayCoach.shared?.isBusy ?? false),
+              let run = trailingRun(notBefore: timer.isActive ? timer.sessionStartTime : nil) else { return }
         if timer.isActive && !timer.isRunning { return }
         let running: String? = timer.isActive ? (timer.isOnBreak ? "Break" : timer.currentLabel) : nil
         guard running != run.category, (snoozed[run.category] ?? .distantPast) < Date() else { return }
@@ -640,7 +681,11 @@ final class ScreenCoach {
         }
         m.onKeep = { [weak self] in
             guard let self else { return }
-            if let running, running != "Break" { ScreenWatcher.learn(run.keys, as: running) }
+            // Life categories (Class, Social…) aren't defined by the screen, so
+            // "Still Class" says nothing about what this window is.
+            if let running, running != "Break", !FocusCategories.isLife(running) {
+                ScreenWatcher.learn(run.keys, as: running)
+            }
             self.decline(run.category)
         }
         panel.show(m)
