@@ -25,6 +25,8 @@ targets:
         product: FocusCore
       - target: FocusWidgets
         embed: true
+      - target: FocusBroadcast
+        embed: true
     info:
       path: FocusPad/Info.plist
       properties:
@@ -88,6 +90,34 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.magnus.focus.iPad.widgets
         CODE_SIGN_ENTITLEMENTS: FocusWidgets/FocusWidgets.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: MUR9TJXP6S
+        SWIFT_VERSION: "5.9"
+        GENERATE_INFOPLIST_FILE: NO
+
+  FocusBroadcast:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: FocusBroadcast
+    dependencies:
+      - package: FocusCore
+        product: FocusCore
+      - sdk: ReplayKit.framework
+    info:
+      path: FocusBroadcast/Info.plist
+      properties:
+        CFBundleDisplayName: Focus Screen Notes
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SampleHandler
+          RPBroadcastProcessMode: RPBroadcastProcessModeSampleBuffer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.magnus.focus.iPad.broadcast
+        CODE_SIGN_ENTITLEMENTS: FocusBroadcast/FocusBroadcast.entitlements
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: MUR9TJXP6S
         SWIFT_VERSION: "5.9"

@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import CloudKit
+import ReplayKit
 import FocusCore
 
 struct SettingsScreen: View {
@@ -187,6 +188,20 @@ struct SettingsScreen: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             .onAppear { forceSyncProbe() }
+
+            Section("Activity Log on the Mac") {
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    HStack {
+                        Text("Screen notes")
+                        Spacer()
+                        BroadcastPickerButton().frame(width: 44, height: 44)
+                    }
+                    Text("Tap the button and Start Broadcast. Every 15s the screen is read on this iPad and turned into study notes by Apple Intelligence; only the title and notes go to your Mac's activity log. Stop it from the red pill or Control Center.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Text("App tracking: in Shortcuts → Automation → New → App, pick the apps, choose Is Opened (and another for Is Closed), Run Immediately, then add Focus's \"Log App\" action with the app's name.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
 
             Section("Log Manual Session") {
                 Stepper(value: $manualMinutes, in: 1...480, step: 5) {
@@ -381,4 +396,16 @@ struct SettingsScreen: View {
         for i in (try? ctx.fetch(FetchDescriptor<StoredScratchItem>())) ?? [] { ctx.delete(i) }
         try? ctx.save()
     }
+}
+
+/// System picker that starts the Focus screen-notes broadcast.
+private struct BroadcastPickerButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> RPSystemBroadcastPickerView {
+        let v = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 44, height: 44))
+        v.preferredExtension = "com.magnus.focus.iPad.broadcast"
+        v.showsMicrophoneButton = false
+        return v
+    }
+
+    func updateUIView(_ view: RPSystemBroadcastPickerView, context: Context) {}
 }

@@ -7,6 +7,8 @@ import FoundationModels
 /// notes per block of work.
 @available(macOS 26.0, iOS 26.0, *)
 public enum ScreenLabeler {
+    public static var modelAvailable: Bool { SystemLanguageModel.default.isAvailable }
+
     /// Tuned against the 3B on-device model: without these it calls a discrete
     /// math problem set "Reading".
     public static let hints: [String: String] = [
