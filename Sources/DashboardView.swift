@@ -352,7 +352,6 @@ struct DashboardView: View {
     private var rightPanel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                dayTimelineSection
                 ScreenActivitySection(
                     watcher: screenWatcher, day: selectedDay,
                     // The running block counts from its start to now: pauses inside
@@ -364,6 +363,7 @@ struct DashboardView: View {
                         .filter { Calendar.current.isDate($0.startTime, inSameDayAs: selectedDay)
                             || Calendar.current.isDate($0.startTime.addingTimeInterval($0.durationMinutes * 60), inSameDayAs: selectedDay) }
                 )
+                dayTimelineSection
                 WhereTimeWentSection(
                     store: sessionStore, settings: settings,
                     live: [timerManager.currentInProgressSession, timerManager.currentInProgressBreak].compactMap { $0 },

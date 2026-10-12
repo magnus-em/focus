@@ -51,14 +51,25 @@ final class ScreenWatcher: ObservableObject {
     private var unsavedSamples = 0
     private var lastSampleAt = Date.distantPast
     private var activationObserver: NSObjectProtocol?
-    /// Model-written task names for activity blocks, keyed by block start.
-    @Published private(set) var activityNames: [Date: ActivityName] = [:]
-    private var naming = false
+    /// Study notes per activity block, keyed by block start.
+    @Published private(set) var activityNotes: [Date: ActivityNotes] = [:]
+    private var noting = false
+    /// Distinct page text from the last few hours, in memory only: the notes
+    /// are written from it and it's never saved.
+    private var pageTexts: [PageText] = []
 
-    struct ActivityName: Codable {
-        var name: String
-        var spanCount: Int
-        var at: Date
+    struct ActivityNotes: Codable {
+        var title: String
+        var bullets: [String]
+        var updatedAt: Date
+        /// Newest page text already folded into the notes.
+        var textThrough: Date
+    }
+
+    private struct PageText {
+        let date: Date
+        let window: String
+        let text: String
     }
 
     private let fileURL: URL = {
@@ -68,16 +79,16 @@ final class ScreenWatcher: ObservableObject {
         return dir.appendingPathComponent("screen.json")
     }()
 
-    private var namesURL: URL { fileURL.deletingLastPathComponent().appendingPathComponent("screen-activities.json") }
+    private var notesURL: URL { fileURL.deletingLastPathComponent().appendingPathComponent("screen-notes.json") }
 
     private init() {
         if let data = try? Data(contentsOf: fileURL),
            let saved = try? JSONDecoder().decode([ScreenSpan].self, from: data) {
             spans = saved
         }
-        if let data = try? Data(contentsOf: namesURL),
-           let saved = try? JSONDecoder().decode([Date: ActivityName].self, from: data) {
-            activityNames = saved
+        if let data = try? Data(contentsOf: notesURL),
+           let saved = try? JSONDecoder().decode([Date: ActivityNotes].self, from: data) {
+            activityNotes = saved
         }
     }
 
@@ -136,6 +147,7 @@ final class ScreenWatcher: ObservableObject {
         defer { busy = false }
         guard let shot = await Self.captureFrontWindow(pid: app.processIdentifier) else { return }
         let text = await Task.detached(priority: .utility) { Self.recognizeText(shot.image) }.value
+        keepPageText(text, window: shot.title.isEmpty ? appName : "\(appName): \(shot.title)", at: now)
         let (category, summary) = await classify(app: appName, bundle: bundle, title: shot.title, text: text)
         status = Self.modelAvailable ? "Watching" : "Watching · Apple Intelligence off, learning from your choices only"
         record(ScreenSample(date: now, app: appName, bundleID: bundle, title: shot.title,
@@ -160,7 +172,7 @@ final class ScreenWatcher: ObservableObject {
         unsavedSamples += 1
         if unsavedSamples >= 4 { save() }
         onSample?(s)
-        Task { await nameNextActivity() }
+        Task { await updateNotes() }
     }
 
     func save() {
@@ -168,8 +180,8 @@ final class ScreenWatcher: ObservableObject {
         let cutoff = Date().addingTimeInterval(-Double(Self.keepDays) * 86400)
         spans.removeAll { $0.end < cutoff }
         if let data = try? JSONEncoder().encode(spans) { try? data.write(to: fileURL, options: .atomic) }
-        activityNames = activityNames.filter { $0.key >= cutoff }
-        if let data = try? JSONEncoder().encode(activityNames) { try? data.write(to: namesURL, options: .atomic) }
+        activityNotes = activityNotes.filter { $0.key >= cutoff }
+        if let data = try? JSONEncoder().encode(activityNotes) { try? data.write(to: notesURL, options: .atomic) }
     }
 
     // MARK: - Activities
@@ -200,31 +212,51 @@ final class ScreenWatcher: ObservableObject {
     }
 
     /// Block edges can move a little as new snapshots smooth older ones, so
-    /// any name keyed inside the block still counts.
-    func name(for a: ScreenActivity) -> String {
-        if let n = activityNames[a.start] { return n.name }
-        return activityNames.filter { $0.key >= a.start && $0.key < a.end }.min { $0.key < $1.key }?.value.name ?? a.topTitle
+    /// notes keyed anywhere inside the block still belong to it.
+    func notes(for a: ScreenActivity) -> ActivityNotes? {
+        if let n = activityNotes[a.start] { return n }
+        return activityNotes.filter { $0.key >= a.start && $0.key < a.end }.min { $0.key < $1.key }?.value
     }
 
-    /// Names one block per sample: the live one as it grows, then any unnamed.
-    private func nameNextActivity() async {
-        guard !naming, #available(macOS 26.0, *), Self.modelAvailable else { return }
+    func name(for a: ScreenActivity) -> String { notes(for: a)?.title ?? a.topTitle }
+
+    private func keepPageText(_ text: String, window: String, at date: Date) {
+        guard text.count >= 40 else { return }
+        if pageTexts.suffix(40).contains(where: { $0.window == window && $0.text == text }) { return }
+        pageTexts.append(PageText(date: date, window: window, text: text))
+        pageTexts.removeAll { date.timeIntervalSince($0.date) > 4 * 3600 }
+    }
+
+    /// One model call per sample at most: first a just-finished block gets its
+    /// last pages folded in, then the live block every 90s as new pages appear.
+    private func updateNotes() async {
+        guard !noting, #available(macOS 26.0, *), Self.modelAvailable else { return }
         let now = Date()
-        let blocks = activities(from: now.addingTimeInterval(-36 * 3600), to: now)
-            .filter { $0.category != nil && $0.end.timeIntervalSince($0.start) >= 120 }
-        let stale = blocks.reversed().first { b in
-            guard let (key, n) = activityNames.filter({ $0.key >= b.start && $0.key < b.end }).min(by: { $0.key < $1.key })
-            else { return true }
-            // Rename rarely: when the block has doubled, at most every 10 minutes.
-            if key != b.start { activityNames[b.start] = n; activityNames[key] = nil }
-            return b.spans.count >= n.spanCount * 2 && now.timeIntervalSince(n.at) > 600
+        let blocks = activities(from: now.addingTimeInterval(-4 * 3600), to: now)
+            .filter { $0.end.timeIntervalSince($0.start) >= 90 }
+        func fresh(_ b: ScreenActivity) -> [PageText] {
+            let since = notes(for: b)?.textThrough ?? .distantPast
+            return pageTexts.filter { $0.date >= b.start && $0.date < b.end && $0.date > since }
         }
-        guard let b = stale else { return }
-        naming = true
-        defer { naming = false }
-        if let name = await ScreenModel.nameActivity(category: b.category ?? "", summaries: b.distinctSummaries,
-                                                     titles: b.distinctTitles) {
-            activityNames[b.start] = ActivityName(name: name, spanCount: b.spans.count, at: now)
+        let live = blocks.last.flatMap { now.timeIntervalSince($0.end) < 60 ? $0 : nil }
+        let target = blocks.first { $0.id != live?.id && !fresh($0).isEmpty }
+            ?? live.flatMap { b in
+                let last = notes(for: b)?.updatedAt ?? .distantPast
+                return !fresh(b).isEmpty && now.timeIntervalSince(last) >= 90 ? b : nil
+            }
+        guard let b = target else { return }
+        let pages = fresh(b)
+        noting = true
+        defer { noting = false }
+        let previous = notes(for: b)
+        if let (title, bullets) = await ScreenModel.studyNotes(
+            category: b.category ?? "Unlabeled", windows: b.distinctTitles,
+            previous: previous.map { ($0.title, $0.bullets) },
+            pages: pages.map { ($0.window, $0.text) }
+        ) {
+            for k in activityNotes.keys where k >= b.start && k < b.end { activityNotes[k] = nil }
+            activityNotes[b.start] = ActivityNotes(title: title, bullets: bullets, updatedAt: now,
+                                                   textThrough: pages.map(\.date).max() ?? now)
         }
     }
 
@@ -387,19 +419,41 @@ private enum ScreenModel {
         "Social": "chatting with friends",
     ]
 
-    static func nameActivity(category: String, summaries: [String], titles: [String]) async -> String? {
+    /// Plain-text output: with a schema the 3B model lists bare terms
+    /// ("Euler tour") instead of statements you could review from.
+    static func studyNotes(category: String, windows: [String], previous: (String, [String])?,
+                           pages: [(window: String, text: String)]) async -> (String, [String])? {
+        var budget = 2400
+        var chunks: [String] = []
+        for p in pages.reversed() where budget > 200 {
+            let t = String(p.text.prefix(min(900, budget)))
+            budget -= t.count
+            chunks.insert("--- \(p.window)\n\(t)", at: 0)
+        }
+        let prev = previous.map { "\($0.0)\n" + $0.1.map { "- \($0)" }.joined(separator: "\n") } ?? "(none)"
         let prompt = """
         Category: \(category)
-        Windows: \(titles.joined(separator: "; "))
-        Moment-to-moment notes: \(summaries.joined(separator: "; "))
+        Windows: \(windows.joined(separator: "; "))
+        Notes so far:
+        \(prev)
+        New screen text:
+        \(chunks.joined(separator: "\n"))
         """
         let session = LanguageModelSession(instructions: """
-        Name the task a student was working on during this stretch, using only the windows and notes given. \
-        Under 10 words: the subject, document, problem or project actually named there. Never add details that aren't in the input. No ending period.
+        You keep a study log for a student. From the text that was on their screen, write study notes: what they learned or worked on, as the student would jot it down to review later.
+        Format: first line is a title under 8 words. Then 2 to 6 lines starting with "- ", each a complete sentence explaining one idea, result, problem or step, under 25 words.
+        Update the notes so far with the new text: keep what still holds, add what's new, drop repeats. If the screen is entertainment or admin, say plainly what was watched or done.
+        Use only facts in the input. Never invent. Never just list terms.
         """)
         guard let r = try? await session.respond(to: prompt, options: GenerationOptions(temperature: 0)) else { return nil }
-        let line = r.content.trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "\"."))).components(separatedBy: "\n").first ?? ""
-        return line.isEmpty ? nil : String(line.prefix(80))
+        let lines = r.content.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let bulletMarks: [String] = ["- ", "• ", "* "]
+        let bullets = lines.compactMap { l in bulletMarks.first { l.hasPrefix($0) }.map { String(l.dropFirst($0.count)) } }
+        let title = lines.first { l in !bulletMarks.contains { l.hasPrefix($0) } }?
+            .trimmingCharacters(in: .init(charactersIn: "#*:\" ")) ?? ""
+        guard !title.isEmpty || !bullets.isEmpty else { return nil }
+        return (String((title.isEmpty ? windows.first ?? category : title).prefix(80)), Array(bullets.prefix(6)))
     }
 
     static func classify(app: String, title: String, text: String, categories: [String]) async -> (String?, String)? {
