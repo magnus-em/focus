@@ -162,10 +162,12 @@ struct ScreenActivitySection: View {
                     if let notes, !notes.bullets.isEmpty {
                         bulletList(notes.bullets, size: 11)
                     }
-                    Text(a.apps.prefix(3).joined(separator: " · "))
-                        .font(.system(size: 9.5))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+                    HStack(spacing: 3) {
+                        if let d = a.device { Image(systemName: d == "iPad" ? "ipad" : "iphone") }
+                        Text(a.apps.prefix(3).joined(separator: " · ")).lineLimit(1)
+                    }
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.tertiary)
                 }
             }
             .contentShape(Rectangle())

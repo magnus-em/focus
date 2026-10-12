@@ -1,4 +1,5 @@
 import AppKit
+import CloudKit
 import FoundationModels
 import FocusCore
 import ScreenCaptureKit
@@ -56,6 +57,7 @@ final class ScreenWatcher: ObservableObject {
     private var windowLabel: [String: (category: String, against: Int)] = [:]
     private var unsavedSamples = 0
     private var lastSampleAt = Date.distantPast
+    private var otherScreensReadAt: [String: Date] = [:]
     private var activationObserver: NSObjectProtocol?
     /// Study notes per activity block, keyed by block start.
     @Published private(set) var activityNotes: [Date: ActivityNotes] = [:]
@@ -85,12 +87,22 @@ final class ScreenWatcher: ObservableObject {
         return dir.appendingPathComponent("screen.json")
     }()
 
+    /// iPhone/iPad app opens and screen-broadcast blocks, from iCloud.
+    @Published private(set) var deviceActivities: [DeviceActivity] = []
+    private var devicePoll: Timer?
+    private var devicesURL: URL { fileURL.deletingLastPathComponent().appendingPathComponent("devices.json") }
+    private static let deviceTokenKey = "deviceActivityToken"
+
     private var notesURL: URL { fileURL.deletingLastPathComponent().appendingPathComponent("screen-notes.json") }
 
     private init() {
         if let data = try? Data(contentsOf: fileURL),
            let saved = try? JSONDecoder().decode([ScreenSpan].self, from: data) {
             spans = saved
+        }
+        if let data = try? Data(contentsOf: devicesURL),
+           let saved = try? JSONDecoder().decode([DeviceActivity].self, from: data) {
+            deviceActivities = saved
         }
         if let data = try? Data(contentsOf: notesURL),
            let saved = try? JSONDecoder().decode([Date: ActivityNotes].self, from: data) {
@@ -105,6 +117,10 @@ final class ScreenWatcher: ObservableObject {
         tick = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.sample() }
         }
+        devicePoll = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.pollDevices() }
+        }
+        Task { await pollDevices() }
         // Catch app switches right away instead of waiting for the next tick.
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
@@ -137,7 +153,12 @@ final class ScreenWatcher: ObservableObject {
         guard let settings, settings.screenWatch else { status = "Off"; return }
         guard !busy else { return }
         guard !PresenceMonitor.shared.isAway else { status = "Paused while you're away"; return }
-        if let c = runningCategory(), Self.offScreenCategories.contains(c) { status = "Paused during \(c)"; return }
+        // During Chores etc. a lit screen says nothing, but hands on the
+        // keyboard/mouse mean you're back, so watch (and suggest) again.
+        if let c = runningCategory(), Self.offScreenCategories.contains(c), PresenceMonitor.idleSeconds > 30 {
+            status = "Paused during \(c) until you use the Mac"
+            return
+        }
         guard CGPreflightScreenCaptureAccess() else { status = "Needs Screen Recording permission"; return }
         guard let app = NSWorkspace.shared.frontmostApplication, let bundle = app.bundleIdentifier,
               !Self.ignoredApps.contains(bundle) else { return }
@@ -152,9 +173,19 @@ final class ScreenWatcher: ObservableObject {
         busy = true
         lastSampleAt = now
         defer { busy = false }
-        guard let shot = await Self.captureFrontWindow(pid: app.processIdentifier) else { return }
+        // Other monitors' windows are re-read at most once a minute each.
+        otherScreensReadAt = otherScreensReadAt.filter { now.timeIntervalSince($0.value) < 3600 }
+        let recentOthers = Set(otherScreensReadAt.filter { now.timeIntervalSince($0.value) < 60 }.keys)
+        guard let capture = await Self.captureWindows(pid: app.processIdentifier, skipOthers: recentOthers) else { return }
+        let shot = capture.front
         let text = await Task.detached(priority: .utility) { Self.recognizeText(shot.image) }.value
         keepPageText(text, window: shot.title.isEmpty ? appName : "\(appName): \(shot.title)", at: now)
+        for (otherApp, other) in capture.others {
+            let key = "\(otherApp): \(other.title)"
+            otherScreensReadAt[key] = now
+            let otherText = await Task.detached(priority: .utility) { Self.recognizeText(other.image) }.value
+            keepPageText(otherText, window: "\(key) (other screen)", at: now)
+        }
         let (category, summary) = await classify(app: appName, bundle: bundle, title: shot.title, text: text)
         status = Self.modelAvailable ? "Watching" : "Watching · Apple Intelligence off, learning from your choices only"
         record(ScreenSample(date: now, app: appName, bundleID: bundle, title: shot.title,
@@ -191,11 +222,82 @@ final class ScreenWatcher: ObservableObject {
         if let data = try? JSONEncoder().encode(activityNotes) { try? data.write(to: notesURL, options: .atomic) }
     }
 
+    // MARK: - iPhone / iPad
+
+    private func pollDevices() async {
+        let d = UserDefaults.standard
+        let token = d.data(forKey: Self.deviceTokenKey).flatMap {
+            try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: $0)
+        }
+        guard let (changes, newToken) = try? await DeviceActivityCloud.changes(since: token) else { return }
+        if let newToken, let data = try? NSKeyedArchiver.archivedData(withRootObject: newToken, requiringSecureCoding: true) {
+            d.set(data, forKey: Self.deviceTokenKey)
+        }
+        guard !changes.isEmpty else { return }
+        var byID = Dictionary(deviceActivities.map { ($0.id, $0) }, uniquingKeysWith: { $1 })
+        for var c in changes {
+            if c.kind == .open, c.category == nil { c.category = await categoryForApp(c.app, device: c.device) }
+            byID[c.id] = c
+        }
+        let cutoff = Date().addingTimeInterval(-Double(Self.keepDays) * 86400)
+        deviceActivities = byID.values.filter { $0.date > cutoff }.sorted { $0.date < $1.date }
+        if let data = try? JSONEncoder().encode(deviceActivities) { try? data.write(to: devicesURL, options: .atomic) }
+    }
+
+    private func categoryForApp(_ app: String, device: String) async -> String? {
+        let candidates = candidateCategories()
+        if let known = Self.memory[Self.memoryKey(bundle: "ios", title: app)], candidates.contains(known) { return known }
+        guard #available(macOS 26.0, *), Self.modelAvailable else { return nil }
+        return await ScreenLabeler.classify(app: app, title: "\(app) app on an \(device)", text: "", categories: candidates)?.0
+    }
+
+    /// App opens become spans that last until the next open/close on that
+    /// device (at most 30 min); runs of the same app form one block.
+    private func deviceBlocks(from: Date, to: Date) -> [ScreenActivity] {
+        var out: [ScreenActivity] = []
+        let inRange = deviceActivities.filter { ($0.end ?? $0.date) > from && $0.date < to }
+        for b in inRange where b.kind == .block {
+            let end = b.end ?? b.date
+            let span = ScreenSpan(start: b.date, end: end, app: "\(b.device) screen", bundleID: "ios:\(b.device):screen",
+                                  title: "", summary: b.title, category: b.category)
+            var a = ScreenActivity(start: b.date, end: end, category: b.category, spans: [span])
+            a.device = b.device
+            a.deviceNotes = ActivityNotes(title: b.title, bullets: b.bullets, updatedAt: end, textThrough: end)
+            out.append(a)
+        }
+        for device in Set(inRange.map(\.device)) {
+            let events = deviceActivities.filter { $0.device == device && $0.kind != .block }
+            for (i, e) in events.enumerated() where e.kind == .open && e.date < to {
+                let next = i + 1 < events.count ? events[i + 1].date : Date()
+                let end = min(next, e.date.addingTimeInterval(30 * 60))
+                guard end > from, end.timeIntervalSince(e.date) >= 20 else { continue }
+                let span = ScreenSpan(start: e.date, end: end, app: "\(device) · \(e.app)", bundleID: "ios:\(device):\(e.app)",
+                                      title: "", summary: e.app, category: e.category)
+                if var last = out.last, last.device == device, last.spans.last?.bundleID == span.bundleID,
+                   e.date.timeIntervalSince(last.end) < 120 {
+                    last.end = end
+                    last.spans.append(span)
+                    out[out.count - 1] = last
+                } else {
+                    var a = ScreenActivity(start: e.date, end: end, category: e.category, spans: [span])
+                    a.device = device
+                    out.append(a)
+                }
+            }
+        }
+        return out
+    }
+
     // MARK: - Activities
 
     /// Spans grouped into stretches of one kind of work. Blips under a minute
     /// between two spans of the same category don't split a block.
+    /// Mac blocks and iPhone/iPad blocks, oldest first.
     func activities(from: Date, to: Date) -> [ScreenActivity] {
+        (macActivities(from: from, to: to) + deviceBlocks(from: from, to: to)).sorted { $0.start < $1.start }
+    }
+
+    private func macActivities(from: Date, to: Date) -> [ScreenActivity] {
         let list = spans(from: from, to: to).sorted { $0.start < $1.start }
         var smoothed = list.map(\.category)
         if list.count >= 3 {
@@ -221,6 +323,8 @@ final class ScreenWatcher: ObservableObject {
     /// Block edges can move a little as new snapshots smooth older ones, so
     /// notes keyed anywhere inside the block still belong to it.
     func notes(for a: ScreenActivity) -> ActivityNotes? {
+        if let n = a.deviceNotes { return n }
+        if a.device != nil { return nil }
         if let n = activityNotes[a.start] { return n }
         return activityNotes.filter { $0.key >= a.start && $0.key < a.end }.min { $0.key < $1.key }?.value
     }
@@ -239,7 +343,7 @@ final class ScreenWatcher: ObservableObject {
     private func updateNotes() async {
         guard !noting, #available(macOS 26.0, *), Self.modelAvailable else { return }
         let now = Date()
-        let blocks = activities(from: now.addingTimeInterval(-4 * 3600), to: now)
+        let blocks = macActivities(from: now.addingTimeInterval(-4 * 3600), to: now)
             .filter { $0.end.timeIntervalSince($0.start) >= 90 }
         func fresh(_ b: ScreenActivity) -> [PageText] {
             let since = notes(for: b)?.textThrough ?? .distantPast
@@ -256,7 +360,7 @@ final class ScreenWatcher: ObservableObject {
         noting = true
         defer { noting = false }
         let previous = notes(for: b)
-        if let (title, bullets) = await ScreenModel.studyNotes(
+        if let (title, bullets) = await ScreenLabeler.studyNotes(
             category: b.category ?? "Unlabeled", windows: b.distinctTitles,
             previous: previous.map { ($0.title, $0.bullets) },
             pages: pages.map { ($0.window, $0.text) }
@@ -274,29 +378,60 @@ final class ScreenWatcher: ObservableObject {
         let title: String
     }
 
-    private static func captureFrontWindow(pid: pid_t) async -> Shot? {
+    private struct Capture {
+        let front: Shot
+        /// Top window on each other display: context for notes, not the label.
+        let others: [(app: String, shot: Shot)]
+    }
+
+    private static func captureWindows(pid: pid_t, skipOthers: Set<String>) async -> Capture? {
         // CGWindowList is front-to-back; SCShareableContent isn't ordered.
         let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] ?? []
-        let front = info.first { w in
-            guard (w[kCGWindowOwnerPID as String] as? Int32) == pid,
-                  (w[kCGWindowLayer as String] as? Int) == 0,
-                  let b = w[kCGWindowBounds as String] as? [String: CGFloat] else { return false }
-            return (b["Width"] ?? 0) > 200 && (b["Height"] ?? 0) > 150
+        let windows: [(id: CGWindowID, pid: pid_t, bounds: CGRect, name: String)] = info.compactMap { w in
+            guard (w[kCGWindowLayer as String] as? Int) == 0,
+                  let id = w[kCGWindowNumber as String] as? CGWindowID,
+                  let owner = w[kCGWindowOwnerPID as String] as? Int32,
+                  let dict = w[kCGWindowBounds as String] as? NSDictionary,
+                  let b = CGRect(dictionaryRepresentation: dict),
+                  b.width > 200, b.height > 150 else { return nil }
+            return (id, owner, b, w[kCGWindowName as String] as? String ?? "")
         }
-        guard let id = front?[kCGWindowNumber as String] as? CGWindowID,
+        guard let front = windows.first(where: { $0.pid == pid }),
               let content = try? await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true),
-              let window = content.windows.first(where: { $0.windowID == id }) else { return nil }
+              let frontShot = await shoot(front.id, in: content, fallbackTitle: front.name) else { return nil }
 
+        var ids = [CGDirectDisplayID](repeating: 0, count: 8)
+        var count: UInt32 = 0
+        CGGetActiveDisplayList(8, &ids, &count)
+        let displays = ids.prefix(Int(count)).map { CGDisplayBounds($0) }
+        let center = { (r: CGRect) in CGPoint(x: r.midX, y: r.midY) }
+        var others: [(String, Shot)] = []
+        for d in displays where !d.contains(center(front.bounds)) {
+            guard let top = windows.first(where: { d.contains(center($0.bounds)) }),
+                  let app = NSRunningApplication(processIdentifier: top.pid),
+                  let bundle = app.bundleIdentifier,
+                  !privateApps.contains(bundle), !ignoredApps.contains(bundle) else { continue }
+            let name = app.localizedName ?? bundle
+            guard !skipOthers.contains("\(name): \(top.name)"),
+                  let shot = await shoot(top.id, in: content, fallbackTitle: top.name) else { continue }
+            others.append((name, shot))
+        }
+        return Capture(front: frontShot, others: others)
+    }
+
+    private static func shoot(_ id: CGWindowID, in content: SCShareableContent, fallbackTitle: String) async -> Shot? {
+        guard let window = content.windows.first(where: { $0.windowID == id }) else { return nil }
         let config = SCStreamConfiguration()
-        let scale = min(2, 2400 / max(window.frame.width, window.frame.height))
+        // Big external monitors: keep enough pixels for small text to OCR.
+        let scale = min(2, 3600 / max(window.frame.width, window.frame.height))
         config.width = Int(window.frame.width * scale)
         config.height = Int(window.frame.height * scale)
         config.showsCursor = false
         guard let image = try? await SCScreenshotManager.captureImage(
             contentFilter: SCContentFilter(desktopIndependentWindow: window), configuration: config
         ) else { return nil }
-        return Shot(image: image, title: window.title ?? (front?[kCGWindowName as String] as? String) ?? "")
+        return Shot(image: image, title: window.title ?? fallbackTitle)
     }
 
     nonisolated private static func recognizeText(_ image: CGImage) -> String {
@@ -341,7 +476,7 @@ final class ScreenWatcher: ObservableObject {
         guard #available(macOS 26.0, *), Self.modelAvailable, !text.isEmpty || !title.isEmpty else {
             return (nil, fallbackSummary)
         }
-        var result = await ScreenModel.classify(app: app, title: title, text: text, categories: candidates)
+        var result = await ScreenLabeler.classify(app: app, title: title, text: text, categories: candidates)
             ?? (nil, fallbackSummary)
         let window = Self.memoryKey(bundle: bundle, title: title)
         if let c = result.0, !title.isEmpty {
@@ -377,7 +512,11 @@ struct ScreenActivity: Identifiable {
     var end: Date
     var category: String?
     var spans: [ScreenSpan]
-    var id: Date { start }
+    /// nil = this Mac; "iPhone" / "iPad" otherwise.
+    var device: String? = nil
+    /// Notes written on the device (screen broadcast).
+    var deviceNotes: ScreenWatcher.ActivityNotes? = nil
+    var id: String { "\(device ?? "mac")-\(start.timeIntervalSince1970)" }
     var minutes: Double { end.timeIntervalSince(start) / 60 }
 
     /// Most frequent first; ties keep first-seen order so redraws don't reshuffle.
@@ -406,86 +545,6 @@ struct ScreenSample {
     let summary: String
     let category: String?
     var memoryKey: String { ScreenWatcher.memoryKey(bundle: bundleID, title: title) }
-}
-
-@available(macOS 26.0, *)
-private enum ScreenModel {
-    /// Tuned against the 3B on-device model: without these it calls a discrete
-    /// math problem set "Reading".
-    static let hints: [String: String] = [
-        "Math": "mathematics work: proofs, theorems, discrete math, graphs, combinatorics, math problem sets and lectures",
-        "HW": "homework for non-math classes: essays, assigned readings, econ or history problem sets",
-        "SWE": "coding interview prep: LeetCode, NeetCode, algorithm practice",
-        "Quant": "quant interview prep: probability puzzles, brainteasers, mental math, QuantGuide",
-        "AI": "building AI/ML projects, coding projects with AI tools",
-        "Reading": "reading books or articles, or exploring ideas with an AI chat, for personal curiosity, not for a class",
-        "Leisure": "entertainment: YouTube, streaming, games, social feeds",
-        "Admin": "email, forms, calendars, settings, errands online",
-        "Class": "attending a live lecture or class call",
-        "Social": "chatting with friends",
-    ]
-
-    /// Plain-text output: with a schema the 3B model lists bare terms
-    /// ("Euler tour") instead of statements you could review from.
-    static func studyNotes(category: String, windows: [String], previous: (String, [String])?,
-                           pages: [(window: String, text: String)]) async -> (String, [String])? {
-        var budget = 2400
-        var chunks: [String] = []
-        for p in pages.reversed() where budget > 200 {
-            let t = String(p.text.prefix(min(900, budget)))
-            budget -= t.count
-            chunks.insert("--- \(p.window)\n\(t)", at: 0)
-        }
-        let prev = previous.map { "\($0.0)\n" + $0.1.map { "- \($0)" }.joined(separator: "\n") } ?? "(none)"
-        let prompt = """
-        Category: \(category)
-        Windows: \(windows.joined(separator: "; "))
-        Notes so far:
-        \(prev)
-        New screen text:
-        \(chunks.joined(separator: "\n"))
-        """
-        let session = LanguageModelSession(instructions: """
-        You keep a study log for a student. From the text that was on their screen, write study notes: what they learned or worked on, as the student would jot it down to review later.
-        Format: first line is a title under 8 words. Then 2 to 6 lines starting with "- ", each a complete sentence explaining one idea, result, problem or step, under 25 words.
-        Update the notes so far with the new text: keep what still holds, add what's new, drop repeats. If the screen is entertainment or admin, say plainly what was watched or done.
-        Use only facts in the input. Never invent. Never just list terms.
-        """)
-        guard let r = try? await session.respond(to: prompt, options: GenerationOptions(temperature: 0)) else { return nil }
-        let lines = r.content.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        let bulletMarks: [String] = ["- ", "• ", "* "]
-        let bullets = lines.compactMap { l in bulletMarks.first { l.hasPrefix($0) }.map { String(l.dropFirst($0.count)) } }
-        let title = lines.first { l in !bulletMarks.contains { l.hasPrefix($0) } }?
-            .trimmingCharacters(in: .init(charactersIn: "#*:\" ")) ?? ""
-        guard !title.isEmpty || !bullets.isEmpty else { return nil }
-        return (String((title.isEmpty ? windows.first ?? category : title).prefix(80)), Array(bullets.prefix(6)))
-    }
-
-    static func classify(app: String, title: String, text: String, categories: [String]) async -> (String?, String)? {
-        let lines = categories.map { c in hints[c].map { "- \(c): \($0)" } ?? "- \(c)" }
-        let instructions = """
-        You label what a student is doing on their Mac from the frontmost window's app, title and on-screen text. Pick the single best category.
-        \(lines.joined(separator: "\n"))
-        - Unclear: not enough information.
-        Coursework and problem sets are never Reading.
-        """
-        do {
-            let schema = try GenerationSchema(root: DynamicGenerationSchema(name: "Guess", properties: [
-                .init(name: "summary", description: "What is on this screen, under 12 words, using names and topics visible in the text. Don't repeat the category descriptions.",
-                      schema: DynamicGenerationSchema(type: String.self)),
-                .init(name: "category", schema: DynamicGenerationSchema(name: "Category", anyOf: categories + ["Unclear"])),
-            ]), dependencies: [])
-            let session = LanguageModelSession(instructions: instructions)
-            let r = try await session.respond(to: "App: \(app)\nWindow: \(title)\nScreen text: \(text)",
-                                              schema: schema, options: GenerationOptions(temperature: 0))
-            let category = try r.content.value(String.self, forProperty: "category")
-            let summary = try r.content.value(String.self, forProperty: "summary")
-            return (categories.contains(category) ? category : nil, summary)
-        } catch {
-            return nil
-        }
-    }
 }
 
 // MARK: - Suggestions
