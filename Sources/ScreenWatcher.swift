@@ -39,6 +39,12 @@ final class ScreenWatcher: ObservableObject {
         "com.magnus.focus", "com.apple.loginwindow", "com.apple.ScreenSaver.Engine",
     ]
 
+    /// Life categories done away from the Mac: while one runs the screen says
+    /// nothing about what you're doing, so watching pauses.
+    static let offScreenCategories: Set<String> = ["Sleep", "Meals", "Exercise", "Commute", "Chores"]
+    /// Set by `ScreenCoach`: the running category, nil when nothing runs.
+    var runningCategory: () -> String? = { nil }
+
     var onSample: ((ScreenSample) -> Void)?
     private(set) var samples: [ScreenSample] = []
     private var settings: AppSettings?
@@ -131,6 +137,7 @@ final class ScreenWatcher: ObservableObject {
         guard let settings, settings.screenWatch else { status = "Off"; return }
         guard !busy else { return }
         guard !PresenceMonitor.shared.isAway else { status = "Paused while you're away"; return }
+        if let c = runningCategory(), Self.offScreenCategories.contains(c) { status = "Paused during \(c)"; return }
         guard CGPreflightScreenCaptureAccess() else { status = "Needs Screen Recording permission"; return }
         guard let app = NSWorkspace.shared.frontmostApplication, let bundle = app.bundleIdentifier,
               !Self.ignoredApps.contains(bundle) else { return }
@@ -361,8 +368,7 @@ final class ScreenWatcher: ObservableObject {
 
     /// Categories you could plausibly be doing on a screen.
     private func candidateCategories() -> [String] {
-        let offScreen: Set<String> = ["Sleep", "Meals", "Exercise", "Commute", "Chores"]
-        return (settings?.tags ?? []).filter { !offScreen.contains($0) }
+        return (settings?.tags ?? []).filter { !Self.offScreenCategories.contains($0) }
     }
 }
 
@@ -505,6 +511,10 @@ final class ScreenCoach {
         self.settings = settings
         self.days = days
         watcher.onSample = { [weak self] _ in self?.consider() }
+        watcher.runningCategory = { [weak timer] in
+            guard let timer, timer.isActive, !timer.isOnBreak, !timer.currentLabel.isEmpty else { return nil }
+            return timer.currentLabel
+        }
         watcher.start(settings: settings)
     }
 

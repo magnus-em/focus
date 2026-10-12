@@ -351,12 +351,47 @@ struct YesterdayRecallView: View {
     @State private var revealed = false
     @State private var journalStatus: String?
     @StateObject private var dictation = Dictation()
+    @ObservedObject private var screen = ScreenWatcher.shared
     @State private var showFullRecollection = false
     @FocusState private var focused: Bool
 
     private let day: Date = Calendar.current.date(byAdding: .day, value: -1, to: Calendar.current.startOfDay(for: Date()))!
     private var dayEnd: Date { Calendar.current.date(byAdding: .day, value: 1, to: day)! }
     private var weekday: String { day.formatted(.dateTime.weekday(.wide)) }
+
+    /// Yesterday's activity-log blocks that got notes, in order.
+    private var loggedBlocks: [(activity: ScreenActivity, notes: ScreenWatcher.ActivityNotes)] {
+        screen.activities(from: day, to: dayEnd).compactMap { a in screen.notes(for: a).map { (a, $0) } }
+    }
+
+    /// Titles only, as cues: the bullets would give the answers away.
+    private var cueList: some View {
+        let cues = loggedBlocks.sorted { $0.activity.minutes > $1.activity.minutes }.prefix(8)
+            .sorted { $0.activity.start < $1.activity.start }
+        return VStack(alignment: .leading, spacing: 3) {
+            Text("FROM YOUR SCREEN LOG")
+                .font(.system(size: 8.5, weight: .semibold))
+                .tracking(1)
+                .foregroundStyle(.secondary)
+            ForEach(Array(cues.enumerated()), id: \.offset) { _, c in
+                HStack(spacing: 6) {
+                    Circle().fill(c.activity.category.map(categoryColor) ?? .secondary).frame(width: 5, height: 5)
+                    Text(c.notes.title).font(.system(size: 11)).lineLimit(1)
+                    Spacer()
+                    Text(minutesLabel(c.activity.minutes))
+                        .font(.system(size: 10).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
+    }
+
+    private func minutesLabel(_ m: Double) -> String {
+        let h = Int(m) / 60, mn = Int(m) % 60
+        return h > 0 ? "\(h)h \(mn)m" : "\(mn)m"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -374,10 +409,13 @@ struct YesterdayRecallView: View {
                 .padding(.top, 18)
             Text("What did you learn \(weekday)?")
                 .font(.system(size: 17, weight: .semibold, design: .serif))
-            Text("From memory, before you look: what you worked on, what clicked, what's still fuzzy, what stood out. Talk it through or type.")
+            Text(loggedBlocks.isEmpty
+                 ? "From memory, before you look: what you worked on, what clicked, what's still fuzzy, what stood out. Talk it through or type."
+                 : "For each of these, say what you learned: the ideas, what clicked, what's still fuzzy. The notes come after.")
                 .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if !loggedBlocks.isEmpty { cueList }
             TextEditor(text: $text)
                 .font(.system(size: 12))
                 .scrollContentBackground(.hidden)
@@ -494,6 +532,38 @@ struct YesterdayRecallView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
+                    if !loggedBlocks.isEmpty {
+                        Text("WHAT THE SCREEN LOG NOTED")
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .tracking(1)
+                            .foregroundStyle(.secondary)
+                        ForEach(Array(loggedBlocks.enumerated()), id: \.offset) { _, b in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(b.activity.start.formatted(date: .omitted, time: .shortened))
+                                        .font(.system(size: 10).monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                    Circle().fill(b.activity.category.map(categoryColor) ?? .secondary).frame(width: 6, height: 6)
+                                    Text(b.notes.title).font(.system(size: 11.5, weight: .semibold)).lineLimit(1)
+                                    Spacer()
+                                    Text(minutesLabel(b.activity.minutes))
+                                        .font(.system(size: 10).monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                                ForEach(Array(b.notes.bullets.enumerated()), id: \.offset) { _, line in
+                                    Text("• \(line)")
+                                        .font(.system(size: 10.5))
+                                        .foregroundStyle(.primary.opacity(0.8))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                        Text("AS TRACKED")
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .tracking(1)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 6)
+                    }
                     ForEach(blocks) { s in
                         let note = sessionNotes.first { n in
                             n.sessionStart.map { abs($0.timeIntervalSince(s.startTime)) < 90 } ?? false
