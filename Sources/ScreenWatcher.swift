@@ -17,7 +17,7 @@ struct ScreenSpan: Codable, Equatable, Identifiable {
     var id: Date { start }
 }
 
-/// Every 30s while you're at the Mac: capture the frontmost window, read it
+/// Every 15s (and on every app switch) while you're at the Mac: capture the frontmost window, read it
 /// with Vision, label it (your past choices first, then the on-device Apple
 /// Intelligence model), and let `ScreenCoach` suggest a backdated switch.
 @MainActor
@@ -27,7 +27,7 @@ final class ScreenWatcher: ObservableObject {
     @Published private(set) var spans: [ScreenSpan] = []
     @Published private(set) var status = "Off"
 
-    static let interval: TimeInterval = 30
+    static let interval: TimeInterval = 15
     private static let keepDays = 30
     /// Never captured; logged as "Private".
     static let privateApps: Set<String> = [
@@ -46,6 +46,17 @@ final class ScreenWatcher: ObservableObject {
     private var busy = false
     private var cache: [String: (category: String?, summary: String)] = [:]
     private var unsavedSamples = 0
+    private var lastSampleAt = Date.distantPast
+    private var activationObserver: NSObjectProtocol?
+    /// Model-written task names for activity blocks, keyed by block start.
+    @Published private(set) var activityNames: [Date: ActivityName] = [:]
+    private var naming = false
+
+    struct ActivityName: Codable {
+        var name: String
+        var spanCount: Int
+        var at: Date
+    }
 
     private let fileURL: URL = {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -54,10 +65,16 @@ final class ScreenWatcher: ObservableObject {
         return dir.appendingPathComponent("screen.json")
     }()
 
+    private var namesURL: URL { fileURL.deletingLastPathComponent().appendingPathComponent("screen-activities.json") }
+
     private init() {
         if let data = try? Data(contentsOf: fileURL),
            let saved = try? JSONDecoder().decode([ScreenSpan].self, from: data) {
             spans = saved
+        }
+        if let data = try? Data(contentsOf: namesURL),
+           let saved = try? JSONDecoder().decode([Date: ActivityName].self, from: data) {
+            activityNames = saved
         }
     }
 
@@ -67,6 +84,17 @@ final class ScreenWatcher: ObservableObject {
         if settings.screenWatch, !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
         tick = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.sample() }
+        }
+        // Catch app switches right away instead of waiting for the next tick.
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                Task { @MainActor in
+                    guard let self, Date().timeIntervalSince(self.lastSampleAt) > 3 else { return }
+                    await self.sample()
+                }
+            }
         }
     }
 
@@ -101,6 +129,7 @@ final class ScreenWatcher: ObservableObject {
         }
 
         busy = true
+        lastSampleAt = now
         defer { busy = false }
         guard let shot = await Self.captureFrontWindow(pid: app.processIdentifier) else { return }
         let text = await Task.detached(priority: .utility) { Self.recognizeText(shot.image) }.value
@@ -112,7 +141,7 @@ final class ScreenWatcher: ObservableObject {
 
     private func record(_ s: ScreenSample) {
         samples.append(s)
-        if samples.count > 120 { samples.removeFirst(samples.count - 120) }
+        if samples.count > 240 { samples.removeFirst(samples.count - 240) }
 
         let end = s.date.addingTimeInterval(Self.interval)
         if var last = spans.last, last.bundleID == s.bundleID, last.title == s.title, last.category == s.category,
@@ -126,8 +155,9 @@ final class ScreenWatcher: ObservableObject {
                                     title: s.title, summary: s.summary, category: s.category))
         }
         unsavedSamples += 1
-        if unsavedSamples >= 10 { save() }
+        if unsavedSamples >= 4 { save() }
         onSample?(s)
+        Task { await nameNextActivity() }
     }
 
     func save() {
@@ -135,6 +165,58 @@ final class ScreenWatcher: ObservableObject {
         let cutoff = Date().addingTimeInterval(-Double(Self.keepDays) * 86400)
         spans.removeAll { $0.end < cutoff }
         if let data = try? JSONEncoder().encode(spans) { try? data.write(to: fileURL, options: .atomic) }
+        activityNames = activityNames.filter { $0.key >= cutoff }
+        if let data = try? JSONEncoder().encode(activityNames) { try? data.write(to: namesURL, options: .atomic) }
+    }
+
+    // MARK: - Activities
+
+    /// Spans grouped into stretches of one kind of work. Blips under a minute
+    /// between two spans of the same category don't split a block.
+    func activities(from: Date, to: Date) -> [ScreenActivity] {
+        let list = spans(from: from, to: to).sorted { $0.start < $1.start }
+        var smoothed = list.map(\.category)
+        if list.count >= 3 {
+            for i in 1..<(list.count - 1) {
+                let d = list[i].end.timeIntervalSince(list[i].start)
+                if d < 60, smoothed[i - 1] == smoothed[i + 1], smoothed[i] != smoothed[i - 1] { smoothed[i] = smoothed[i - 1] }
+            }
+        }
+        var out: [ScreenActivity] = []
+        for (i, span) in list.enumerated() {
+            let c = smoothed[i]
+            if var last = out.last, last.category == c, span.start.timeIntervalSince(last.end) < 5 * 60 {
+                last.end = max(last.end, span.end)
+                last.spans.append(span)
+                out[out.count - 1] = last
+            } else {
+                out.append(ScreenActivity(start: span.start, end: span.end, category: c, spans: [span]))
+            }
+        }
+        return out
+    }
+
+    func name(for a: ScreenActivity) -> String {
+        activityNames[a.start]?.name ?? a.topTitle
+    }
+
+    /// Names one block per sample: the live one as it grows, then any unnamed.
+    private func nameNextActivity() async {
+        guard !naming, #available(macOS 26.0, *), Self.modelAvailable else { return }
+        let now = Date()
+        let blocks = activities(from: now.addingTimeInterval(-36 * 3600), to: now)
+            .filter { $0.category != nil && $0.end.timeIntervalSince($0.start) >= 120 }
+        let stale = blocks.reversed().first { b in
+            guard let n = activityNames[b.start] else { return true }
+            return Double(b.spans.count) >= Double(n.spanCount) * 1.25 && now.timeIntervalSince(n.at) > 120
+        }
+        guard let b = stale else { return }
+        naming = true
+        defer { naming = false }
+        if let name = await ScreenModel.nameActivity(category: b.category ?? "", summaries: b.distinctSummaries,
+                                                     titles: b.distinctTitles) {
+            activityNames[b.start] = ActivityName(name: name, spanCount: b.spans.count, at: now)
+        }
     }
 
     // MARK: - Capture + OCR
@@ -229,6 +311,25 @@ final class ScreenWatcher: ObservableObject {
     }
 }
 
+struct ScreenActivity: Identifiable {
+    var start: Date
+    var end: Date
+    var category: String?
+    var spans: [ScreenSpan]
+    var id: Date { start }
+    var minutes: Double { end.timeIntervalSince(start) / 60 }
+
+    private func ranked(_ values: [String]) -> [String] {
+        var counts: [String: Int] = [:]
+        for v in values where !v.isEmpty { counts[v, default: 0] += 1 }
+        return counts.sorted { $0.value > $1.value }.map(\.key)
+    }
+    var distinctSummaries: [String] { Array(ranked(spans.map(\.summary)).prefix(10)) }
+    var distinctTitles: [String] { Array(ranked(spans.map { $0.title.isEmpty ? $0.app : "\($0.app): \($0.title)" }).prefix(6)) }
+    var apps: [String] { ranked(spans.map(\.app)) }
+    var topTitle: String { distinctTitles.first ?? "Unknown" }
+}
+
 struct ScreenSample {
     let date: Date
     let app: String
@@ -256,6 +357,21 @@ private enum ScreenModel {
         "Social": "chatting with friends",
     ]
 
+    static func nameActivity(category: String, summaries: [String], titles: [String]) async -> String? {
+        let prompt = """
+        Category: \(category)
+        Windows: \(titles.joined(separator: "; "))
+        Moment-to-moment notes: \(summaries.joined(separator: "; "))
+        """
+        let session = LanguageModelSession(instructions: """
+        Name the task a student was working on during this stretch, using only the windows and notes given. \
+        Under 10 words: the subject, document, problem or project actually named there. Never add details that aren't in the input. No ending period.
+        """)
+        guard let r = try? await session.respond(to: prompt, options: GenerationOptions(temperature: 0)) else { return nil }
+        let line = r.content.trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: "\"."))).components(separatedBy: "\n").first ?? ""
+        return line.isEmpty ? nil : String(line.prefix(80))
+    }
+
     static func classify(app: String, title: String, text: String, categories: [String]) async -> (String?, String)? {
         let lines = categories.map { c in hints[c].map { "- \(c): \($0)" } ?? "- \(c)" }
         let instructions = """
@@ -266,7 +382,7 @@ private enum ScreenModel {
         """
         do {
             let schema = try GenerationSchema(root: DynamicGenerationSchema(name: "Guess", properties: [
-                .init(name: "summary", description: "What the person is doing, under 12 words, specific",
+                .init(name: "summary", description: "What is on this screen, under 12 words, using names and topics visible in the text. Don't repeat the category descriptions.",
                       schema: DynamicGenerationSchema(type: String.self)),
                 .init(name: "category", schema: DynamicGenerationSchema(name: "Category", anyOf: categories + ["Unclear"])),
             ]), dependencies: [])

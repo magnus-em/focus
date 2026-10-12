@@ -210,7 +210,7 @@ class AppSettings: ObservableObject {
             "awayPrompts": true,
             "screenWatch": true,
             "screenSuggest": true,
-            "screenSuggestMinutes": 3,
+            "screenSuggestMinutes": 2,
             "awayPromptMinutes": 15,
             "idleNudge": true,
         ])

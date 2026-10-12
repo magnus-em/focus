@@ -353,6 +353,12 @@ struct DashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 dayTimelineSection
+                ScreenActivitySection(
+                    watcher: screenWatcher, day: selectedDay,
+                    sessions: (sessionStore.sessions + [timerManager.currentInProgressSession, timerManager.currentInProgressBreak].compactMap { $0 })
+                        .filter { Calendar.current.isDate($0.startTime, inSameDayAs: selectedDay)
+                            || Calendar.current.isDate($0.startTime.addingTimeInterval($0.durationMinutes * 60), inSameDayAs: selectedDay) }
+                )
                 WhereTimeWentSection(
                     store: sessionStore, settings: settings,
                     live: [timerManager.currentInProgressSession, timerManager.currentInProgressBreak].compactMap { $0 },

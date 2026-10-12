@@ -1029,7 +1029,7 @@ private struct ScreenSettings: View {
         if settings.screenWatch {
             ToggleRow(label: "Suggest switching categories", isOn: $settings.screenSuggest)
             if settings.screenSuggest {
-                IntRow(label: "After the screen shows it for", value: $settings.screenSuggestMinutes, range: 2...20, suffix: "min")
+                IntRow(label: "After the screen shows it for", value: $settings.screenSuggestMinutes, range: 1...20, suffix: "min")
             }
             HStack(spacing: 6) {
                 Text(watcher.status).font(.system(size: 11)).foregroundStyle(.secondary)
@@ -1045,7 +1045,7 @@ private struct ScreenSettings: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
-        Text("Every 30s the front window is read on-device with Apple Vision and labeled by Apple Intelligence. Screenshots and text are never saved or sent anywhere; only the window title and a one-line summary are kept on this Mac for 30 days. Passwords, Messages, Mail, WhatsApp, Telegram and FaceTime are never captured. Picking \"Still X\" teaches it.")
+        Text("Every 15s and on each app switch, the front window is read on-device with Apple Vision and labeled by Apple Intelligence. Screenshots and text are never saved or sent anywhere; only the window title and a one-line summary are kept on this Mac for 30 days. Passwords, Messages, Mail, WhatsApp, Telegram and FaceTime are never captured. Picking \"Still X\" teaches it.")
             .font(.system(size: 10))
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
