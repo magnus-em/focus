@@ -195,7 +195,7 @@ class AppSettings: ObservableObject {
             "recallMinMinutes": 20,
             "morningRecall": true,
             "recallDailyCap": 12,
-            "journalShortcut": "Log Learning",
+            "journalShortcut": "",
             "awayPrompts": true,
             "awayPromptMinutes": 15,
             "idleNudge": true,

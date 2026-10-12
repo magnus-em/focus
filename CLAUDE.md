@@ -127,7 +127,7 @@ The repo lives at `~/Code/focus` (moved out of `~/Documents` and renamed from `f
 - App relaunch mid-day: if day is already started and commitment not done today, the overlay shows automatically.
 
 ### Recall (retrieval practice)
-- Three loops: write-from-memory after each focus block, spaced retrieval of cards, and "what did you learn yesterday" before the timeline when opening the day (mic button dictates; on Reveal the text also goes to Apple Journal via the `journalShortcut` setting, default "Log Learning", empty = off, device-local) (`YesterdayRecallView` in `DayReviewView.swift`; runs before the commitment overlay, and before "fill in yesterday"; "Skip today" stored in UserDefaults `yesterdayRecallSkippedDay`).
+- Three loops: write-from-memory after each focus block, spaced retrieval of cards, and "what did you learn yesterday" before the timeline when opening the day (mic button dictates; on Reveal the text also goes to Apple Journal via the `journalShortcut` setting, off by default (Journal's Create Entry can't pick a journal on macOS 26), device-local) (`YesterdayRecallView` in `DayReviewView.swift`; runs before the commitment overlay, and before "fill in yesterday"; "Skip today" stored in UserDefaults `yesterdayRecallSkippedDay`).
 - Only unaided Got it / Fluent counts as recall success; any hint caps the attempt at Partial. The typed response is saved as-is; Claude's suggestion is stored separately (`aiScore`, `aiFeedback`) and the user picks the grade.
 - No composite "memory score": metrics stay separate and are framed as retrieval of studied material.
 - Settings → Recall: `recallAfterSession`, `recallMinMinutes` (20), `morningRecall`, `recallDailyCap` (12), Claude key. Device-local (not in `SyncedDefaults.syncedKeys`).
