@@ -141,6 +141,7 @@ The repo lives at `~/Code/focus` (moved out of `~/Documents` and renamed from `f
 ### Commitment
 - ON by default. Written commitment (required) + optional voice oath (AVFoundation, requires mic permission).
 - Tracked via `lastCommitmentDateEpoch` in UserDefaults. `needsCommitmentToday` checks if it's a different calendar day than the last commitment.
+- Today's `DayRecord.commitmentText` (SwiftData/CloudKit) is the source of truth: iOS only asks if it's empty, and the Mac re-marks the synced date from it on launch and popover open. `SyncedDefaults.isReloading` stops `reloadFromDefaults` from pushing every key back to KVS — that write-back let a lagging device revert today's commitment date to yesterday's.
 
 ### Goal
 - Daily goal is **hours** (not sessions). Settings shows "Daily Target ... 4 h". Stored under UserDefaults key `dailyGoalHours`.

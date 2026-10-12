@@ -72,8 +72,15 @@ public final class SyncedDefaults {
         kvs.synchronize()
     }
 
+    /// True while a settings object reloads itself from imported values: its
+    /// didSets must not push those values back to iCloud, or a device that
+    /// hasn't received every key yet reverts the others (it once undid
+    /// today's commitment date with yesterday's).
+    public var isReloading = false
+
     /// Call from any settings setter. Writes to both stores.
     public func set(_ value: Any?, forKey key: String) {
+        guard !isReloading else { return }
         defaults.set(value, forKey: key)
         guard Self.syncedKeys.contains(key) else { return }
         if let value {

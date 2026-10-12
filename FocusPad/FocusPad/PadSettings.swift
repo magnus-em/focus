@@ -123,6 +123,8 @@ final class PadSettings: ObservableObject {
     }
 
     @objc private func reloadFromDefaults() {
+        sd.isReloading = true
+        defer { sd.isReloading = false }
         let d = UserDefaults.standard
         workMinutes = d.double(forKey: "workMinutes")
         breakMinutes = d.double(forKey: "shortBreakMinutes")

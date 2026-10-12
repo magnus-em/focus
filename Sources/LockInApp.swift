@@ -209,6 +209,9 @@ struct FocusApp: App {
             dashboard.open(sessionStore: store, problemStore: problems, homeworkStore: homework,
                            settings: appSettings, dayStore: days, timerManager: timer, browserStore: browser)
         }
+        if appSettings.needsCommitmentToday, let text = days.todayRecord?.commitmentText, !text.isEmpty {
+            appSettings.markCommitmentDone(text: text)
+        }
         AwayCoach.shared = AwayCoach(timer: timer, store: store, settings: appSettings, days: days)
         ScreenCoach.shared = ScreenCoach(timer: timer, settings: appSettings, days: days)
         QuickSwitch.shared?.openRecall = {
@@ -335,6 +338,14 @@ struct PopoverContent: View {
                    !settings.todayCommitment.isEmpty,
                    (dayStore.todayRecord?.commitmentText ?? "").isEmpty {
                     dayStore.setCommitment(text: settings.todayCommitment)
+                }
+
+                // The reverse: today's record has the commitment (made here or
+                // on the iPad) but the synced date says otherwise. Re-mark it,
+                // which also pushes the right date to the other devices.
+                if settings.needsCommitmentToday,
+                   let text = dayStore.todayRecord?.commitmentText, !text.isEmpty {
+                    settings.markCommitmentDone(text: text)
                 }
 
                 let todayStart = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970

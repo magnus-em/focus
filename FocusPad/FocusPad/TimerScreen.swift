@@ -60,7 +60,7 @@ struct TimerScreen: View {
         .sheet(isPresented: $showLabelPicker) { LabelPickerSheet(engine: engine, settings: settings) }
         .sheet(isPresented: $showQuickAddProblem) { AddProblemSheet() }
         .onAppear {
-            if settings.needsCommitmentToday && dayStarted { showCommitment = true }
+            if needsCommitment && dayStarted { showCommitment = true }
             priorities.load()
         }
     }
@@ -136,6 +136,11 @@ struct TimerScreen: View {
     }
 
     private var dayStarted: Bool { todayRecord?.dayStart != nil }
+    /// Today's day record (synced through the SwiftData mirror) beats the
+    /// settings date: a commitment made on the Mac counts here too.
+    private var needsCommitment: Bool {
+        settings.needsCommitmentToday && (todayRecord?.commitmentText ?? "").isEmpty
+    }
     private var dayEnded: Bool { todayRecord?.dayEnd != nil }
 
     private var dayHeaderBar: some View {
@@ -418,7 +423,7 @@ struct TimerScreen: View {
         }
         try? ctx.save()
         Haptics.success()
-        if settings.commitmentEnabled && settings.needsCommitmentToday {
+        if settings.commitmentEnabled && needsCommitment {
             showCommitment = true
         }
     }
