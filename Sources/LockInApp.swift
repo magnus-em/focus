@@ -520,6 +520,7 @@ struct PopoverContent: View {
                 YesterdayRecallView(
                     recall: recallStore,
                     store: sessionStore,
+                    journalShortcut: settings.journalShortcut,
                     onFillGaps: {
                         showYesterdayRecall = false
                         showDayReview = true

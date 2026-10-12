@@ -343,11 +343,14 @@ private struct DayStrip: View {
 struct YesterdayRecallView: View {
     @ObservedObject var recall: RecallStore
     @ObservedObject var store: SessionStore
+    let journalShortcut: String
     let onFillGaps: () -> Void
     let onDone: () -> Void
 
     @State private var text = ""
     @State private var revealed = false
+    @State private var journalStatus: String?
+    @StateObject private var dictation = Dictation()
     @State private var showFullRecollection = false
     @FocusState private var focused: Bool
 
@@ -369,9 +372,9 @@ struct YesterdayRecallView: View {
                 .font(.system(size: 22, weight: .light))
                 .foregroundStyle(.orange)
                 .padding(.top, 18)
-            Text("Before you look")
+            Text("What did you learn \(weekday)?")
                 .font(.system(size: 17, weight: .semibold, design: .serif))
-            Text("Reconstruct \(weekday) from memory, in order: what you worked on, what you learned, who you talked to, what stood out.")
+            Text("From memory, before you look: what you worked on, what clicked, what's still fuzzy, what stood out. Talk it through or type.")
                 .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -381,7 +384,15 @@ struct YesterdayRecallView: View {
                 .padding(6)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
                 .focused($focused)
-            Text("Free recall first; the timeline comes after. Forgetting ordinary hours is normal.")
+                .overlay(alignment: .bottomTrailing) { micButton.padding(8) }
+            if let err = dictation.error {
+                Text(err)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(journalShortcut.isEmpty ? "Free recall first; the timeline comes after."
+                 : "Free recall first; the timeline comes after. Also saved to Journal via “\(journalShortcut)”.")
                 .font(.system(size: 9.5))
                 .foregroundStyle(.tertiary)
             HStack {
@@ -392,7 +403,9 @@ struct YesterdayRecallView: View {
                 .controlSize(.small)
                 Spacer()
                 Button("Reveal \(weekday)") {
+                    dictation.stop()
                     recall.addNote(kind: .yesterday, text: text)
+                    sendToJournal()
                     withAnimation(.easeOut(duration: 0.2)) { revealed = true }
                 }
                 .controlSize(.small)
@@ -405,6 +418,33 @@ struct YesterdayRecallView: View {
         }
         .padding(.horizontal, 16)
         .onAppear { focused = true }
+        .onDisappear { dictation.stop() }
+    }
+
+    private var micButton: some View {
+        Button {
+            if dictation.isListening { dictation.stop(); return }
+            let base = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            dictation.start { spoken in text = base.isEmpty ? spoken : base + " " + spoken }
+        } label: {
+            Image(systemName: dictation.isListening ? "stop.circle.fill" : "mic.circle.fill")
+                .font(.system(size: 26))
+                .foregroundStyle(dictation.isListening ? Color.red : Color.orange)
+                .symbolEffect(.pulse, isActive: dictation.isListening)
+        }
+        .buttonStyle(.plain)
+        .help(dictation.isListening ? "Stop dictating" : "Talk it through")
+    }
+
+    private func sendToJournal() {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !journalShortcut.isEmpty, !body.isEmpty else { return }
+        let entry = "What I learned, \(day.formatted(.dateTime.weekday(.wide).month(.wide).day()))\n\n\(body)"
+        journalStatus = "Sending to Journal…"
+        Task {
+            let err = await JournalShortcut.send(entry, shortcut: journalShortcut)
+            journalStatus = err.map { "Not sent to Journal: \($0)" } ?? "Saved to Journal"
+        }
     }
 
     private var blocks: [WorkSession] {
@@ -441,6 +481,12 @@ struct YesterdayRecallView: View {
                     .font(.system(size: 11))
                     .lineLimit(showFullRecollection ? nil : 3)
                     .onTapGesture { showFullRecollection.toggle() }
+                if let journalStatus {
+                    Label(journalStatus, systemImage: journalStatus.hasPrefix("Not") ? "exclamationmark.triangle" : "book.closed")
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
             .padding(8)
             .frame(maxWidth: .infinity, alignment: .leading)

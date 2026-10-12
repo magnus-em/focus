@@ -76,6 +76,10 @@ cat > "$APP_DIR/Info.plist" <<'EOF'
     </array>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Talk through your morning review instead of typing it.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Turns your spoken morning review into text.</string>
 </dict>
 </plist>
 EOF

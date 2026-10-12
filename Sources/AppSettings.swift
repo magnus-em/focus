@@ -106,6 +106,10 @@ class AppSettings: ObservableObject {
     @Published var recallDailyCap: Int {
         didSet { sd.set(recallDailyCap, forKey: "recallDailyCap") }
     }
+    /// Shortcut that receives the morning review and files it in Journal. Empty = don't send.
+    @Published var journalShortcut: String {
+        didSet { sd.set(journalShortcut, forKey: "journalShortcut") }
+    }
     /// On return from `awayPromptMinutes`+ away from the Mac, ask what it was.
     @Published var awayPrompts: Bool {
         didSet { sd.set(awayPrompts, forKey: "awayPrompts") }
@@ -191,6 +195,7 @@ class AppSettings: ObservableObject {
             "recallMinMinutes": 20,
             "morningRecall": true,
             "recallDailyCap": 12,
+            "journalShortcut": "Log Learning",
             "awayPrompts": true,
             "awayPromptMinutes": 15,
             "idleNudge": true,
@@ -231,6 +236,7 @@ class AppSettings: ObservableObject {
         recallMinMinutes = d.integer(forKey: "recallMinMinutes")
         morningRecall = d.bool(forKey: "morningRecall")
         recallDailyCap = d.integer(forKey: "recallDailyCap")
+        journalShortcut = d.string(forKey: "journalShortcut") ?? ""
         awayPrompts = d.bool(forKey: "awayPrompts")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
@@ -304,6 +310,7 @@ class AppSettings: ObservableObject {
         recallMinMinutes = d.integer(forKey: "recallMinMinutes")
         morningRecall = d.bool(forKey: "morningRecall")
         recallDailyCap = d.integer(forKey: "recallDailyCap")
+        journalShortcut = d.string(forKey: "journalShortcut") ?? ""
         awayPrompts = d.bool(forKey: "awayPrompts")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")

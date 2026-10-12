@@ -168,7 +168,17 @@ struct SettingsView: View {
                 if settings.recallAfterSession {
                     IntRow(label: "For blocks of at least", value: $settings.recallMinMinutes, range: 5...120, suffix: "min")
                 }
-                ToggleRow(label: "Reconstruct yesterday first", isOn: $settings.morningRecall)
+                ToggleRow(label: "Morning review of yesterday", isOn: $settings.morningRecall)
+                if settings.morningRecall {
+                    HStack(spacing: 6) {
+                        Text("Send to Journal via shortcut").font(.system(size: 12))
+                        Spacer()
+                        TextField("off", text: $settings.journalShortcut)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11))
+                            .frame(width: 120)
+                    }
+                }
                 IntRow(label: "Max reviews per day", value: $settings.recallDailyCap, range: 3...60)
                 Text("After a focus block, write what you learned from memory. Cards come back after 1, 3, 7, 14, 30 days. ⌃⌥⌘; opens Recall.")
                     .font(.system(size: 10))
