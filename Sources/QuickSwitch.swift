@@ -24,6 +24,7 @@ final class QuickSwitch {
     private lazy var switcher = SwitcherPanel(quick: self)
     var openRecall: (() -> Void)?
     var openReview: (() -> Void)?
+    var openGallery: ((String, Bool) -> Void)?
     var openDashboard: (() -> Void)?
 
     /// Right-hand keys for categories, in `settings.tags` order.
@@ -130,6 +131,8 @@ final class QuickSwitch {
         case "switcher": showSwitcher()
         case "recall": openRecall?()
         case "review": openReview?()
+        case "gallery": openGallery?(param("view") ?? "popover-0", param("dark") == "1")
+        case "gallery-close": Task { @MainActor in DesignGallery.closeAll() }
         case "screen-debug": Task { @MainActor in ScreenWatcher.shared.dumpDebug() }
         case "dashboard": openDashboard?()
         case "log":

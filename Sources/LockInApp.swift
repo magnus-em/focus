@@ -114,8 +114,10 @@ struct FocusApp: App {
         let problems = ProblemStore(container: focusContainer)
         _problemStore        = StateObject(wrappedValue: problems)
         _homeworkStore       = StateObject(wrappedValue: homework)
-        _scratchStore        = StateObject(wrappedValue: ScratchStore(container: focusContainer))
-        _healthStore         = StateObject(wrappedValue: HealthStore(container: focusContainer))
+        let scratch = ScratchStore(container: focusContainer)
+        let health = HealthStore(container: focusContainer)
+        _scratchStore        = StateObject(wrappedValue: scratch)
+        _healthStore         = StateObject(wrappedValue: health)
         let days = DayStore(container: focusContainer)
         let dashboard = DashboardWindowController()
         _dayStore            = StateObject(wrappedValue: days)
@@ -214,6 +216,30 @@ struct FocusApp: App {
         AwayCoach.shared = AwayCoach(timer: timer, store: store, settings: appSettings, days: days)
         ScreenCoach.shared = ScreenCoach(timer: timer, settings: appSettings, days: days)
         FocusModes.shared.start(timer: timer)
+        QuickSwitch.shared?.openGallery = { name, dark in
+            switch name {
+            case "dashboard":
+                DesignGallery.show(
+                    DashboardView(sessionStore: store, problemStore: problems, homeworkStore: homework, settings: appSettings,
+                                  dayStore: days, timerManager: timer, browserStore: browser),
+                    name: name, dark: dark, size: NSSize(width: 1100, height: 900))
+            case "review":
+                DesignGallery.show(EveningReviewView(store: store, days: days, settings: appSettings, timer: timer) {},
+                                   name: name, dark: dark, size: NSSize(width: 620, height: 900))
+            default:
+                let tab = Int(name.replacingOccurrences(of: "popover-", with: "")) ?? 0
+                DesignGallery.show(
+                    PopoverContent(
+                        timerManager: timer, sessionStore: store, settings: appSettings, problemStore: problems,
+                        homeworkStore: homework, scratchStore: scratch, healthStore: health, dayStore: days,
+                        practiceStore: practice, homeworkStoreForPractice: homework, zetamacStore: zetamac,
+                        leetCodeStore: leetCode, recallStore: recall,
+                        openDashboard: {}, openOnboarding: {}, openPractice: {}, openZetamac: {}, openLeetCode: {},
+                        openRecall: {}, initialTab: tab
+                    ).modelContainer(focusContainer),
+                    name: name, dark: dark, size: NSSize(width: 300, height: 720))
+            }
+        }
         QuickSwitch.shared?.openReview = {
             EveningReviewWindowController.shared.open(store: store, days: days, settings: appSettings, timer: timer)
         }
@@ -310,6 +336,8 @@ struct PopoverContent: View {
     let openZetamac: () -> Void
     let openLeetCode: () -> Void
     let openRecall: () -> Void
+    /// Gallery screenshots open a given tab.
+    var initialTab: Int? = nil
 
     @State private var selectedTab = 0
     @State private var showYesterdayRecall = false
@@ -324,6 +352,7 @@ struct PopoverContent: View {
             .frame(width: 300)
             .popoverBackground()
             .onAppear {
+                if let initialTab { selectedTab = initialTab }
                 // Force "today"-scoped views to re-evaluate every time the
                 // popover opens. Without this, a menu-bar app that's been
                 // running since yesterday would still display yesterday's
