@@ -171,8 +171,7 @@ struct FocusApp: App {
         BrowserBridge.shared.start()
 
         CommitmentReminder.shared.install(dayStore: days, settings: appSettings) {
-            dashboard.open(sessionStore: store, problemStore: problems, homeworkStore: homework,
-                           settings: appSettings, dayStore: days, timerManager: timer, browserStore: browser)
+            EveningReviewWindowController.shared.open(store: store, days: days, settings: appSettings, timer: timer)
         }
         CommitmentReminder.shared.onOtherTap = { id in
             if id == LeetCodeStore.nudgeID { leetCodeCtrl.open(store: leetCode, settings: appSettings) }
@@ -215,6 +214,9 @@ struct FocusApp: App {
         AwayCoach.shared = AwayCoach(timer: timer, store: store, settings: appSettings, days: days)
         ScreenCoach.shared = ScreenCoach(timer: timer, settings: appSettings, days: days)
         FocusModes.shared.start(timer: timer)
+        QuickSwitch.shared?.openReview = {
+            EveningReviewWindowController.shared.open(store: store, days: days, settings: appSettings, timer: timer)
+        }
         QuickSwitch.shared?.openRecall = {
             recallCtrl.open(store: recall, settings: appSettings, sessionStore: store)
         }

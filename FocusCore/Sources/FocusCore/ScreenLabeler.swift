@@ -37,7 +37,7 @@ public enum ScreenLabeler {
         let prompt = """
         Category: \(category)
         Windows: \(windows.joined(separator: "; "))
-        Notes so far:
+        Earlier notes for this block:
         \(prev)
         New screen text:
         \(chunks.joined(separator: "\n"))
@@ -52,9 +52,20 @@ public enum ScreenLabeler {
         let lines = r.content.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let bulletMarks: [String] = ["- ", "• ", "* "]
-        let bullets = lines.compactMap { l in bulletMarks.first { l.hasPrefix($0) }.map { String(l.dropFirst($0.count)) } }
-        let title = lines.first { l in !bulletMarks.contains { l.hasPrefix($0) } }?
+        // It sometimes doubles the marker ("- - …").
+        func strip(_ l: String) -> String? {
+            guard let m = bulletMarks.first(where: { l.hasPrefix($0) }) else { return nil }
+            let rest = String(l.dropFirst(m.count)).trimmingCharacters(in: .whitespaces)
+            return strip(rest) ?? rest
+        }
+        let bullets = lines.compactMap(strip).filter { $0.count > 3 }
+        // It sometimes copies the prompt's labels as the title ("Notes so far").
+        var title = lines.first { l in !bulletMarks.contains { l.hasPrefix($0) } }?
             .trimmingCharacters(in: .init(charactersIn: "#*:\" ")) ?? ""
+        if title.lowercased().hasPrefix("title:") { title = String(title.dropFirst(6)).trimmingCharacters(in: .whitespaces) }
+        if ["notes so far", "earlier notes", "earlier notes for this block", "study notes", "notes"].contains(title.lowercased()) {
+            title = previous?.0 ?? ""
+        }
         guard !title.isEmpty || !bullets.isEmpty else { return nil }
         return (String((title.isEmpty ? windows.first ?? category : title).prefix(80)), Array(bullets.prefix(6)))
     }

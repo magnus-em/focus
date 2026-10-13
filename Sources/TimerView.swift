@@ -439,7 +439,9 @@ struct TimerView: View {
                 withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) {
                     dayStore.endDay()
                 }
-                if dayStore.todayCommitmentNeedsReview, let r = dayStore.todayRecord {
+                if let open = QuickSwitch.shared?.openReview {
+                    open()
+                } else if dayStore.todayCommitmentNeedsReview, let r = dayStore.todayRecord {
                     reviewTarget = r
                 }
             }

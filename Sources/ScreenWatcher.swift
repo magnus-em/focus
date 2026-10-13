@@ -77,6 +77,10 @@ final class ScreenWatcher: ObservableObject {
         var updatedAt: Date
         /// Newest page text already folded into the notes.
         var textThrough: Date
+        /// The block these notes were written for. Blocks' edges move as
+        /// snapshots smooth, so notes are matched by overlap, not by key.
+        var start: Date?
+        var end: Date?
     }
 
     private struct PageText {
@@ -364,8 +368,21 @@ final class ScreenWatcher: ObservableObject {
     func notes(for a: ScreenActivity) -> ActivityNotes? {
         if let n = a.deviceNotes { return n }
         if a.device != nil { return nil }
-        if let n = activityNotes[a.start] { return n }
-        return activityNotes.filter { $0.key >= a.start && $0.key < a.end }.min { $0.key < $1.key }?.value
+        return notesEntry(for: a)?.value
+    }
+
+    /// The notes overlapping this block most. Keying by exact start lost them
+    /// whenever the start moved, and the writer then re-noted old blocks
+    /// forever and never reached the live one (10/13: no notes after noon).
+    private func notesEntry(for a: ScreenActivity) -> (key: Date, value: ActivityNotes)? {
+        var best: (key: Date, value: ActivityNotes, overlap: TimeInterval)?
+        for (k, n) in activityNotes {
+            let s = n.start ?? k, e = n.end ?? k.addingTimeInterval(60)
+            let o = min(e, a.end).timeIntervalSince(max(s, a.start))
+            guard o > 0 || (s >= a.start && s < a.end) else { continue }
+            if best == nil || o > best!.overlap { best = (k, n, max(o, 0)) }
+        }
+        return best.map { ($0.key, $0.value) }
     }
 
     func name(for a: ScreenActivity) -> String { notes(for: a)?.title ?? a.topTitle }
@@ -395,11 +412,11 @@ final class ScreenWatcher: ObservableObject {
             return pageTexts.filter { $0.date >= b.start && $0.date < b.end && $0.date > since }
         }
         let live = blocks.last.flatMap { now.timeIntervalSince($0.end) < 60 ? $0 : nil }
-        let target = blocks.first { $0.id != live?.id && !fresh($0).isEmpty }
-            ?? live.flatMap { b in
-                let last = notes(for: b)?.updatedAt ?? .distantPast
-                return !fresh(b).isEmpty && now.timeIntervalSince(last) >= 90 ? b : nil
-            }
+        let liveDue = live.flatMap { b in
+            !fresh(b).isEmpty && now.timeIntervalSince(notes(for: b)?.updatedAt ?? .distantPast) >= 90 ? b : nil
+        }
+        // Live block first, then the newest finished block with unread pages.
+        let target = liveDue ?? blocks.reversed().first { $0.id != live?.id && !fresh($0).isEmpty }
         guard let b = target else { return }
         let pages = fresh(b)
         noting = true
@@ -410,9 +427,13 @@ final class ScreenWatcher: ObservableObject {
             previous: previous.map { ($0.title, $0.bullets) },
             pages: pages.map { ($0.window, $0.text) }
         ) {
-            for k in activityNotes.keys where k >= b.start && k < b.end { activityNotes[k] = nil }
+            for (k, n) in activityNotes {
+                let s = n.start ?? k, e = n.end ?? k
+                if (s >= b.start && s < b.end) || (e > b.start && s < b.end) { activityNotes[k] = nil }
+            }
             activityNotes[b.start] = ActivityNotes(title: title, bullets: bullets, updatedAt: now,
-                                                   textThrough: pages.map(\.date).max() ?? now)
+                                                   textThrough: pages.map(\.date).max() ?? now,
+                                                   start: b.start, end: b.end)
         }
     }
 
@@ -610,7 +631,12 @@ struct ScreenActivity: Identifiable {
     var distinctSummaries: [String] { Array(ranked(spans.map(\.summary)).prefix(10)) }
     var distinctTitles: [String] { Array(ranked(spans.map { $0.title.isEmpty ? $0.app : "\($0.app): \($0.title)" }).prefix(6)) }
     var apps: [String] { ranked(spans.map(\.app)) }
-    var topTitle: String { distinctTitles.first ?? "Unknown" }
+    var topTitle: String {
+        let t = distinctTitles.first ?? "Unknown"
+        guard let s = spans.first(where: { ($0.title.isEmpty ? $0.app : "\($0.app): \($0.title)") == t }),
+              ScreenWatcher.isGeneric(title: s.title, app: s.app) else { return t }
+        return distinctSummaries.first { !$0.hasPrefix("\(s.app):") && $0 != s.app } ?? t
+    }
 }
 
 struct ScreenSample {

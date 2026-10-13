@@ -119,13 +119,8 @@ final class CommitmentReminder: NSObject, UNUserNotificationCenterDelegate {
                 self.snoozedUntil = Date().addingTimeInterval(3600)
                 self.reschedule()
             case UNNotificationDefaultActionIdentifier:
+                // The end-of-day review asks kept/missed along with the rest.
                 self.onOpen?()
-                // Give a freshly created dashboard window time to attach its observer.
-                if let dayID {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                        NotificationCenter.default.post(name: .showCommitmentReview, object: dayID)
-                    }
-                }
             default:
                 break
             }

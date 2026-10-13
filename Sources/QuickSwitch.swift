@@ -23,6 +23,7 @@ final class QuickSwitch {
     private var hotKeys: [GlobalHotKey] = []
     private lazy var switcher = SwitcherPanel(quick: self)
     var openRecall: (() -> Void)?
+    var openReview: (() -> Void)?
     var openDashboard: (() -> Void)?
 
     /// Right-hand keys for categories, in `settings.tags` order.
@@ -128,6 +129,7 @@ final class QuickSwitch {
         case "toggle": toggle()
         case "switcher": showSwitcher()
         case "recall": openRecall?()
+        case "review": openReview?()
         case "dashboard": openDashboard?()
         case "log":
             // focus://log?label=HW&from=<unix>&to=<unix> relabels that range (label=Break for a break).

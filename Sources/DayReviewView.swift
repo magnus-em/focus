@@ -415,6 +415,12 @@ struct YesterdayRecallView: View {
                 .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if let plan = EveningLog.entry(for: day)?.firstTask, !plan.isEmpty {
+                Label("Last night you planned to start with: \(plan)", systemImage: "moon.stars")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(.indigo)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if !loggedBlocks.isEmpty { cueList }
             TextEditor(text: $text)
                 .font(.system(size: 12))
@@ -618,5 +624,318 @@ struct YesterdayRecallView: View {
             .padding(.bottom, 28)
         }
         .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - Evening review
+
+struct EveningEntry: Codable {
+    var wentWell = ""
+    var inTheWay = ""
+    var firstTask = ""
+    var savedAt = Date()
+}
+
+/// Evening reflections by day, `Focus/evening.json`, this Mac only. The
+/// morning recall shows last night's "start with".
+enum EveningLog {
+    static let url: URL = {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Focus", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("evening.json")
+    }()
+
+    static func key(_ d: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!)
+    }
+
+    static func all() -> [String: EveningEntry] {
+        guard let data = try? Data(contentsOf: url) else { return [:] }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        return (try? dec.decode([String: EveningEntry].self, from: data)) ?? [:]
+    }
+
+    static func entry(for day: Date) -> EveningEntry? { all()[key(day)] }
+
+    static func save(_ e: EveningEntry, for day: Date) {
+        var m = all()
+        m[key(day)] = e
+        let enc = JSONEncoder()
+        enc.dateEncodingStrategy = .iso8601
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? enc.encode(m) { try? data.write(to: url, options: .atomic) }
+    }
+}
+
+@MainActor
+final class EveningReviewWindowController: NSObject, NSWindowDelegate {
+    static let shared = EveningReviewWindowController()
+    private var window: NSWindow?
+
+    func open(store: SessionStore, days: DayStore, settings: AppSettings, timer: TimerManager) {
+        if let w = window {
+            w.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let view = EveningReviewView(store: store, days: days, settings: settings, timer: timer) { [weak self] in
+            self?.window?.close()
+        }
+        let w = NSWindow(contentViewController: NSHostingController(rootView: view))
+        w.title = "End of Day"
+        w.setContentSize(NSSize(width: 620, height: 760))
+        w.styleMask = [.titled, .closable, .resizable]
+        w.isReleasedWhenClosed = false
+        w.center()
+        w.delegate = self
+        w.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        window = w
+    }
+
+    func windowWillClose(_ notification: Notification) { window = nil }
+}
+
+struct EveningReviewView: View {
+    @ObservedObject var store: SessionStore
+    @ObservedObject var days: DayStore
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var timer: TimerManager
+    let onClose: () -> Void
+
+    @ObservedObject private var screen = ScreenWatcher.shared
+    @State private var entry = EveningEntry()
+    @State private var saved = false
+
+    private let day = Calendar.current.startOfDay(for: Date())
+    private var dayEnd: Date { Calendar.current.date(byAdding: .day, value: 1, to: day)! }
+
+    private var sessions: [WorkSession] {
+        (store.sessions + [timer.currentInProgressSession, timer.currentInProgressBreak].compactMap { $0 }
+            .map { WorkSession(startTime: $0.startTime, durationMinutes: Date().timeIntervalSince($0.startTime) / 60,
+                               type: $0.type, label: $0.label) })
+            .filter { $0.startTime < dayEnd && $0.startTime.addingTimeInterval($0.durationMinutes * 60) > day }
+    }
+
+    private func minutes(_ s: WorkSession) -> Double {
+        max(0, min(s.startTime.addingTimeInterval(s.durationMinutes * 60), dayEnd).timeIntervalSince(max(s.startTime, day))) / 60
+    }
+
+    private func byLabel(focus: Bool) -> [(String, Double)] {
+        var m: [String: Double] = [:]
+        for s in sessions where s.isFocus == focus {
+            m[s.type != .work ? "Break" : (s.label ?? "Focus"), default: 0] += minutes(s)
+        }
+        return m.filter { $0.value >= 1 }.sorted { $0.value > $1.value }
+    }
+
+    var body: some View {
+        let focus = byLabel(focus: true)
+        let life = byLabel(focus: false)
+        let focusTotal = focus.reduce(0) { $0 + $1.1 }
+        let goal = Double(max(settings.dailyGoal, 1)) * 60
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Image(systemName: "moon.stars").font(.system(size: 22, weight: .light)).foregroundStyle(.indigo)
+                    Text(day.formatted(.dateTime.weekday(.wide).month().day()))
+                        .font(.system(size: 18, weight: .semibold, design: .serif))
+                    HStack {
+                        Text("Focus \(fmt(focusTotal)) of \(fmt(goal))")
+                            .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                        Spacer()
+                        Text(focusTotal >= goal ? "Goal met" : "\(fmt(goal - focusTotal)) short")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(focusTotal >= goal ? .green : .orange)
+                    }
+                    ProgressView(value: min(focusTotal / goal, 1)).tint(focusTotal >= goal ? .green : .orange)
+                    chips(focus)
+                }
+
+                if let rec = days.todayRecord, let text = rec.commitmentText, !text.isEmpty {
+                    section("THIS MORNING YOU COMMITTED TO") {
+                        Text("\u{201C}\(text)\u{201D}").font(.system(size: 12.5, design: .serif))
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack {
+                            choice("Kept it", on: rec.commitmentFulfilled == true, color: .green) {
+                                days.setFulfillment(true, forDayID: rec.id)
+                            }
+                            choice("Didn't", on: rec.commitmentFulfilled == false, color: .red) {
+                                days.setFulfillment(false, forDayID: rec.id)
+                            }
+                        }
+                    }
+                }
+
+                workedOn
+
+                offTask
+
+                if !life.isEmpty {
+                    section("THE REST OF THE DAY") { chips(life) }
+                }
+
+                section("LOOKING BACK") {
+                    field("What went well?", text: $entry.wentWell)
+                    field("What got in the way?", text: $entry.inTheWay)
+                    field("Tomorrow, start with…", text: $entry.firstTask)
+                    Text("Tomorrow morning's review shows this before anything else.")
+                        .font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
+
+                HStack {
+                    if saved { Label("Saved", systemImage: "checkmark").font(.system(size: 11)).foregroundStyle(.green) }
+                    Spacer()
+                    Button("Save") { save() }
+                    if days.isDayStarted {
+                        Button("Save & End Day") {
+                            save()
+                            days.endDay()
+                            onClose()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .frame(minWidth: 520, minHeight: 500)
+        .background(.regularMaterial)
+        .onAppear { if let e = EveningLog.entry(for: day) { entry = e } }
+    }
+
+    private struct Topic: Identifiable {
+        var name: String
+        var category: String?
+        var minutes: Double
+        var first: Date
+        var bullets: [String]
+        var id: String { name }
+    }
+
+    /// Focus blocks grouped by name, so three stretches of the same chat
+    /// read as one topic, with the bullets from their notes.
+    private var topics: [Topic] {
+        var byName: [String: Topic] = [:]
+        for a in screen.activities(from: day, to: dayEnd) {
+            guard let c = a.category, !FocusCategories.isLife(c), a.minutes >= 2 else { continue }
+            let name = screen.name(for: a)
+            var t = byName[name] ?? Topic(name: name, category: c, minutes: 0, first: a.start, bullets: [])
+            t.minutes += a.minutes
+            t.first = min(t.first, a.start)
+            for b in screen.notes(for: a)?.bullets ?? [] where !t.bullets.contains(b) { t.bullets.append(b) }
+            byName[name] = t
+        }
+        return byName.values.filter { $0.minutes >= 5 }.sorted { $0.minutes > $1.minutes }
+    }
+
+    private var workedOn: some View {
+        let list = Array(topics.prefix(8))
+        return Group {
+            if !list.isEmpty {
+                section("WHAT THE SCREEN SAW YOU WORK ON") {
+                    ForEach(list) { t in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Circle().fill(t.category.map(categoryColor) ?? .secondary).frame(width: 6, height: 6)
+                                Text(t.name).font(.system(size: 12, weight: .medium)).lineLimit(2)
+                                Spacer()
+                                Text("\(fmt(t.minutes)) · from \(t.first.formatted(date: .omitted, time: .shortened))")
+                                    .font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary)
+                            }
+                            ForEach(Array(t.bullets.prefix(3).enumerated()), id: \.offset) { _, b in
+                                Text("• \(b)").font(.system(size: 11)).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.leading, 12)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var offTask: some View {
+        let drifts = screen.drifts(sessions: sessions, from: day, to: dayEnd)
+        let total = drifts.reduce(0) { $0 + $1.minutes }
+        let top = Dictionary(grouping: drifts, by: \.source).mapValues { $0.reduce(0) { $0 + $1.minutes } }
+            .max { $0.value < $1.value }
+        return Group {
+            if !drifts.isEmpty {
+                section("OFF-TASK DURING FOCUS") {
+                    Text("\(drifts.count) drift\(drifts.count == 1 ? "" : "s"), \(fmt(total)) in all"
+                         + (top.map { ". Most of it: \($0.key) (\(fmt($0.value)))" } ?? ""))
+                        .font(.system(size: 12))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func save() {
+        entry.savedAt = Date()
+        EveningLog.save(entry, for: day)
+        saved = true
+    }
+
+    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 9, weight: .semibold)).tracking(1).foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    private func chips(_ items: [(String, Double)]) -> some View {
+        FlowRows(items.map { "\($0.0) \(fmt($0.1))" }, colors: items.map { categoryColor($0.0) })
+    }
+
+    private func choice(_ label: String, on: Bool, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(label, systemImage: on ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(on ? color : .secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func field(_ prompt: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(prompt).font(.system(size: 11.5, weight: .medium))
+            TextField("", text: text, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...4)
+                .font(.system(size: 12))
+        }
+    }
+
+    private func fmt(_ m: Double) -> String {
+        let h = Int(m) / 60, mn = Int(m.rounded()) % 60
+        return h > 0 ? "\(h)h \(mn)m" : "\(max(mn, 1))m"
+    }
+}
+
+/// Wrapping row of small colored labels.
+private struct FlowRows: View {
+    let texts: [String]
+    let colors: [Color]
+    init(_ texts: [String], colors: [Color]) { self.texts = texts; self.colors = colors }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) { items }
+            VStack(alignment: .leading, spacing: 4) { items }
+        }
+    }
+
+    private var items: some View {
+        ForEach(Array(texts.enumerated()), id: \.offset) { i, t in
+            HStack(spacing: 4) {
+                Circle().fill(colors[i]).frame(width: 6, height: 6)
+                Text(t).font(.system(size: 11).monospacedDigit())
+            }
+        }
     }
 }
