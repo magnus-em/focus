@@ -522,3 +522,258 @@ struct DistractionSection: View {
         return h > 0 ? "\(h)h \(mn)m" : "\(max(mn, 1))m"
     }
 }
+
+/// Every snapshot the watcher labeled, at its real length, above the smoothed
+/// blocks and what you tracked. Zoom to 15 min to see each 15s snapshot.
+struct ScreenTimelineSection: View {
+    @ObservedObject var watcher: ScreenWatcher
+    let day: Date
+    let sessions: [WorkSession]
+
+    enum Zoom: Double, CaseIterable, Identifiable {
+        case day = 86400, fourHours = 14400, hour = 3600, quarter = 900
+        var id: Double { rawValue }
+        var label: String {
+            switch self { case .day: "Day"; case .fourHours: "4h"; case .hour: "1h"; case .quarter: "15m" }
+        }
+        var tick: TimeInterval {
+            switch self { case .day: 3600 * 3; case .fourHours: 1800; case .hour: 600; case .quarter: 60 }
+        }
+    }
+
+    @State private var zoom: Zoom = .hour
+    @State private var hovered: ScreenSpan?
+    @State private var pinned: ScreenSpan?
+    @State private var pinch: CGFloat = 1
+
+    private let cal = Calendar.current
+    private var dayEnd: Date { cal.date(byAdding: .day, value: 1, to: day)! }
+
+    private struct Tracked { let start: Date, end: Date, label: String }
+
+    private var tracked: [Tracked] {
+        sessions.map {
+            Tracked(start: $0.startTime, end: $0.startTime.addingTimeInterval($0.durationMinutes * 60),
+                    label: $0.type != .work ? "Break" : ($0.label ?? "Focus"))
+        }
+        .filter { $0.end > day && $0.start < dayEnd }
+    }
+
+    private func trackedLabel(at t: Date, in list: [Tracked]) -> String? {
+        list.last { $0.start <= t && $0.end > t }?.label
+    }
+
+    var body: some View {
+        let spans = watcher.spans(from: day, to: dayEnd).sorted { $0.start < $1.start }
+        let blocks = watcher.activities(from: day, to: dayEnd).filter { $0.device == nil }
+        let track = tracked
+        let hours = hourRange(spans)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Snapshots").font(.system(size: 15, weight: .semibold))
+                    Text("What the screen thought, every 15 seconds").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Picker("Zoom", selection: $zoom) {
+                    ForEach(Zoom.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize().controlSize(.small)
+                .help("Or pinch on the timeline")
+            }
+            if spans.isEmpty {
+                Text("No snapshots on this day.").font(.system(size: 13)).foregroundStyle(.secondary)
+            } else {
+                summary(spans, track)
+                timeline(hours: hours, spans: spans, blocks: blocks, track: track)
+                detail(pinned ?? hovered, track)
+            }
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
+    }
+
+    private func hourRange(_ spans: [ScreenSpan]) -> [Date] {
+        guard let first = spans.first?.start, let last = spans.map(\.end).max() else { return [] }
+        let a = cal.dateInterval(of: .hour, for: first)!.start
+        let b = min(dayEnd, cal.dateInterval(of: .hour, for: max(last, min(Date(), dayEnd)))!.end)
+        return stride(from: a.timeIntervalSince1970, to: b.timeIntervalSince1970, by: 3600)
+            .map { Date(timeIntervalSince1970: $0) }
+    }
+
+    /// Category changes among active snapshots and minutes per category.
+    private func summary(_ spans: [ScreenSpan], _ track: [Tracked]) -> some View {
+        let active = spans.filter { $0.active != false && $0.category != nil }
+        var switches = 0
+        var minutes: [String: Double] = [:]
+        var disagree = 0.0, labeled = 0.0
+        for (i, s) in active.enumerated() {
+            let d = s.end.timeIntervalSince(s.start)
+            minutes[s.category!, default: 0] += d / 60
+            if i > 0, active[i - 1].category != s.category, s.start.timeIntervalSince(active[i - 1].end) < 60 { switches += 1 }
+            if let t = trackedLabel(at: s.start.addingTimeInterval(d / 2), in: track) {
+                labeled += d
+                if t != s.category { disagree += d }
+            }
+        }
+        return HStack(spacing: 10) {
+            ForEach(minutes.sorted { $0.value > $1.value }.prefix(5), id: \.key) { c, m in
+                HStack(spacing: 4) {
+                    Circle().fill(categoryColor(c)).frame(width: 6, height: 6)
+                    Text("\(c) \(fmt(m))")
+                }
+            }
+            Spacer()
+            Text("\(switches) switches")
+            if labeled >= 300 { Text("\(fmt(disagree / 60)) disagrees with tracking").foregroundStyle(.orange) }
+        }
+        .font(.system(size: 12).monospacedDigit())
+        .foregroundStyle(.secondary)
+    }
+
+    private let laneH: CGFloat = 28, blockH: CGFloat = 6, trackH: CGFloat = 6, axisH: CGFloat = 16
+
+    private func timeline(hours: [Date], spans: [ScreenSpan], blocks: [ScreenActivity], track: [Tracked]) -> some View {
+        GeometryReader { geo in
+            let hourW = max(geo.size.width * 3600 / zoom.rawValue, 1)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: true) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(hours, id: \.self) { h in
+                            hourChunk(h, width: hourW, spans: spans, blocks: blocks, track: track).id(h)
+                        }
+                    }
+                }
+                .onAppear { scrollToNow(proxy, hours) }
+                .onChange(of: zoom) { _, _ in scrollToNow(proxy, hours) }
+            }
+        }
+        .frame(height: laneH + blockH + trackH + axisH + 22)
+        .gesture(MagnifyGesture().onChanged { pinch = $0.magnification }.onEnded { _ in
+            let all = Zoom.allCases
+            if let i = all.firstIndex(of: zoom) {
+                if pinch > 1.25, i + 1 < all.count { zoom = all[i + 1] }
+                if pinch < 0.8, i > 0 { zoom = all[i - 1] }
+            }
+            pinch = 1
+        })
+    }
+
+    private func scrollToNow(_ proxy: ScrollViewProxy, _ hours: [Date]) {
+        let target = pinned?.start ?? min(Date(), hours.last ?? Date())
+        guard let h = hours.last(where: { $0 <= target }) else { return }
+        DispatchQueue.main.async { proxy.scrollTo(h, anchor: zoom == .day ? .leading : .center) }
+    }
+
+    private func hourChunk(_ h: Date, width: CGFloat, spans: [ScreenSpan], blocks: [ScreenActivity], track: [Tracked]) -> some View {
+        let end = h.addingTimeInterval(3600)
+        let mine = spans.filter { $0.end > h && $0.start < end }
+        let x = { (t: Date) -> CGFloat in CGFloat(t.timeIntervalSince(h) / 3600) * width }
+        let focusID = (pinned ?? hovered)?.id
+        return Canvas { ctx, size in
+            for s in mine {
+                let w = max(x(s.end) - x(s.start), 1)
+                let gap: CGFloat = w >= 6 ? 1 : 0
+                let r = CGRect(x: x(s.start) + gap / 2, y: 0, width: max(w - gap, 1), height: laneH)
+                let c = s.category.map(categoryColor) ?? .gray
+                ctx.fill(Path(roundedRect: r, cornerRadius: min(4, r.width / 2), style: .continuous),
+                         with: .color(c.opacity(s.active == false ? 0.28 : 0.85)))
+                if s.id == focusID {
+                    ctx.stroke(Path(roundedRect: r.insetBy(dx: -1, dy: -1), cornerRadius: 5, style: .continuous),
+                               with: .color(.primary), lineWidth: 2)
+                }
+                if let t = trackedLabel(at: s.start.addingTimeInterval(s.end.timeIntervalSince(s.start) / 2), in: track),
+                   let c = s.category, t != c, s.active != false {
+                    ctx.fill(Path(roundedRect: CGRect(x: r.minX, y: laneH + 2, width: r.width, height: 2), cornerRadius: 1), with: .color(.orange))
+                }
+            }
+            for b in blocks where b.end > h && b.start < end {
+                let r = CGRect(x: x(b.start), y: laneH + 6, width: max(x(b.end) - x(b.start), 1), height: blockH)
+                ctx.fill(Path(roundedRect: r, cornerRadius: blockH / 2), with: .color((b.category.map(categoryColor) ?? .gray).opacity(0.7)))
+            }
+            for t in track where t.end > h && t.start < end {
+                let r = CGRect(x: x(t.start), y: laneH + blockH + 10, width: max(x(t.end) - x(t.start), 1), height: trackH)
+                ctx.fill(Path(roundedRect: r, cornerRadius: trackH / 2), with: .color(t.label == "Break" ? .gray.opacity(0.5) : categoryColor(t.label)))
+            }
+            var tick = h
+            let axisY = laneH + blockH + trackH + 14
+            while tick < end {
+                let tx = x(tick)
+                ctx.fill(Path(CGRect(x: tx, y: axisY - 2, width: 1, height: 3)), with: .color(.secondary.opacity(0.5)))
+                if zoom != .day || (tick == h && cal.component(.hour, from: h) % 3 == 0) {
+                    ctx.draw(Text(tickLabel(tick)).font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary),
+                             at: CGPoint(x: tx + 2, y: axisY + 7), anchor: .leading)
+                }
+                tick = tick.addingTimeInterval(zoom == .day ? 3600 : zoom.tick)
+            }
+            _ = size
+        }
+        .frame(width: width)
+        .contentShape(Rectangle())
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let p):
+                let t = h.addingTimeInterval(Double(p.x / width) * 3600)
+                hovered = mine.first { $0.start <= t && $0.end > t } ?? nearest(mine, t, slack: 4 * 3600 / width)
+            case .ended: hovered = nil
+            }
+        }
+        .onTapGesture { pinned = (pinned?.id == hovered?.id) ? nil : hovered }
+    }
+
+    private func nearest(_ list: [ScreenSpan], _ t: Date, slack: TimeInterval) -> ScreenSpan? {
+        list.min { abs($0.start.timeIntervalSince(t)) < abs($1.start.timeIntervalSince(t)) }
+            .flatMap { abs($0.start.timeIntervalSince(t)) < slack || abs($0.end.timeIntervalSince(t)) < slack ? $0 : nil }
+    }
+
+    private func tickLabel(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = cal.component(.minute, from: d) == 0 ? "ha" : "h:mm"
+        return f.string(from: d).lowercased()
+    }
+
+    @ViewBuilder
+    private func detail(_ s: ScreenSpan?, _ track: [Tracked]) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                if let s {
+                    let t = trackedLabel(at: s.start.addingTimeInterval(s.end.timeIntervalSince(s.start) / 2), in: track)
+                    HStack(spacing: 6) {
+                        Circle().fill(s.category.map(categoryColor) ?? .gray).frame(width: 7, height: 7)
+                        Text(s.category ?? "No label").fontWeight(.semibold)
+                        Text("\(clock(s.start))–\(clock(s.end)) · \(Int(s.end.timeIntervalSince(s.start)))s")
+                            .monospacedDigit().foregroundStyle(.secondary)
+                        if let t {
+                            Text(t == s.category ? "tracked \(t) ✓" : "tracked \(t)")
+                                .foregroundStyle(t == s.category ? Color.green : .orange)
+                        }
+                        if s.active == false { Text("idle screen").foregroundStyle(.tertiary) }
+                        Spacer()
+                        if pinned != nil { Button("Unpin") { pinned = nil }.buttonStyle(.plain).foregroundStyle(.secondary) }
+                    }
+                    .font(.system(size: 13))
+                    Text("\(s.app) · \(s.title.isEmpty ? "untitled" : s.title)")
+                        .font(.system(size: 12)).lineLimit(1)
+                    if !s.summary.isEmpty {
+                        Text(s.summary).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                } else {
+                    Text("Top: each snapshot. Middle: the blocks it made. Bottom: what you tracked. Orange marks a disagreement, faded means no keyboard or mouse. Hover to see what it read, click to pin.")
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(minHeight: 52, alignment: .top)
+    }
+
+    private func clock(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm:ss"
+        return f.string(from: d)
+    }
+
+    private func fmt(_ m: Double) -> String {
+        let h = Int(m) / 60, mn = Int(m.rounded()) % 60
+        return h > 0 ? "\(h)h \(mn)m" : "\(max(mn, 1))m"
+    }
+}

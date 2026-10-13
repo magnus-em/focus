@@ -669,7 +669,8 @@ final class ScreenWatcher: ObservableObject {
         let header = boxes.filter { !isSidebar($0) && $0.boundingBox.minY > 0.955 }
             .compactMap { $0.topCandidates(1).first?.string }
             .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " v⌄›>•")) }
-            .filter { $0.count >= 6 }
+            // Text scrolled under the translucent bar reads as sentences; titles don't.
+            .filter { (6...60).contains($0.count) && !$0.contains(". ") && !$0.hasSuffix(".") }
             .max { $0.count < $1.count }
         return (String(lines.joined(separator: "\n").prefix(2500)), header)
     }

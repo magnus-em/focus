@@ -361,6 +361,7 @@ struct DashboardView: View {
     private var rightPanel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                ScreenTimelineSection(watcher: screenWatcher, day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions)
                 ScreenActivitySection(
                     watcher: screenWatcher, day: selectedDay,
                     sessions: liveSessions.filter { Calendar.current.isDate($0.startTime, inSameDayAs: selectedDay)

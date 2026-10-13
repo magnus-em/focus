@@ -215,7 +215,7 @@ Read `DESIGN.md` first: principles, type/spacing/corner scale, color roles and t
 - [x] Recall: post-session free recall, spaced retrieval cards, morning yesterday reconstruction, optional Claude coach
 
 ### In flight (see HANDOFF.md)
-- **Popover redesign**: three directions at https://claude.ai/artifact/KSWGrRXt5A5qfnpwmQRKx4 (A Ring, B Now, C Command; Claude recommends B). Waiting on the user's pick, then follow DESIGN.md and the UI loop. The user also asked for more design ideas for the app after the 2026-10-13 compaction.
+- **Popover redesign**: the user picked **A + B** (board "A+B" at https://claude.ai/artifact/KSWGrRXt5A5qfnpwmQRKx4) in a native-Apple style (newest iOS Maps / Podcasts: elegant, minimal, Liquid Glass); see DESIGN.md → Direction. Next: build it in `TimerView`/`PopoverContent` following the UI loop (shots only while the user is idle).
 - Pending chores: `./install_ios.sh` once the iPad is unlocked (the iPhone's old build re-saves stale sessions); user to reload the Chrome extension (new `/tab` posting); untested: iPad broadcast, calendar permission, dual monitors.
 
 ### Ranked roadmap (2026-10-13; value for interview prep + study + trustworthy tracking, per effort)
@@ -242,6 +242,7 @@ Read `DESIGN.md` first: principles, type/spacing/corner scale, color roles and t
 #### Screen Review spec (roadmap #2)
 Goal: see in 30 seconds whether the auto-log was right today, fix what wasn't, and watch accuracy improve.
 - **Scorecard** (top, four numbers with 14-day sparklines): agreement with what you tracked; your ✓/✗ accuracy; cards that were right (switched) vs false alarms (kept/closed); detection delay (how long after you actually changed activity the screen noticed). Plus auto-switch undo rate.
+- **Snapshot timeline** (built 10/13, `ScreenTimelineSection` in `ScreenActivityView.swift`, top of the Dashboard right column): every saved span at its real length (15s grain) above the smoothed blocks and the tracked lane, zoom Day/4h/1h/15m (segmented or pinch), hour chunks in a lazy horizontal scroll, hover/click for app · title · summary · tracked label, orange underline on disagreement. The user asked for this granularity explicitly ("zoom in and see what it thinks I'm doing down to 2 min").
 - **Two-lane day timeline**: AI lane above your tracked lane, same scale; disagreements hatched orange. Click one → side panel: snapshots, label source (your answer / model / held by stickiness), the page excerpt if the prompt log has it, the card and your answer, and fix buttons (right · it was X · always X for this window · ignore app).
 - **Triage mode**: keyboard walk through the day's disagreements (Y right / N + pick / S skip), oldest first; optional 30-second version in the morning review for yesterday.
 - **Confusion grid**: AI said × truth (from checks, else tracked), e.g. Math↔SWE, so tuning targets the real confusions.

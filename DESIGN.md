@@ -5,6 +5,16 @@ The yardstick for every UI change. A separate reviewer scores screenshots
 numbered problems; a change ships at 85+ or after three rounds, with
 before/after shots.
 
+## Direction (picked 2026-10-13)
+
+**A + B**: B's "Now" structure (running category as the title, a day strip,
+"On screen now", switch chips, one floating control bar) with A's ring as a
+compact goal ring beside the big timer. Look and feel: **native Apple, like
+the newest iOS Maps and Podcasts**: elegant, minimal, Liquid Glass on the
+floating layer, sentence-case titles (no shouty uppercase section labels),
+generous whitespace, continuous corners, soft capsules. Mock: "A+B" board in
+the directions artifact below.
+
 ## Principles
 
 1. **One hero per surface.** Popover: what's running and for how long.
@@ -26,8 +36,8 @@ before/after shots.
 ## Scale
 
 - **Type** (SF Pro, system): 46 hero number · 26 title · 22 stat · 15 button ·
-  14 body-strong · 13 body · 12 secondary · 11 caption (uppercase labels:
-  11 semibold, +0.3 tracking). Numbers use tabular figures.
+  14 body-strong · 13 body · 12 secondary · 11 caption (section titles are
+  sentence case, 15 semibold, with an optional 12 secondary subtitle). Numbers use tabular figures.
 - **Spacing**: 4 · 8 · 12 · 16 · 24 · 32. Popover padding 16, gaps 12–16.
 - **Corners** (concentric: inner = outer − padding): popover 26 · cards 18 ·
   wells/toolbars 16–20 · buttons 12–15 · chips full pill.
