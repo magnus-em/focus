@@ -155,6 +155,11 @@ struct SettingsView: View {
 
                 Divider()
 
+                SectionLabel("FOCUS MODES")
+                FocusModeSettings(tags: settings.tags)
+
+                Divider()
+
                 SectionLabel("AWAY & GAPS")
                 ToggleRow(label: "Ask when I come back", isOn: $settings.awayPrompts)
                 if settings.awayPrompts {
@@ -1062,6 +1067,44 @@ private struct ScreenSettings: View {
             }
         }
         Text("Every 15s and on each app switch, the front window is read on-device with Apple Vision and labeled by Apple Intelligence. Screenshots and text are never sent anywhere; only the window title and a one-line summary are kept on this Mac for 30 days, plus the page text behind each switch card in the prompt log (14 days). Passwords, Messages, Mail, WhatsApp, Telegram and FaceTime are never captured. Picking \"Still X\" teaches it.")
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct FocusModeSettings: View {
+    let tags: [String]
+    @ObservedObject private var modes = FocusModes.shared
+    @AppStorage(FocusModes.enabledKey) private var enabled = true
+
+    var body: some View {
+        ToggleRow(label: "Set my Focus mode when I switch", isOn: $enabled)
+        if enabled {
+            let missing = FocusModes.modes.map(FocusModes.shortcutName).filter { !modes.installed.contains($0) }
+            HStack {
+                Text(missing.isEmpty ? (modes.lastResult.isEmpty ? "All shortcuts found" : modes.lastResult)
+                     : "Missing shortcuts: " + missing.joined(separator: ", "))
+                    .font(.system(size: 11)).foregroundStyle(missing.isEmpty ? Color.secondary : Color.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button("Recheck") { modes.refreshInstalled() }.controlSize(.small)
+            }
+            ForEach(tags + ["Break"], id: \.self) { tag in
+                HStack {
+                    Text(tag).font(.system(size: 12))
+                    Spacer()
+                    Picker("", selection: Binding(get: { modes.mode(for: tag) }, set: { modes.setMode($0, for: tag) })) {
+                        ForEach(FocusModes.modes, id: \.self) { Text($0).tag($0) }
+                        Text("Leave as is").tag("")
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    .controlSize(.small)
+                }
+            }
+        }
+        Text("Runs your shortcut “Focus School”, “Focus Personal”, “Focus Sleep” or “Focus Off” (each one Set Focus action) when the category changes. With Share across devices on, your iPhone and iPad follow. A mode you set yourself stays until a switch wants a different one.")
             .font(.system(size: 10))
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)

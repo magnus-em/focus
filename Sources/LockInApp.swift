@@ -214,6 +214,7 @@ struct FocusApp: App {
         }
         AwayCoach.shared = AwayCoach(timer: timer, store: store, settings: appSettings, days: days)
         ScreenCoach.shared = ScreenCoach(timer: timer, settings: appSettings, days: days)
+        FocusModes.shared.start(timer: timer)
         QuickSwitch.shared?.openRecall = {
             recallCtrl.open(store: recall, settings: appSettings, sessionStore: store)
         }
