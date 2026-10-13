@@ -177,6 +177,10 @@ Requires admin password on first setup. Sets up sudoers entry + helper script. M
 - Idle: `scope` SF Symbol.
 - Active: countdown `MM:SS`, prefixed with `⏸` when paused.
 
+## UI work
+
+Read `DESIGN.md` first: principles, type/spacing/corner scale, color roles and the known problems. Loop: change one surface → `scripts/shots.sh <label>` (only while the user is away) → a separate reviewer (fresh agent) scores the shots against DESIGN.md out of 100 with numbered problems → fix → repeat until 85+ or three rounds; keep before/after shots. The user wants minimal involvement: they pick between directions once, then see a before/after sheet.
+
 ## Conventions
 
 - **No comments in code unless WHY is non-obvious.** The user reads the diff; obvious comments are noise.
