@@ -545,6 +545,8 @@ struct ScreenTimelineSection: View {
     @State private var hovered: ScreenSpan?
     @State private var pinned: ScreenSpan?
     @State private var pinch: CGFloat = 1
+    @State private var jump: Date?
+    @State private var showAllSwitches = false
 
     private let cal = Calendar.current
     private var dayEnd: Date { cal.date(byAdding: .day, value: 1, to: day)! }
@@ -584,9 +586,11 @@ struct ScreenTimelineSection: View {
             if spans.isEmpty {
                 Text("No snapshots on this day.").font(.system(size: 13)).foregroundStyle(.secondary)
             } else {
-                summary(spans, track)
+                let sw = switches(spans, track)
+                summary(spans, track, sw)
                 timeline(hours: hours, spans: spans, blocks: blocks, track: track)
                 detail(pinned ?? hovered, track)
+                if !sw.isEmpty { Divider(); switchList(sw) }
             }
         }
         .padding(16)
@@ -601,52 +605,164 @@ struct ScreenTimelineSection: View {
             .map { Date(timeIntervalSince1970: $0) }
     }
 
-    /// Category changes among active snapshots and minutes per category.
-    private func summary(_ spans: [ScreenSpan], _ track: [Tracked]) -> some View {
-        let active = spans.filter { $0.active != false && $0.category != nil }
-        var switches = 0
+    /// The screen's own story: active snapshots merged into runs, runs under
+    /// 30s folded into their neighbour so a glance at Slack isn't a "switch".
+    private struct Switch: Identifiable {
+        let at: Date, from: String, to: String, title: String
+        /// Seconds from the screen's switch to yours (negative = you were first); nil = you never switched.
+        let lag: TimeInterval?
+        var id: Date { at }
+    }
+
+    private func runs(_ spans: [ScreenSpan]) -> [(c: String, start: Date, end: Date, title: String)] {
+        var out: [(c: String, start: Date, end: Date, title: String)] = []
+        for s in spans where s.active != false {
+            guard let c = s.category else { continue }
+            if let l = out.last, l.c == c, s.start.timeIntervalSince(l.end) < 90 {
+                out[out.count - 1].end = s.end
+            } else {
+                out.append((c, s.start, s.end, s.title))
+            }
+        }
+        var merged: [(c: String, start: Date, end: Date, title: String)] = []
+        for r in out {
+            if let l = merged.last, r.end.timeIntervalSince(r.start) < 30, r.start.timeIntervalSince(l.end) < 90 {
+                merged[merged.count - 1].end = r.end
+            } else if let l = merged.last, l.c == r.c, r.start.timeIntervalSince(l.end) < 90 {
+                merged[merged.count - 1].end = r.end
+            } else {
+                merged.append(r)
+            }
+        }
+        return merged
+    }
+
+    private func switches(_ spans: [ScreenSpan], _ track: [Tracked]) -> [Switch] {
+        let r = runs(spans)
+        guard r.count > 1 else { return [] }
+        return (1..<r.count).compactMap { i in
+            guard r[i].start.timeIntervalSince(r[i - 1].end) < 90 else { return nil }
+            let at = r[i].start, to = r[i].c
+            let yours = track.filter { $0.label == to && abs($0.start.timeIntervalSince(at)) < 15 * 60 }
+                .min { abs($0.start.timeIntervalSince(at)) < abs($1.start.timeIntervalSince(at)) }
+            let covered = trackedLabel(at: at.addingTimeInterval(20), in: track) == to
+            let lag = yours.map { $0.start.timeIntervalSince(at) } ?? (covered ? 0 : nil)
+            return Switch(at: at, from: r[i - 1].c, to: to, title: r[i].title, lag: lag)
+        }
+    }
+
+    private func summary(_ spans: [ScreenSpan], _ track: [Tracked], _ sw: [Switch]) -> some View {
         var minutes: [String: Double] = [:]
         var disagree = 0.0, labeled = 0.0
-        for (i, s) in active.enumerated() {
+        for s in spans where s.active != false {
+            guard let c = s.category else { continue }
             let d = s.end.timeIntervalSince(s.start)
-            minutes[s.category!, default: 0] += d / 60
-            if i > 0, active[i - 1].category != s.category, s.start.timeIntervalSince(active[i - 1].end) < 60 { switches += 1 }
+            minutes[c, default: 0] += d / 60
             if let t = trackedLabel(at: s.start.addingTimeInterval(d / 2), in: track) {
                 labeled += d
-                if t != s.category { disagree += d }
+                if t != c { disagree += d }
             }
         }
-        return HStack(spacing: 10) {
-            ForEach(minutes.sorted { $0.value > $1.value }.prefix(5), id: \.key) { c, m in
-                HStack(spacing: 4) {
-                    Circle().fill(categoryColor(c)).frame(width: 6, height: 6)
-                    Text("\(c) \(fmt(m))")
+        let total = max(minutes.values.reduce(0, +), 1)
+        let cats = minutes.sorted { $0.value > $1.value }
+        let missed = sw.filter { $0.lag == nil }.count
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 24) {
+                if labeled >= 300 {
+                    metric("\(Int(((labeled - disagree) / labeled * 100).rounded()))%", "agrees with you",
+                           (labeled - disagree) / labeled >= 0.85 ? .green : .orange)
+                    metric(fmt(disagree / 60), "disagrees", disagree / 60 >= 15 ? .orange : .primary)
+                }
+                metric("\(sw.count)", sw.count == 1 ? "switch it saw" : "switches it saw", .primary)
+                if missed > 0 { metric("\(missed)", "you didn't follow", .orange) }
+                Spacer(minLength: 0)
+            }
+            GeometryReader { g in
+                HStack(spacing: 2) {
+                    ForEach(cats, id: \.key) { c, m in
+                        Capsule().fill(categoryColor(c)).frame(width: max(2, (g.size.width - CGFloat(cats.count) * 2) * m / total))
+                    }
                 }
             }
-            Spacer()
-            Text("\(switches) switches")
-            if labeled >= 300 { Text("\(fmt(disagree / 60)) disagrees with tracking").foregroundStyle(.orange) }
+            .frame(height: 6)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(cats, id: \.key) { c, m in
+                        HStack(spacing: 5) {
+                            Circle().fill(categoryColor(c)).frame(width: 7, height: 7)
+                            Text(c).foregroundStyle(.primary)
+                            Text(fmt(m))
+                        }
+                        .fixedSize()
+                    }
+                }
+            }
+            .font(.system(size: 12).monospacedDigit())
+            .foregroundStyle(.secondary)
         }
-        .font(.system(size: 12).monospacedDigit())
-        .foregroundStyle(.secondary)
+    }
+
+    private func metric(_ value: String, _ label: String, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(value).font(.system(size: 22, weight: .semibold).monospacedDigit()).foregroundStyle(color)
+            Text(label).font(.system(size: 12)).foregroundStyle(.secondary)
+        }
+        .fixedSize()
+    }
+
+    private func switchList(_ sw: [Switch]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Switches it saw").font(.system(size: 13, weight: .semibold)).padding(.bottom, 6)
+            ForEach(sw.suffix(showAllSwitches ? 200 : 6).reversed()) { s in
+                HStack(spacing: 8) {
+                    Text(s.at.formatted(date: .omitted, time: .shortened))
+                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+                        .frame(width: 62, alignment: .leading)
+                    HStack(spacing: 4) {
+                        Circle().fill(categoryColor(s.from)).frame(width: 6, height: 6)
+                        Image(systemName: "arrow.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
+                        Circle().fill(categoryColor(s.to)).frame(width: 6, height: 6)
+                        Text(s.to).font(.system(size: 13, weight: .medium))
+                    }
+                    .frame(width: 96, alignment: .leading)
+                    Text(s.title.isEmpty ? "untitled" : s.title)
+                        .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(lagText(s.lag))
+                        .font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(s.lag == nil ? Color.orange : .secondary)
+                        .fixedSize()
+                }
+                .frame(height: 26)
+                .contentShape(Rectangle())
+                .onTapGesture { zoom = .quarter; pinned = nil; jump = s.at }
+            }
+            if sw.count > 6 {
+                Button(showAllSwitches ? "Show fewer" : "Show all \(sw.count)") { showAllSwitches.toggle() }
+                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary).padding(.top, 4)
+            }
+        }
+    }
+
+    private func lagText(_ lag: TimeInterval?) -> String {
+        guard let lag else { return "you didn't switch" }
+        if abs(lag) < 30 { return "matches you" }
+        let m = Int((abs(lag) / 60).rounded(.up))
+        return lag > 0 ? "you switched \(m)m later" : "\(m)m after you"
     }
 
     private let laneH: CGFloat = 28, blockH: CGFloat = 6, trackH: CGFloat = 6, axisH: CGFloat = 16
 
     private func timeline(hours: [Date], spans: [ScreenSpan], blocks: [ScreenActivity], track: [Tracked]) -> some View {
-        GeometryReader { geo in
-            let hourW = max(geo.size.width * 3600 / zoom.rawValue, 1)
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: true) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(hours, id: \.self) { h in
-                            hourChunk(h, width: hourW, spans: spans, blocks: blocks, track: track).id(h)
-                        }
-                    }
-                }
-                .onAppear { scrollToNow(proxy, hours) }
-                .onChange(of: zoom) { _, _ in scrollToNow(proxy, hours) }
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Screen").frame(height: laneH)
+                Text("Blocks").frame(height: blockH + 6, alignment: .bottom)
+                Text("You").frame(height: trackH + 8, alignment: .bottom)
             }
+            .font(.system(size: 11)).foregroundStyle(.secondary)
+            .frame(width: 44, alignment: .leading)
+            lanes(hours: hours, spans: spans, blocks: blocks, track: track)
         }
         .frame(height: laneH + blockH + trackH + axisH + 22)
         .gesture(MagnifyGesture().onChanged { pinch = $0.magnification }.onEnded { _ in
@@ -659,8 +775,26 @@ struct ScreenTimelineSection: View {
         })
     }
 
+    private func lanes(hours: [Date], spans: [ScreenSpan], blocks: [ScreenActivity], track: [Tracked]) -> some View {
+        GeometryReader { geo in
+            let hourW = max(geo.size.width * 3600 / zoom.rawValue, 1)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: true) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(hours, id: \.self) { h in
+                            hourChunk(h, width: hourW, spans: spans, blocks: blocks, track: track).id(h)
+                        }
+                    }
+                }
+                .onAppear { scrollToNow(proxy, hours) }
+                .onChange(of: zoom) { _, _ in scrollToNow(proxy, hours) }
+                .onChange(of: jump) { _, _ in scrollToNow(proxy, hours) }
+            }
+        }
+    }
+
     private func scrollToNow(_ proxy: ScrollViewProxy, _ hours: [Date]) {
-        let target = pinned?.start ?? min(Date(), hours.last ?? Date())
+        let target = jump ?? pinned?.start ?? min(Date(), hours.last ?? Date())
         guard let h = hours.last(where: { $0 <= target }) else { return }
         DispatchQueue.main.async { proxy.scrollTo(h, anchor: zoom == .day ? .leading : .center) }
     }
@@ -694,6 +828,11 @@ struct ScreenTimelineSection: View {
             for t in track where t.end > h && t.start < end {
                 let r = CGRect(x: x(t.start), y: laneH + blockH + 10, width: max(x(t.end) - x(t.start), 1), height: trackH)
                 ctx.fill(Path(roundedRect: r, cornerRadius: trackH / 2), with: .color(t.label == "Break" ? .gray.opacity(0.5) : categoryColor(t.label)))
+            }
+            let now = Date()
+            if now > h, now < end {
+                ctx.fill(Path(roundedRect: CGRect(x: x(now) - 1, y: -2, width: 2, height: laneH + blockH + trackH + 14), cornerRadius: 1),
+                         with: .color(.primary.opacity(0.7)))
             }
             var tick = h
             let axisY = laneH + blockH + trackH + 14

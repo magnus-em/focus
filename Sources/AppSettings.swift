@@ -121,6 +121,10 @@ class AppSettings: ObservableObject {
     @Published var screenAutoSwitch: Bool {
         didSet { sd.set(screenAutoSwitch, forKey: "screenAutoSwitch") }
     }
+    /// Testing: a card ~30s after every category change the screen sees.
+    @Published var screenEverySwitch: Bool {
+        didSet { sd.set(screenEverySwitch, forKey: "screenEverySwitch") }
+    }
     @Published var screenSuggestMinutes: Int {
         didSet { sd.set(screenSuggestMinutes, forKey: "screenSuggestMinutes") }
     }
@@ -215,6 +219,7 @@ class AppSettings: ObservableObject {
             "screenSuggest": true,
             "screenSuggestMinutes": 2,
             "screenAutoSwitch": true,
+            "screenEverySwitch": false,
             "awayPromptMinutes": 15,
             "idleNudge": true,
         ])
@@ -260,6 +265,7 @@ class AppSettings: ObservableObject {
         screenSuggest = d.bool(forKey: "screenSuggest")
         screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
         screenAutoSwitch = d.bool(forKey: "screenAutoSwitch")
+        screenEverySwitch = d.bool(forKey: "screenEverySwitch")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
         let epoch = d.double(forKey: "interviewDate")
@@ -340,6 +346,7 @@ class AppSettings: ObservableObject {
         screenSuggest = d.bool(forKey: "screenSuggest")
         screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
         screenAutoSwitch = d.bool(forKey: "screenAutoSwitch")
+        screenEverySwitch = d.bool(forKey: "screenEverySwitch")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
         let epoch = d.double(forKey: "interviewDate")

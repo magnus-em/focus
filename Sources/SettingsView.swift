@@ -1037,6 +1037,7 @@ private struct ScreenSettings: View {
             if settings.screenSuggest {
                 IntRow(label: "After the screen shows it for", value: $settings.screenSuggestMinutes, range: 1...20, suffix: "min")
                 ToggleRow(label: "Switch focus categories on its own for windows I've labeled", isOn: $settings.screenAutoSwitch)
+                ToggleRow(label: "Ask on every switch it sees (testing, ~30s)", isOn: $settings.screenEverySwitch)
             }
             HStack(spacing: 6) {
                 Text(watcher.status).font(.system(size: 11)).foregroundStyle(.secondary)

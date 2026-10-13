@@ -668,7 +668,8 @@ final class ScreenWatcher: ObservableObject {
         // Title bar only (ChatGPT's sits at 0.97): content scrolls up to ~0.94.
         let header = boxes.filter { !isSidebar($0) && $0.boundingBox.minY > 0.955 }
             .compactMap { $0.topCandidates(1).first?.string }
-            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " v⌄›>•")) }
+            .map { $0.replacingOccurrences(of: #"\s+[VvY⌄]$"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: CharacterSet(charactersIn: " v⌄›>•")) }
             // Text scrolled under the translucent bar reads as sentences; titles don't.
             .filter { (6...60).contains($0.count) && !$0.contains(". ") && !$0.hasSuffix(".") }
             .max { $0.count < $1.count }
@@ -727,7 +728,7 @@ final class ScreenWatcher: ObservableObject {
             return "\(title) (\(String(short.prefix(120))))"
         } ?? title
         var result = await ScreenLabeler.classify(app: app, title: shownTitle, text: text, categories: candidates,
-                                                  current: runningCategory())
+                                                  current: generic ? runningCategory() : nil)
             ?? (nil, fallbackSummary)
         let window = Self.memoryKey(bundle: bundle, title: title)
         if let c = result.0, !generic {
@@ -897,8 +898,8 @@ final class ScreenCoach {
                 if missStreak >= 2 { total -= 2; break }
             }
         }
-        let needed = allLearned ? Self.learnedRunSeconds : Double(settings.screenSuggestMinutes) * 60
-        guard hits >= (allLearned ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
+        let needed = settings.screenEverySwitch ? 25 : allLearned ? Self.learnedRunSeconds : Double(settings.screenSuggestMinutes) * 60
+        guard hits >= (settings.screenEverySwitch ? 2 : allLearned ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
               last.date.timeIntervalSince(start) >= needed else { return nil }
         return Run(category: c, start: start, keys: keys, summary: last.summary, trusted: allLearned)
     }
@@ -916,7 +917,7 @@ final class ScreenCoach {
             if s.category == c { start = s.date } else { break }
         }
         let have = Int(last.date.timeIntervalSince(start))
-        let need = last.learned ? Int(Self.learnedRunSeconds) : settings.screenSuggestMinutes * 60
+        let need = settings.screenEverySwitch ? 25 : last.learned ? Int(Self.learnedRunSeconds) : settings.screenSuggestMinutes * 60
         return "Screen says \(c) for \(have)s; a card needs \(need)s of mostly \(c)"
     }
 
@@ -1082,7 +1083,7 @@ final class ScreenCoach {
     }
 
     private func decline(_ category: String) {
-        snoozed[category] = Date().addingTimeInterval(20 * 60)
+        snoozed[category] = Date().addingTimeInterval(settings.screenEverySwitch ? 120 : 20 * 60)
         Self.bump(Self.declinedKey)
         panel.dismiss()
     }

@@ -81,6 +81,7 @@ public enum ScreenLabeler {
         \(lines.joined(separator: "\n"))
         - Unclear: not enough information.
         Coursework and problem sets are never Reading.
+        A course code in the window title names the subject: MATH courses are Math, CPSC courses are SWE.
         \(current.map { categories.contains($0) ? "The student says they are doing \($0) right now. Answer \($0) unless the screen clearly shows a different kind of work; numbers, binary or arithmetic inside programming material are still \($0)." : "" } ?? "")
         """
         do {
