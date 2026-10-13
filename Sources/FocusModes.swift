@@ -67,13 +67,12 @@ final class FocusModes: ObservableObject {
         guard enabled, let m = wanted(timer), m != applied else { return }
         applied = m
         let name = Self.shortcutName(m)
-        guard installed.contains(name) else {
-            lastResult = "Wanted \(m), but there's no “\(name)” shortcut"
-            return
-        }
         Task.detached {
             let err = Self.run(name)
-            await MainActor.run { self.lastResult = err ?? "Turned on \(m) at \(Date().formatted(date: .omitted, time: .shortened))" }
+            await MainActor.run {
+                self.lastResult = err ?? "Turned on \(m) at \(Date().formatted(date: .omitted, time: .shortened))"
+                if err != nil { self.refreshInstalled() }
+            }
         }
     }
 
