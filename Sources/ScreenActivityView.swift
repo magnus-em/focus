@@ -64,6 +64,7 @@ struct ScreenActivitySection: View {
             }
 
             if let live { nowPanel(live) }
+            inspector
 
             if list.isEmpty {
                 Text(watcher.status.hasPrefix("Watching")
@@ -91,6 +92,66 @@ struct ScreenActivitySection: View {
         }
         .padding(12)
         .glassCard(cornerRadius: 10)
+    }
+
+    // MARK: - What it sees
+
+    @State private var showInspector = false
+
+    private var inspector: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                showInspector.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: showInspector ? "chevron.down" : "chevron.right").font(.system(size: 8, weight: .bold))
+                    Text("What it sees right now")
+                    Spacer()
+                    if !watcher.coachStatus.isEmpty { Text(watcher.coachStatus).lineLimit(1).foregroundStyle(.tertiary) }
+                }
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if showInspector {
+                if let x = watcher.lastSnapshot {
+                    VStack(alignment: .leading, spacing: 4) {
+                        row("When", "\(x.date.formatted(date: .omitted, time: .standard)) · took \(String(format: "%.1f", x.seconds))s · \(x.active ? "you were active" : "idle, doesn't count")")
+                        row("Window", x.title.isEmpty ? x.app : "\(x.app): \(x.title)")
+                        row("Label", "\(x.category ?? "none") · from \(x.source)")
+                        row("Summary", x.summary)
+                        row("Card", watcher.coachStatus)
+                        HStack {
+                            Text("Text read (\(x.text.count) chars)").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Ignore \(x.app)") { watcher.setIgnored(x.bundle, name: x.app, true) }
+                                .font(.system(size: 9.5)).buttonStyle(.plain).foregroundStyle(.orange)
+                        }
+                        ScrollView {
+                            Text(x.text.isEmpty ? "(no text)" : x.text)
+                                .font(.system(size: 9.5, design: .monospaced))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
+                        .frame(height: 140)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.04)))
+                        ForEach(Array(x.others.enumerated()), id: \.offset) { _, o in
+                            row("Other screen", "\(o.window) · \(o.text.count) chars")
+                        }
+                    }
+                } else {
+                    Text("No snapshot yet: \(watcher.status)").font(.system(size: 10.5)).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func row(_ k: String, _ v: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(k).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(.secondary).frame(width: 74, alignment: .leading)
+            Text(v).font(.system(size: 10.5)).fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     // MARK: - Now
@@ -278,6 +339,7 @@ struct Drift: Identifiable {
     var end: Date
     var category: String
     var source: String
+    var bundle: String
     var id: Date { start }
     var minutes: Double { end.timeIntervalSince(start) / 60 }
 }
@@ -295,7 +357,8 @@ extension ScreenWatcher {
             for (a, b) in focus {
                 let lo = max(s.start, a, from), hi = min(s.end, b, to)
                 guard hi > lo else { continue }
-                pieces.append(Drift(start: lo, end: hi, category: c, source: s.title.isEmpty ? s.app : "\(s.app): \(s.title)"))
+                pieces.append(Drift(start: lo, end: hi, category: c, source: s.title.isEmpty ? s.app : "\(s.app): \(s.title)",
+                                    bundle: s.bundleID))
             }
         }
         pieces.sort { $0.start < $1.start }
@@ -377,6 +440,11 @@ struct DistractionSection: View {
                             Text(src).lineLimit(1)
                             Spacer()
                             Text(fmt(m)).monospacedDigit()
+                            if let b = drifts.first(where: { $0.source == src })?.bundle {
+                                Button("Ignore app") { watcher.setIgnored(b, name: src.components(separatedBy: ":").first ?? src, true) }
+                                    .buttonStyle(.plain).foregroundStyle(.orange).font(.system(size: 9.5))
+                                    .help("Not a distraction: stop watching this app and drop it from the log")
+                            }
                         }
                     }
                 }

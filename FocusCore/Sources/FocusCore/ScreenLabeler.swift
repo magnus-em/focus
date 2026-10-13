@@ -12,9 +12,9 @@ public enum ScreenLabeler {
     /// Tuned against the 3B on-device model: without these it calls a discrete
     /// math problem set "Reading".
     public static let hints: [String: String] = [
-        "Math": "mathematics work: proofs, theorems, discrete math, graphs, combinatorics, math problem sets and lectures (math notation, not code)",
+        "Math": "mathematics work: proofs, theorems, discrete math, graphs, combinatorics, math problem sets and lectures (math notation only; never programming, C, assembly, memory or operating systems)",
         "HW": "homework for non-math classes: essays, assigned readings, econ or history problem sets",
-        "SWE": "programming: LeetCode, NeetCode, algorithm practice, and writing, reading or compiling code in any language (C, assembly, Python), Compiler Explorer, debugging, asking an AI chat about code",
+        "SWE": "programming: LeetCode, NeetCode, algorithm practice, and writing, reading or compiling code in any language (C, assembly, Python), Compiler Explorer, debugging, asking an AI chat about code, and studying CS systems courses (C, assembly, memory layout, processes, compilers), midterms included",
         "Quant": "quant interview prep: probability puzzles, brainteasers, mental math, QuantGuide",
         "AI": "building AI/ML projects, coding projects with AI tools",
         "Reading": "reading books or articles, or exploring ideas with an AI chat, for personal curiosity, not for a class",
@@ -70,13 +70,18 @@ public enum ScreenLabeler {
         return (String((title.isEmpty ? windows.first ?? category : title).prefix(80)), Array(bullets.prefix(6)))
     }
 
-    public static func classify(app: String, title: String, text: String, categories: [String]) async -> (String?, String)? {
+    /// `current`: what the student says they're doing. The 3B model calls any
+    /// page of numbers Math (two's complement during C/systems review), so it
+    /// keeps the student's own label unless the screen clearly shows other work.
+    public static func classify(app: String, title: String, text: String, categories: [String],
+                                current: String? = nil) async -> (String?, String)? {
         let lines = categories.map { c in hints[c].map { "- \(c): \($0)" } ?? "- \(c)" }
         let instructions = """
         You label what a student is doing on their computer or tablet from the app, window title and on-screen text. Pick the single best category.
         \(lines.joined(separator: "\n"))
         - Unclear: not enough information.
         Coursework and problem sets are never Reading.
+        \(current.map { categories.contains($0) ? "The student says they are doing \($0) right now. Answer \($0) unless the screen clearly shows a different kind of work; numbers, binary or arithmetic inside programming material are still \($0)." : "" } ?? "")
         """
         do {
             let schema = try GenerationSchema(root: DynamicGenerationSchema(name: "Guess", properties: [

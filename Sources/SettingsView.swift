@@ -1053,6 +1053,21 @@ private struct ScreenSettings: View {
                 Text("Suggestions accepted: \(accepted) of \(accepted + declined)")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            let ignored = ScreenWatcher.userIgnored.sorted { $0.value < $1.value }
+            HStack {
+                Text(ignored.isEmpty ? "Ignored apps: none" : "Ignored apps: " + ignored.map(\.value).joined(separator: ", "))
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Menu("Edit") {
+                    ForEach(watcher.recentApps(), id: \.bundle) { a in
+                        let on = ScreenWatcher.userIgnored[a.bundle] != nil
+                        Button((on ? "✓ " : "") + a.name) { watcher.setIgnored(a.bundle, name: a.name, !on) }
+                    }
+                }
+                .controlSize(.small)
+                .fixedSize()
+            }
             HStack {
                 Text("Prompt log: each card, what it was based on, your answer")
                     .font(.system(size: 11)).foregroundStyle(.secondary)

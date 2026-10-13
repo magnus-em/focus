@@ -130,6 +130,7 @@ final class QuickSwitch {
         case "switcher": showSwitcher()
         case "recall": openRecall?()
         case "review": openReview?()
+        case "screen-debug": Task { @MainActor in ScreenWatcher.shared.dumpDebug() }
         case "dashboard": openDashboard?()
         case "log":
             // focus://log?label=HW&from=<unix>&to=<unix> relabels that range (label=Break for a break).

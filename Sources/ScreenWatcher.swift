@@ -43,6 +43,38 @@ final class ScreenWatcher: ObservableObject {
         "com.magnus.focus", "com.apple.loginwindow", "com.apple.ScreenSaver.Engine",
     ]
 
+    /// Apps you've told it to skip (ATV Remote, a music player): never
+    /// sampled, and dropped from the log, notes and off-task counts, past ones too.
+    static let userIgnoredKey = "screenIgnoredApps"
+    static var userIgnored: [String: String] {
+        UserDefaults.standard.dictionary(forKey: userIgnoredKey) as? [String: String] ?? [:]
+    }
+    func setIgnored(_ bundle: String, name: String, _ on: Bool) {
+        var m = Self.userIgnored
+        m[bundle] = on ? name : nil
+        UserDefaults.standard.set(m, forKey: Self.userIgnoredKey)
+        objectWillChange.send()
+    }
+
+    /// What the last snapshot read, for Settings → Screen → "What it sees".
+    struct Snapshot {
+        var date: Date
+        var app: String
+        var bundle: String
+        var title: String
+        var text: String
+        var others: [(window: String, text: String)]
+        var category: String?
+        var summary: String
+        var source: String
+        var active: Bool
+        var seconds: Double
+    }
+    @Published private(set) var lastSnapshot: Snapshot?
+    /// Why the coach did or didn't show a card after the last snapshot.
+    @Published var coachStatus = ""
+    private var labelSource = ""
+
     /// Life categories done away from the Mac: while one runs the screen says
     /// nothing about what you're doing, so watching pauses.
     static let offScreenCategories: Set<String> = ["Sleep", "Meals", "Exercise", "Commute", "Chores"]
@@ -154,12 +186,42 @@ final class ScreenWatcher: ObservableObject {
         }
     }
 
+    /// `focus://screen-debug`: the last snapshot, recent samples and the coach's
+    /// reasoning as JSON in `Focus/screen-debug.json`, for Claude to read.
+    func dumpDebug() {
+        let iso = ISO8601DateFormatter()
+        var d: [String: Any] = ["status": status, "coach": coachStatus, "ignored": Self.userIgnored]
+        if let x = lastSnapshot {
+            d["snapshot"] = ["at": iso.string(from: x.date), "app": x.app, "bundle": x.bundle, "title": x.title,
+                             "category": x.category ?? "none", "summary": x.summary, "source": x.source,
+                             "active": x.active, "seconds": x.seconds, "text": x.text,
+                             "otherScreens": x.others.map { ["window": $0.window, "text": $0.text] }]
+        }
+        d["samples"] = samples.suffix(40).map {
+            ["at": iso.string(from: $0.date), "app": $0.app, "title": $0.title, "category": $0.category ?? "none",
+             "summary": $0.summary, "active": $0.active, "learned": $0.learned] as [String: Any]
+        }
+        d["memory"] = Self.memory
+        if let data = try? JSONSerialization.data(withJSONObject: d, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: fileURL.deletingLastPathComponent().appendingPathComponent("screen-debug.json"))
+        }
+    }
+
+    /// Apps seen in the last week, for the ignore picker.
+    func recentApps() -> [(bundle: String, name: String)] {
+        let cutoff = Date().addingTimeInterval(-7 * 86400)
+        var seen: [String: String] = [:]
+        for sp in spans where sp.end > cutoff { seen[sp.bundleID] = sp.app }
+        return seen.map { ($0.key, $0.value) }.sorted { $0.name.lowercased() < $1.name.lowercased() }
+    }
+
     func requestPermission() {
         CGRequestScreenCaptureAccess()
     }
 
     func spans(from: Date, to: Date) -> [ScreenSpan] {
-        spans.filter { $0.end > from && $0.start < to }
+        let ignored = Self.userIgnored
+        return spans.filter { $0.end > from && $0.start < to && ignored[$0.bundleID] == nil }
     }
 
     static var modelAvailable: Bool {
@@ -184,6 +246,10 @@ final class ScreenWatcher: ObservableObject {
         guard CGPreflightScreenCaptureAccess() else { status = "Needs Screen Recording permission"; return }
         guard let app = NSWorkspace.shared.frontmostApplication, let bundle = app.bundleIdentifier,
               !Self.ignoredApps.contains(bundle) else { return }
+        if Self.userIgnored[bundle] != nil {
+            status = "Skipping \(app.localizedName ?? bundle) (ignored)"
+            return
+        }
         let appName = app.localizedName ?? bundle
         let now = Date()
 
@@ -204,18 +270,23 @@ final class ScreenWatcher: ObservableObject {
         let skip = Self.chromeFraction(shot, bundle: bundle)
         let text = await Task.detached(priority: .utility) { Self.recognizeText(shot.image, skipTop: skip) }.value
         keepPageText(text, window: shot.title.isEmpty ? appName : "\(appName): \(shot.title)", at: now)
-        for (otherApp, other, otherBundle) in capture.others {
+        var otherTexts: [(window: String, text: String)] = []
+        for (otherApp, other, otherBundle) in capture.others where Self.userIgnored[otherBundle] == nil {
             let key = "\(otherApp): \(other.title)"
             otherScreensReadAt[key] = now
             let otherSkip = Self.chromeFraction(other, bundle: otherBundle)
             let otherText = await Task.detached(priority: .utility) { Self.recognizeText(other.image, skipTop: otherSkip) }.value
             keepPageText(otherText, window: "\(key) (other screen)", at: now)
+            otherTexts.append((key, otherText))
         }
         let (category, summary) = await classify(app: appName, bundle: bundle, title: shot.title, text: text)
         status = Self.modelAvailable ? "Watching" : "Watching · Apple Intelligence off, learning from your choices only"
         lastSampled = "\(bundle)|\(shot.title)"
         let learned = category != nil && !Self.isGeneric(title: shot.title, app: appName)
             && Self.memory[Self.memoryKey(bundle: bundle, title: shot.title)] == category
+        lastSnapshot = Snapshot(date: now, app: appName, bundle: bundle, title: shot.title, text: text, others: otherTexts,
+                                category: category, summary: summary, source: labelSource,
+                                active: PresenceMonitor.idleSeconds < 90, seconds: Date().timeIntervalSince(now))
         record(ScreenSample(date: now, app: appName, bundleID: bundle, title: shot.title,
                             summary: summary, category: category, active: PresenceMonitor.idleSeconds < 90,
                             learned: learned))
@@ -522,10 +593,13 @@ final class ScreenWatcher: ObservableObject {
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
         try? VNImageRequestHandler(cgImage: image).perform([request])
-        let lines = (request.results ?? [])
-            .filter { $0.boundingBox.maxY <= 1 - skipTop }
-            .sorted { $0.boundingBox.minY > $1.boundingBox.minY }
-            .compactMap { $0.topCandidates(1).first?.string }
+        // Main column first, then a left sidebar: sorted by height alone, chat
+        // apps interleaved "Projects / Artifacts / Routines" into every paragraph.
+        let boxes = (request.results ?? []).filter { $0.boundingBox.maxY <= 1 - skipTop }
+        let isSidebar = { (o: VNRecognizedTextObservation) in o.boundingBox.maxX < 0.24 }
+        let ordered = boxes.filter { !isSidebar($0) }.sorted { $0.boundingBox.minY > $1.boundingBox.minY }
+            + boxes.filter(isSidebar).sorted { $0.boundingBox.minY > $1.boundingBox.minY }
+        let lines = ordered.compactMap { $0.topCandidates(1).first?.string }
         return String(lines.joined(separator: "\n").prefix(2500))
     }
 
@@ -566,14 +640,18 @@ final class ScreenWatcher: ObservableObject {
         let candidates = candidateCategories()
         let generic = Self.isGeneric(title: title, app: app)
         if !generic, let known = Self.memory[Self.memoryKey(bundle: bundle, title: title)], candidates.contains(known) {
+            labelSource = "your earlier answer for this window"
             return (known, cache[cacheKey(bundle, title, text)]?.summary ?? fallbackSummary)
         }
         let key = cacheKey(bundle, title, text)
-        if let hit = cache[key] { return hit }
+        if let hit = cache[key] { labelSource = "model (same page as before)"; return hit }
         guard #available(macOS 26.0, *), Self.modelAvailable, !text.isEmpty || !title.isEmpty else {
+            labelSource = "nothing to go on"
             return (nil, fallbackSummary)
         }
-        var result = await ScreenLabeler.classify(app: app, title: title, text: text, categories: candidates)
+        labelSource = "on-device model"
+        var result = await ScreenLabeler.classify(app: app, title: title, text: text, categories: candidates,
+                                                  current: runningCategory())
             ?? (nil, fallbackSummary)
         let window = Self.memoryKey(bundle: bundle, title: title)
         if let c = result.0, !generic {
@@ -582,6 +660,7 @@ final class ScreenWatcher: ObservableObject {
                     windowLabel[window] = (c, 0)
                 } else {
                     windowLabel[window] = (held.category, held.against + 1)
+                    labelSource = "kept \(held.category): model said \(c), \(held.against + 1) of 3 disagreements to switch"
                     result.0 = held.category
                 }
             } else {
@@ -595,7 +674,7 @@ final class ScreenWatcher: ObservableObject {
     }
 
     private func cacheKey(_ bundle: String, _ title: String, _ text: String) -> String {
-        "\(bundle)|\(title)|\(text.prefix(300).hashValue)"
+        "\(runningCategory() ?? "")|\(bundle)|\(title)|\(text.prefix(300).hashValue)"
     }
 
     /// Categories you could plausibly be doing on a screen.
@@ -668,6 +747,10 @@ final class ScreenCoach {
     private let days: DayStore
     private let panel = AwayPanel()
     private var snoozed: [String: Date] = [:]
+    /// "Still SWE" over a Math card in ChatGPT: no more Math cards in ChatGPT
+    /// until you pick another category. Chat apps title every window
+    /// "ChatGPT", so a per-window lesson can't hold; this can.
+    private var keptAgainst: (block: Date?, keys: Set<String>) = (nil, [])
     private var observers: [NSObjectProtocol] = []
 
     static let acceptedKey = "screenSuggest.accepted"
@@ -745,22 +828,52 @@ final class ScreenCoach {
         return Run(category: c, start: start, keys: keys, summary: last.summary)
     }
 
+    /// Plain-language reason no card fired, from the recent snapshots.
+    private func evidenceStatus(running: String?) -> String {
+        let floor = timer.isActive ? timer.sessionStartTime : nil
+        let recent = watcher.samples.filter { s in Date().timeIntervalSince(s.date) < 600 && s.date >= (floor ?? .distantPast) }
+        guard let last = recent.last else { return "No snapshots since you picked \(running ?? "this")" }
+        guard last.active else { return "You've been idle, so snapshots don't count" }
+        guard let c = last.category else { return "Last snapshot had no label" }
+        if c == running { return "Screen agrees with \(c)" }
+        var start = last.date
+        for s in recent.reversed() where s.active {
+            if s.category == c { start = s.date } else { break }
+        }
+        let have = Int(last.date.timeIntervalSince(start))
+        let need = last.learned ? Int(Self.learnedRunSeconds) : settings.screenSuggestMinutes * 60
+        return "Screen says \(c) for \(have)s; a card needs \(need)s of mostly \(c)"
+    }
+
     private func consider() {
-        guard settings.screenSuggest, days.isDayStarted, !panel.isBusy,
-              !(AwayCoach.shared?.isBusy ?? false) else { return }
+        let say = { [watcher] (s: String) in watcher.coachStatus = s }
+        guard settings.screenSuggest else { return say("Suggestions are off") }
+        guard days.isDayStarted else { return say("Day not started") }
+        guard !panel.isBusy, !(AwayCoach.shared?.isBusy ?? false) else { return say("A card is already showing") }
         // In class you're in Class, whatever the screen shows.
-        if timer.isActive, !timer.isOnBreak, timer.currentLabel == "Class" { return }
+        if timer.isActive, !timer.isOnBreak, timer.currentLabel == "Class" { return say("In Class: no suggestions") }
         // "Still SWE" on the class card means you're not in it (10/13: kept
         // SWE on all four), so the screen gets its say again.
         if let lecture = ClassCalendar.shared.currentClass(), !classDeclined.contains(Self.classKey(lecture)) {
+            say("In class on your calendar: \(lecture.title ?? "")")
             suggestClass(lecture)
             return
         }
-        guard
-              let run = trailingRun(notBefore: timer.isActive ? timer.sessionStartTime : nil) else { return }
-        if timer.isActive && !timer.isRunning { return }
         let running: String? = timer.isActive ? (timer.isOnBreak ? "Break" : timer.currentLabel) : nil
-        guard running != run.category, (snoozed[run.category] ?? .distantPast) < Date() else { return }
+        guard let run = trailingRun(notBefore: timer.isActive ? timer.sessionStartTime : nil) else {
+            return say(evidenceStatus(running: running))
+        }
+        if timer.isActive && !timer.isRunning { return say("Timer paused") }
+        guard running != run.category else { return say("Screen agrees with \(run.category)") }
+        if keptAgainst.block != timer.sessionStartTime { keptAgainst = (timer.sessionStartTime, []) }
+        let apps = Set(watcher.samples.filter { $0.date >= run.start && $0.category == run.category }.map(\.bundleID))
+        if !apps.isEmpty, apps.allSatisfy({ keptAgainst.keys.contains("\($0)|\(run.category)") }) {
+            return say("You said Still \(running ?? "") over \(run.category) in this app; not asking again this block")
+        }
+        if let until = snoozed[run.category], until > Date() {
+            return say("\(run.category) snoozed until \(until.formatted(date: .omitted, time: .shortened)) (you said Still)")
+        }
+        say("Showing a card: \(run.category) since \(run.start.formatted(date: .omitted, time: .shortened))")
 
         let minutes = Date().timeIntervalSince(run.start) / 60
         let m = AwayPromptModel(
@@ -788,6 +901,10 @@ final class ScreenCoach {
         m.onKeep = { [weak self] in
             guard let self else { return }
             PromptLog.answer(logID, "kept \(running ?? "nothing")")
+            if self.keptAgainst.block != self.timer.sessionStartTime { self.keptAgainst = (self.timer.sessionStartTime, []) }
+            for b in Set(self.watcher.samples.filter { $0.date >= run.start && $0.category == run.category }.map(\.bundleID)) {
+                self.keptAgainst.keys.insert("\(b)|\(run.category)")
+            }
             // Only focus-vs-focus answers say what a window is (Compiler
             // Explorer is SWE, not Math). "Still SWE" over Shortcuts or YouTube
             // means a side trip, which the distraction log counts instead.
