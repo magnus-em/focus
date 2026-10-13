@@ -215,7 +215,39 @@ Read `DESIGN.md` first: principles, type/spacing/corner scale, color roles and t
 - [x] Recall: post-session free recall, spaced retrieval cards, morning yesterday reconstruction, optional Claude coach
 
 ### In flight (see HANDOFF.md)
-_(none)_
+- **Popover redesign**: three directions at https://claude.ai/artifact/KSWGrRXt5A5qfnpwmQRKx4 (A Ring, B Now, C Command; Claude recommends B). Waiting on the user's pick, then follow DESIGN.md and the UI loop. The user also asked for more design ideas for the app after the 2026-10-13 compaction.
+- Pending chores: `./install_ios.sh` once the iPad is unlocked (the iPhone's old build re-saves stale sessions); user to reload the Chrome extension (new `/tab` posting); untested: iPad broadcast, calendar permission, dual monitors.
+
+### Ranked roadmap (2026-10-13; value for interview prep + study + trustworthy tracking, per effort)
+1. **Popover redesign** (in flight, above), then the Dashboard.
+2. **Screen Review**: rework of the activity log into a review of how the auto-logging is doing (spec below).
+3. **Apple Health sleep + workouts** → Sleep/Exercise blocks automatically (iPhone app).
+4. **Recall from notes**: Claude-drafted cards from activity-block notes (user approves) + "tonight's 3 questions" in the End of Day review.
+5. **Few-shot labels**: 3–5 most similar checked/learned snapshots as examples in the classify prompt (`NLEmbedding`).
+6. **Screen Time** on the phone: use during focus into the off-task log; app shields during focus.
+7. **Embedding classifier** over checks + `screenMemory`; model only for unfamiliar pages.
+8. **iPad Notability path**: verify the broadcast end to end (handwriting OCR), notes into morning recall.
+9. **HomePod**: per-category Home scenes via shortcuts; Siri phrases + a spoken "how much have I focused today?".
+10. **Lecture notes** for calendar classes (on-device transcription; consent, battery).
+11. **Exam radar + plan**: exams from the calendar (countdown, hours studied for each); commitment pre-filled from free slots, exams, LeetCode pace.
+12. **Virtual display** for idle-free screenshots (private `CGVirtualDisplay`, like DeskPad; may break on OS updates; test the window-layout nudge while the user is away).
+13. **Insights**: best hours of day; Sunday Claude-written weekly letter (shareable page); sleep + drift in the health correlations.
+14. **Places** (CoreLocation visits) → suggested categories backdated to arrival; Commute from movement.
+15. **Apple Watch**: complication/Action button switching, wrist tap on drift, heart rate during focus.
+16. HomePod extras: spoken nudges, room temperature vs drift, Apple TV playing during focus.
+17. Shared live status with a study partner; auto-pause when all devices say you left.
+18. All-day voice capture → a model of the user (biggest privacy design).
+19. Apple Journal hand-off revisit (blocked until Journal's Create Entry can target a journal).
+
+#### Screen Review spec (roadmap #2)
+Goal: see in 30 seconds whether the auto-log was right today, fix what wasn't, and watch accuracy improve.
+- **Scorecard** (top, four numbers with 14-day sparklines): agreement with what you tracked; your ✓/✗ accuracy; cards that were right (switched) vs false alarms (kept/closed); detection delay (how long after you actually changed activity the screen noticed). Plus auto-switch undo rate.
+- **Two-lane day timeline**: AI lane above your tracked lane, same scale; disagreements hatched orange. Click one → side panel: snapshots, label source (your answer / model / held by stickiness), the page excerpt if the prompt log has it, the card and your answer, and fix buttons (right · it was X · always X for this window · ignore app).
+- **Triage mode**: keyboard walk through the day's disagreements (Y right / N + pick / S skip), oldest first; optional 30-second version in the morning review for yesterday.
+- **Confusion grid**: AI said × truth (from checks, else tracked), e.g. Math↔SWE, so tuning targets the real confusions.
+- **Worst windows**: apps/titles most often wrong, with one-click fixes.
+- **Card ledger**: every card and auto-switch with its answer (from `prompt-log.jsonl`).
+- Data to add: persist label source and snapshot agreement on `ScreenSpan`; compute detection delay from tracked switch times vs AI run starts. The daily 8:30 tuning task reads the same numbers.
 
 ### Vision: track every minute of the day
 Homework stays the focus, but the app should cover the whole day with near-zero-friction switching from every surface. Phase 1 (done): focus/life categories, keep-tracking at countdown end, focus-only goal, fillable day timeline. Phase 2 (done 2026-10-11): presence detection, away/idle prompts, Sleep from away spans in the morning review, weekly "where time went". Phase 2 follow-ups: Settings → Away & Gaps has no per-category "away is expected" list yet (life categories are assumed away-friendly); away spans aren't synced, so iPad doesn't see them. Phase 3: Control Center / Action Button controls + Live Activity built 2026-10-11 (needs Xcode signed in to install, see HANDOFF.md). Still to do: Home Screen widget, Apple Watch app, HomePod via Siri Personal Requests → existing App Intents.
