@@ -177,6 +177,21 @@ function track() {
   });
 }
 
+// The focused tab's address for the app's screen watcher (a screenshot can't
+// tell godbolt.org from a math PDF). Sent on every change; never incognito.
+async function postTab() {
+  const win = await chrome.windows.getLastFocused().catch(() => null);
+  if (!win || !win.focused || win.incognito) return;
+  const [tab] = await chrome.tabs.query({ active: true, windowId: win.id });
+  if (!tab || !tab.url || !/^https?:/.test(tab.url)) return;
+  fetch(API + '/tab', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: tab.url, title: tab.title || '' }),
+    signal: AbortSignal.timeout(2000),
+  }).catch(() => {});
+}
+
 async function pushSpan(domain, start, end) {
   const { queue = [] } = await local.get('queue');
   queue.push({ eid: crypto.randomUUID(), kind: 'span', domain, start, end });
@@ -262,9 +277,12 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (d) => {
   }, 400);
 });
 
-chrome.tabs.onActivated.addListener(() => { track(); refreshState(); });
-chrome.tabs.onUpdated.addListener((_id, info, tab) => { if (tab.active && (info.url || info.audible !== undefined)) track(); });
-chrome.windows.onFocusChanged.addListener(() => track());
+chrome.tabs.onActivated.addListener(() => { track(); refreshState(); postTab(); });
+chrome.tabs.onUpdated.addListener((_id, info, tab) => {
+  if (tab.active && (info.url || info.audible !== undefined)) track();
+  if (tab.active && (info.url || info.title)) postTab();
+});
+chrome.windows.onFocusChanged.addListener(() => { track(); postTab(); });
 chrome.idle.onStateChanged.addListener(() => track());
 
 function ensureAlarm() {
@@ -277,6 +295,7 @@ chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name !== 'tick') return;
   await refreshState(true);
   await track();
+  postTab();
   await flush();
 });
 ensureAlarm();

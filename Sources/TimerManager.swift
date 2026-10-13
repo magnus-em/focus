@@ -480,6 +480,15 @@ class TimerManager: ObservableObject {
     /// Split the timeline at `date`: whatever was running is saved up to
     /// then, and focus on `label` runs from then. A focus segment under a
     /// minute is relabeled rather than saved.
+    /// Rename the running block without splitting it (undo of a screen
+    /// auto-switch). Focus ↔ focus only, so the countdown stays as it is.
+    func relabelRunning(_ label: String) {
+        guard isActive, currentPhase == .work, label != currentLabel else { return }
+        currentLabel = label
+        saveCheckpoint()
+        pushSharedState()
+    }
+
     func switchTo(_ label: String, at requested: Date = Date()) {
         var date = min(requested, Date())
         if let start = sessionStartTime { date = max(date, start) }

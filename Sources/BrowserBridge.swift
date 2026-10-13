@@ -5,6 +5,7 @@ import Network
 ///
 ///   GET  /state   → what to block right now (`State`)
 ///   POST /events  → `{ "events": [...] }` block hits, reasons, bypasses, browsing spans
+///   POST /tab     → `{ "url", "title" }` the focused tab, for the screen watcher
 ///
 /// Only browsers attach an `Origin`, and a web page can't forge one, so any
 /// request whose Origin isn't the extension is refused. Local processes are
@@ -28,6 +29,10 @@ final class BrowserBridge: ObservableObject {
     }
 
     @Published private(set) var lastContact: Date?
+
+    struct Tab { let url: String; let title: String; let at: Date }
+    /// Focused Chrome tab (non-incognito), kept in memory only.
+    @MainActor private(set) var activeTab: Tab?
     @Published private(set) var listenError: String?
 
     var stateProvider: (() -> State)?
@@ -121,6 +126,17 @@ final class BrowserBridge: ObservableObject {
                 self.lastContact = Date()
                 let body = self.stateProvider.flatMap { try? JSONEncoder().encode($0()) } ?? Data("{}".utf8)
                 self.queue.async { self.respond(conn, status: "200 OK", json: body) }
+            }
+        case ("POST", "/tab"):
+            let obj = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any]
+            DispatchQueue.main.async {
+                self.lastContact = Date()
+                MainActor.assumeIsolated {
+                    if let url = obj?["url"] as? String, !url.isEmpty {
+                        self.activeTab = Tab(url: url, title: obj?["title"] as? String ?? "", at: Date())
+                    }
+                }
+                self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
             }
         case ("POST", "/events"):
             let events = Self.decodeEvents(req.body)

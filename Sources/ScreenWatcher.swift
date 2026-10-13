@@ -186,6 +186,49 @@ final class ScreenWatcher: ObservableObject {
         }
     }
 
+    // MARK: - Your checks
+
+    /// ✓/✗ on activity blocks: the accuracy score, and labels to learn from.
+    struct BlockCheck: Codable {
+        var start: Date
+        var end: Date
+        var said: String?
+        var right: Bool
+        var actual: String?
+        var at: Date
+    }
+    @Published private(set) var checks: [BlockCheck] = {
+        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Focus/screen-checks.json")
+        return (try? JSONDecoder().decode([BlockCheck].self, from: Data(contentsOf: url))) ?? []
+    }()
+    private var checksURL: URL { fileURL.deletingLastPathComponent().appendingPathComponent("screen-checks.json") }
+
+    var checkChoices: [String] { (settings?.tags ?? []).filter { !FocusCategories.notFromScreen.contains($0) } }
+
+    func check(for a: ScreenActivity) -> BlockCheck? {
+        checks.last { min($0.end, a.end) > max($0.start, a.start) }
+    }
+
+    func setCheck(_ a: ScreenActivity, right: Bool, actual: String? = nil) {
+        checks.removeAll { min($0.end, a.end) > max($0.start, a.start) }
+        checks.append(BlockCheck(start: a.start, end: a.end, said: a.category, right: right, actual: actual, at: Date()))
+        checks.removeAll { $0.end < Date().addingTimeInterval(-60 * 86400) }
+        if let data = try? JSONEncoder().encode(checks) { try? data.write(to: checksURL, options: .atomic) }
+        let label = right ? a.category : actual
+        if a.device == nil, let label, !FocusCategories.notFromScreen.contains(label) {
+            let keys = Set(a.spans.filter { !Self.isGeneric(title: $0.title, app: $0.app) }
+                .map { Self.memoryKey(bundle: $0.bundleID, title: $0.title) })
+            Self.learn(keys, as: label)
+        }
+    }
+
+    func checkScore(days: Int = 7) -> (right: Int, total: Int) {
+        let cutoff = Date().addingTimeInterval(-Double(days) * 86400)
+        let recent = checks.filter { $0.end > cutoff }
+        return (recent.filter(\.right).count, recent.count)
+    }
+
     /// `focus://screen-debug`: the last snapshot, recent samples and the coach's
     /// reasoning as JSON in `Focus/screen-debug.json`, for Claude to read.
     func dumpDebug() {
@@ -268,8 +311,20 @@ final class ScreenWatcher: ObservableObject {
         guard let capture = await Self.captureWindows(pid: app.processIdentifier, skipOthers: recentOthers) else { return }
         let shot = capture.front
         let skip = Self.chromeFraction(shot, bundle: bundle)
-        let text = await Task.detached(priority: .utility) { Self.recognizeText(shot.image, skipTop: skip) }.value
-        keepPageText(text, window: shot.title.isEmpty ? appName : "\(appName): \(shot.title)", at: now)
+        let read = await Task.detached(priority: .utility) { Self.recognize(shot.image, skipTop: skip) }.value
+        let text = read.text
+        var title = shot.title
+        if Self.chatApps.contains(bundle), Self.isGeneric(title: title, app: appName), let h = read.header,
+           !Self.isGeneric(title: h, app: appName) {
+            title = h
+        }
+        // The Chrome extension knows the tab's address; the picture doesn't.
+        var url: String?
+        if Self.browsers.contains(bundle), let tab = BrowserBridge.shared.activeTab,
+           now.timeIntervalSince(tab.at) < 300, !tab.title.isEmpty, shot.title.hasPrefix(tab.title) || tab.title.hasPrefix(shot.title) {
+            url = tab.url
+        }
+        keepPageText(text, window: title.isEmpty ? appName : "\(appName): \(title)", at: now)
         var otherTexts: [(window: String, text: String)] = []
         for (otherApp, other, otherBundle) in capture.others where Self.userIgnored[otherBundle] == nil {
             let key = "\(otherApp): \(other.title)"
@@ -279,15 +334,16 @@ final class ScreenWatcher: ObservableObject {
             keepPageText(otherText, window: "\(key) (other screen)", at: now)
             otherTexts.append((key, otherText))
         }
-        let (category, summary) = await classify(app: appName, bundle: bundle, title: shot.title, text: text)
+        let (category, summary) = await classify(app: appName, bundle: bundle, title: title, text: text, url: url)
         status = Self.modelAvailable ? "Watching" : "Watching · Apple Intelligence off, learning from your choices only"
         lastSampled = "\(bundle)|\(shot.title)"
-        let learned = category != nil && !Self.isGeneric(title: shot.title, app: appName)
-            && Self.memory[Self.memoryKey(bundle: bundle, title: shot.title)] == category
-        lastSnapshot = Snapshot(date: now, app: appName, bundle: bundle, title: shot.title, text: text, others: otherTexts,
+        let learned = category != nil && !Self.isGeneric(title: title, app: appName)
+            && Self.memory[Self.memoryKey(bundle: bundle, title: title)] == category
+        lastSnapshot = Snapshot(date: now, app: appName, bundle: bundle, title: url.map { "\(title) · \($0)" } ?? title,
+                                text: text, others: otherTexts,
                                 category: category, summary: summary, source: labelSource,
                                 active: PresenceMonitor.idleSeconds < 90, seconds: Date().timeIntervalSince(now))
-        record(ScreenSample(date: now, app: appName, bundleID: bundle, title: shot.title,
+        record(ScreenSample(date: now, app: appName, bundleID: bundle, title: title,
                             summary: summary, category: category, active: PresenceMonitor.idleSeconds < 90,
                             learned: learned))
     }
@@ -589,6 +645,15 @@ final class ScreenWatcher: ObservableObject {
     }
 
     nonisolated private static func recognizeText(_ image: CGImage, skipTop: CGFloat = 0) -> String {
+        recognize(image, skipTop: skipTop).text
+    }
+
+    /// Chat apps title every window with the app's name; the conversation's
+    /// own title sits in the top bar, so it's read from there instead.
+    static let chatApps: Set<String> = ["com.openai.chat", "com.openai.codex", "com.anthropic.claudefordesktop"]
+
+    /// Text plus the longest main-column line in the title bar (a chat's title).
+    nonisolated private static func recognize(_ image: CGImage, skipTop: CGFloat = 0) -> (text: String, header: String?) {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
@@ -600,7 +665,13 @@ final class ScreenWatcher: ObservableObject {
         let ordered = boxes.filter { !isSidebar($0) }.sorted { $0.boundingBox.minY > $1.boundingBox.minY }
             + boxes.filter(isSidebar).sorted { $0.boundingBox.minY > $1.boundingBox.minY }
         let lines = ordered.compactMap { $0.topCandidates(1).first?.string }
-        return String(lines.joined(separator: "\n").prefix(2500))
+        // Title bar only (ChatGPT's sits at 0.97): content scrolls up to ~0.94.
+        let header = boxes.filter { !isSidebar($0) && $0.boundingBox.minY > 0.955 }
+            .compactMap { $0.topCandidates(1).first?.string }
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " v⌄›>•")) }
+            .filter { $0.count >= 6 }
+            .max { $0.count < $1.count }
+        return (String(lines.joined(separator: "\n").prefix(2500)), header)
     }
 
     nonisolated private static func chromeFraction(_ shot: Shot, bundle: String?) -> CGFloat {
@@ -635,7 +706,7 @@ final class ScreenWatcher: ObservableObject {
         UserDefaults.standard.set(m, forKey: memoryDefaultsKey)
     }
 
-    private func classify(app: String, bundle: String, title: String, text: String) async -> (String?, String) {
+    private func classify(app: String, bundle: String, title: String, text: String, url: String? = nil) async -> (String?, String) {
         let fallbackSummary = title.isEmpty ? app : "\(app): \(title)"
         let candidates = candidateCategories()
         let generic = Self.isGeneric(title: title, app: app)
@@ -650,7 +721,11 @@ final class ScreenWatcher: ObservableObject {
             return (nil, fallbackSummary)
         }
         labelSource = "on-device model"
-        var result = await ScreenLabeler.classify(app: app, title: title, text: text, categories: candidates,
+        let shownTitle = url.map { u -> String in
+            let short = u.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
+            return "\(title) (\(String(short.prefix(120))))"
+        } ?? title
+        var result = await ScreenLabeler.classify(app: app, title: shownTitle, text: text, categories: candidates,
                                                   current: runningCategory())
             ?? (nil, fallbackSummary)
         let window = Self.memoryKey(bundle: bundle, title: title)
@@ -747,10 +822,7 @@ final class ScreenCoach {
     private let days: DayStore
     private let panel = AwayPanel()
     private var snoozed: [String: Date] = [:]
-    /// "Still SWE" over a Math card in ChatGPT: no more Math cards in ChatGPT
-    /// until you pick another category. Chat apps title every window
-    /// "ChatGPT", so a per-window lesson can't hold; this can.
-    private var keptAgainst: (block: Date?, keys: Set<String>) = (nil, [])
+
     private var observers: [NSObjectProtocol] = []
 
     static let acceptedKey = "screenSuggest.accepted"
@@ -790,6 +862,8 @@ final class ScreenCoach {
         let start: Date
         let keys: Set<String>
         let summary: String
+        /// Every snapshot's label came from your own answers.
+        let trusted: Bool
     }
 
     /// The model labeled the window, or you did earlier: your own label needs
@@ -825,7 +899,7 @@ final class ScreenCoach {
         let needed = allLearned ? Self.learnedRunSeconds : Double(settings.screenSuggestMinutes) * 60
         guard hits >= (allLearned ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
               last.date.timeIntervalSince(start) >= needed else { return nil }
-        return Run(category: c, start: start, keys: keys, summary: last.summary)
+        return Run(category: c, start: start, keys: keys, summary: last.summary, trusted: allLearned)
     }
 
     /// Plain-language reason no card fired, from the recent snapshots.
@@ -865,13 +939,15 @@ final class ScreenCoach {
         }
         if timer.isActive && !timer.isRunning { return say("Timer paused") }
         guard running != run.category else { return say("Screen agrees with \(run.category)") }
-        if keptAgainst.block != timer.sessionStartTime { keptAgainst = (timer.sessionStartTime, []) }
-        let apps = Set(watcher.samples.filter { $0.date >= run.start && $0.category == run.category }.map(\.bundleID))
-        if !apps.isEmpty, apps.allSatisfy({ keptAgainst.keys.contains("\($0)|\(run.category)") }) {
-            return say("You said Still \(running ?? "") over \(run.category) in this app; not asking again this block")
-        }
         if let until = snoozed[run.category], until > Date() {
             return say("\(run.category) snoozed until \(until.formatted(date: .omitted, time: .shortened)) (you said Still)")
+        }
+        // Focus → focus on windows you've labeled yourself: just switch, with
+        // Undo. Anything involving a life category stays a question.
+        if settings.screenAutoSwitch, run.trusted, let from = running, from != "Break",
+           !FocusCategories.isLife(from), !FocusCategories.isLife(run.category) {
+            say("Switched to \(run.category): windows you've labeled \(run.category) before")
+            return autoSwitch(from: from, to: run)
         }
         say("Showing a card: \(run.category) since \(run.start.formatted(date: .omitted, time: .shortened))")
 
@@ -901,10 +977,6 @@ final class ScreenCoach {
         m.onKeep = { [weak self] in
             guard let self else { return }
             PromptLog.answer(logID, "kept \(running ?? "nothing")")
-            if self.keptAgainst.block != self.timer.sessionStartTime { self.keptAgainst = (self.timer.sessionStartTime, []) }
-            for b in Set(self.watcher.samples.filter { $0.date >= run.start && $0.category == run.category }.map(\.bundleID)) {
-                self.keptAgainst.keys.insert("\(b)|\(run.category)")
-            }
             // Only focus-vs-focus answers say what a window is (Compiler
             // Explorer is SWE, not Math). "Still SWE" over Shortcuts or YouTube
             // means a side trip, which the distraction log counts instead.
@@ -919,6 +991,47 @@ final class ScreenCoach {
             PromptLog.answer(logID, "closed")
             self?.decline(run.category)
             close?()
+        }
+    }
+
+    private func autoSwitch(from: String, to run: Run) {
+        timer.switchTo(run.category, at: run.start)
+        let m = AwayPromptModel(
+            icon: "arrow.triangle.swap",
+            title: "Switched to \(run.category)",
+            subtitle: "since \(run.start.formatted(date: .omitted, time: .shortened)) · windows you've labeled \(run.category)",
+            question: run.summary,
+            keep: "Undo, still \(from)",
+            options: [], tags: settings.tags
+        )
+        let logID = PromptLog.screenPrompt(model: m, running: from, suggested: run.category, since: run.start,
+                                           samples: watcher.samples, pages: watcher.pages(since: run.start),
+                                           reason: "auto-switch")
+        m.onKeep = { [weak self] in
+            guard let self else { return }
+            PromptLog.answer(logID, "undid, kept \(from)")
+            self.timer.relabelRunning(from)
+            ScreenWatcher.learn(run.keys, as: from)
+            Self.bump(Self.declinedKey)
+            self.snoozed[run.category] = Date().addingTimeInterval(20 * 60)
+            self.panel.dismiss()
+        }
+        m.onPick = { [weak self] label in
+            guard let self else { return }
+            PromptLog.answer(logID, "changed to \(label ?? "Break")")
+            if let label { self.timer.relabelRunning(label) } else { self.timer.startManualBreak(minutes: 0, at: run.start) }
+            self.panel.dismiss()
+        }
+        Self.bump(Self.acceptedKey)
+        panel.show(m)
+        let close = m.onClose
+        m.onClose = {
+            PromptLog.answer(logID, "kept the switch")
+            close?()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 45) { [weak self] in
+            guard let self, self.panel.isBusy else { return }
+            m.onClose?()
         }
     }
 

@@ -118,6 +118,9 @@ class AppSettings: ObservableObject {
     @Published var screenSuggest: Bool {
         didSet { sd.set(screenSuggest, forKey: "screenSuggest") }
     }
+    @Published var screenAutoSwitch: Bool {
+        didSet { sd.set(screenAutoSwitch, forKey: "screenAutoSwitch") }
+    }
     @Published var screenSuggestMinutes: Int {
         didSet { sd.set(screenSuggestMinutes, forKey: "screenSuggestMinutes") }
     }
@@ -211,6 +214,7 @@ class AppSettings: ObservableObject {
             "screenWatch": true,
             "screenSuggest": true,
             "screenSuggestMinutes": 2,
+            "screenAutoSwitch": true,
             "awayPromptMinutes": 15,
             "idleNudge": true,
         ])
@@ -255,6 +259,7 @@ class AppSettings: ObservableObject {
         screenWatch = d.bool(forKey: "screenWatch")
         screenSuggest = d.bool(forKey: "screenSuggest")
         screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
+        screenAutoSwitch = d.bool(forKey: "screenAutoSwitch")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
         let epoch = d.double(forKey: "interviewDate")
@@ -334,6 +339,7 @@ class AppSettings: ObservableObject {
         screenWatch = d.bool(forKey: "screenWatch")
         screenSuggest = d.bool(forKey: "screenSuggest")
         screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
+        screenAutoSwitch = d.bool(forKey: "screenAutoSwitch")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
         let epoch = d.double(forKey: "interviewDate")

@@ -56,6 +56,13 @@ struct ScreenActivitySection: View {
                     .tracking(1)
                     .foregroundStyle(.secondary)
                 Spacer()
+                let score = watcher.checkScore()
+                if score.total > 0 {
+                    Text("Your checks: \(score.right)/\(score.total) right this week")
+                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                        .foregroundStyle(Double(score.right) / Double(score.total) >= 0.85 ? .green : .orange)
+                        .help("✓ or ✗ a block below to grade the labels. Your answers also teach it those windows.")
+                }
                 if let ag = agreement(list) {
                     Text("Screen matches your tracking \(Int(ag.pct * 100))% of \(fmt(ag.minutes))")
                         .font(.system(size: 10, weight: .medium).monospacedDigit())
@@ -219,6 +226,7 @@ struct ScreenActivitySection: View {
                             .lineLimit(2)
                         Spacer(minLength: 6)
                         categoryVsTracked(a)
+                        checkButtons(a)
                     }
                     if let notes, !notes.bullets.isEmpty {
                         bulletList(notes.bullets, size: 11)
@@ -263,6 +271,35 @@ struct ScreenActivitySection: View {
         .font(.system(size: 10).monospacedDigit())
         .foregroundStyle(.secondary)
         .frame(width: 58, alignment: .trailing)
+    }
+
+    /// Grade the label: ✓ keeps it, ✗ asks what it really was.
+    @ViewBuilder
+    private func checkButtons(_ a: ScreenActivity) -> some View {
+        if a.category != nil {
+            let c = watcher.check(for: a)
+            HStack(spacing: 4) {
+                Button { watcher.setCheck(a, right: true) } label: {
+                    Image(systemName: c?.right == true ? "checkmark.circle.fill" : "checkmark.circle")
+                        .foregroundStyle(c?.right == true ? .green : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Label is right")
+                Menu {
+                    ForEach(watcher.checkChoices, id: \.self) { t in
+                        Button(t) { watcher.setCheck(a, right: false, actual: t) }
+                    }
+                } label: {
+                    Image(systemName: c?.right == false ? "xmark.circle.fill" : "xmark.circle")
+                        .foregroundStyle(c?.right == false ? .red : .secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help(c?.actual.map { "You said: \($0)" } ?? "Label is wrong: pick what it was")
+            }
+            .font(.system(size: 11))
+        }
     }
 
     private func categoryVsTracked(_ a: ScreenActivity) -> some View {
