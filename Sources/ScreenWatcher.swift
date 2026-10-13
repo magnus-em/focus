@@ -60,6 +60,8 @@ final class ScreenWatcher: ObservableObject {
     private var windowLabel: [String: (category: String, against: Int)] = [:]
     private var unsavedSamples = 0
     private var lastSampleAt = Date.distantPast
+    private var lastSampled = ""
+    private var titleWatch: Timer?
     private var otherScreensReadAt: [String: Date] = [:]
     private var activationObserver: NSObjectProtocol?
     /// Study notes per activity block, keyed by block start.
@@ -124,6 +126,17 @@ final class ScreenWatcher: ObservableObject {
             Task { @MainActor in await self?.pollDevices() }
         }
         Task { await pollDevices() }
+        // A new tab or document in the same app doesn't activate anything;
+        // window titles are cheap to read, so check them between ticks.
+        titleWatch = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.busy, Date().timeIntervalSince(self.lastSampleAt) > 4,
+                      let app = NSWorkspace.shared.frontmostApplication, let bundle = app.bundleIdentifier,
+                      let title = Self.frontTitle(pid: app.processIdentifier),
+                      "\(bundle)|\(title)" != self.lastSampled else { return }
+                await self.sample()
+            }
+        }
         // Catch app switches right away instead of waiting for the next tick.
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
@@ -184,18 +197,24 @@ final class ScreenWatcher: ObservableObject {
         let recentOthers = Set(otherScreensReadAt.filter { now.timeIntervalSince($0.value) < 60 }.keys)
         guard let capture = await Self.captureWindows(pid: app.processIdentifier, skipOthers: recentOthers) else { return }
         let shot = capture.front
-        let text = await Task.detached(priority: .utility) { Self.recognizeText(shot.image) }.value
+        let skip = Self.chromeFraction(shot, bundle: bundle)
+        let text = await Task.detached(priority: .utility) { Self.recognizeText(shot.image, skipTop: skip) }.value
         keepPageText(text, window: shot.title.isEmpty ? appName : "\(appName): \(shot.title)", at: now)
-        for (otherApp, other) in capture.others {
+        for (otherApp, other, otherBundle) in capture.others {
             let key = "\(otherApp): \(other.title)"
             otherScreensReadAt[key] = now
-            let otherText = await Task.detached(priority: .utility) { Self.recognizeText(other.image) }.value
+            let otherSkip = Self.chromeFraction(other, bundle: otherBundle)
+            let otherText = await Task.detached(priority: .utility) { Self.recognizeText(other.image, skipTop: otherSkip) }.value
             keepPageText(otherText, window: "\(key) (other screen)", at: now)
         }
         let (category, summary) = await classify(app: appName, bundle: bundle, title: shot.title, text: text)
         status = Self.modelAvailable ? "Watching" : "Watching · Apple Intelligence off, learning from your choices only"
+        lastSampled = "\(bundle)|\(shot.title)"
+        let learned = category != nil && !Self.isGeneric(title: shot.title, app: appName)
+            && Self.memory[Self.memoryKey(bundle: bundle, title: shot.title)] == category
         record(ScreenSample(date: now, app: appName, bundleID: bundle, title: shot.title,
-                            summary: summary, category: category, active: PresenceMonitor.idleSeconds < 90))
+                            summary: summary, category: category, active: PresenceMonitor.idleSeconds < 90,
+                            learned: learned))
     }
 
     private func record(_ s: ScreenSample) {
@@ -402,12 +421,29 @@ final class ScreenWatcher: ObservableObject {
     private struct Shot: @unchecked Sendable {
         let image: CGImage
         let title: String
+        let heightPoints: CGFloat
     }
+
+    /// Their tab strip and bookmarks bar OCR first and filled the 1500-char
+    /// budget (godbolt read as "Ask Gemini / 3231 Study Guides / …" → Math).
+    private static let browsers: Set<String> = [
+        "com.google.Chrome", "com.apple.Safari", "company.thebrowser.Browser", "org.mozilla.firefox",
+        "com.microsoft.edgemac", "com.brave.Browser",
+    ]
+    private static let browserChromePoints: CGFloat = 120
 
     private struct Capture {
         let front: Shot
         /// Top window on each other display: context for notes, not the label.
-        let others: [(app: String, shot: Shot)]
+        let others: [(app: String, shot: Shot, bundle: String)]
+    }
+
+    private static func frontTitle(pid: pid_t) -> String? {
+        let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] ?? []
+        return info.first {
+            ($0[kCGWindowLayer as String] as? Int) == 0 && ($0[kCGWindowOwnerPID as String] as? Int32) == pid
+        }.map { $0[kCGWindowName as String] as? String ?? "" }
     }
 
     private static func captureWindows(pid: pid_t, skipOthers: Set<String>) async -> Capture? {
@@ -432,7 +468,7 @@ final class ScreenWatcher: ObservableObject {
         CGGetActiveDisplayList(8, &ids, &count)
         let displays = ids.prefix(Int(count)).map { CGDisplayBounds($0) }
         let center = { (r: CGRect) in CGPoint(x: r.midX, y: r.midY) }
-        var others: [(String, Shot)] = []
+        var others: [(String, Shot, String)] = []
         for d in displays where !d.contains(center(front.bounds)) {
             guard let top = windows.first(where: { d.contains(center($0.bounds)) }),
                   let app = NSRunningApplication(processIdentifier: top.pid),
@@ -441,7 +477,7 @@ final class ScreenWatcher: ObservableObject {
             let name = app.localizedName ?? bundle
             guard !skipOthers.contains("\(name): \(top.name)"),
                   let shot = await shoot(top.id, in: content, fallbackTitle: top.name) else { continue }
-            others.append((name, shot))
+            others.append((name, shot, bundle))
         }
         return Capture(front: frontShot, others: others)
     }
@@ -457,21 +493,34 @@ final class ScreenWatcher: ObservableObject {
         guard let image = try? await SCScreenshotManager.captureImage(
             contentFilter: SCContentFilter(desktopIndependentWindow: window), configuration: config
         ) else { return nil }
-        return Shot(image: image, title: window.title ?? fallbackTitle)
+        return Shot(image: image, title: window.title ?? fallbackTitle, heightPoints: window.frame.height)
     }
 
-    nonisolated private static func recognizeText(_ image: CGImage) -> String {
+    nonisolated private static func recognizeText(_ image: CGImage, skipTop: CGFloat = 0) -> String {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
         try? VNImageRequestHandler(cgImage: image).perform([request])
         let lines = (request.results ?? [])
+            .filter { $0.boundingBox.maxY <= 1 - skipTop }
             .sorted { $0.boundingBox.minY > $1.boundingBox.minY }
             .compactMap { $0.topCandidates(1).first?.string }
-        return String(lines.joined(separator: "\n").prefix(1500))
+        return String(lines.joined(separator: "\n").prefix(2500))
+    }
+
+    nonisolated private static func chromeFraction(_ shot: Shot, bundle: String?) -> CGFloat {
+        guard let bundle, browsers.contains(bundle), shot.heightPoints > 300 else { return 0 }
+        return browserChromePoints / shot.heightPoints
     }
 
     // MARK: - Classification
+
+    /// "ChatGPT", "Claude", "": one window for every chat, so a learned label
+    /// would stick to all of them.
+    nonisolated static func isGeneric(title: String, app: String) -> Bool {
+        let t = title.trimmingCharacters(in: .whitespaces).lowercased()
+        return t.isEmpty || t == app.lowercased() || app.lowercased().hasPrefix(t)
+    }
 
     nonisolated static func memoryKey(bundle: String, title: String) -> String {
         bundle + "|" + title.lowercased().trimmingCharacters(in: .whitespaces)
@@ -494,7 +543,8 @@ final class ScreenWatcher: ObservableObject {
     private func classify(app: String, bundle: String, title: String, text: String) async -> (String?, String) {
         let fallbackSummary = title.isEmpty ? app : "\(app): \(title)"
         let candidates = candidateCategories()
-        if let known = Self.memory[Self.memoryKey(bundle: bundle, title: title)], candidates.contains(known) {
+        let generic = Self.isGeneric(title: title, app: app)
+        if !generic, let known = Self.memory[Self.memoryKey(bundle: bundle, title: title)], candidates.contains(known) {
             return (known, cache[cacheKey(bundle, title, text)]?.summary ?? fallbackSummary)
         }
         let key = cacheKey(bundle, title, text)
@@ -505,7 +555,7 @@ final class ScreenWatcher: ObservableObject {
         var result = await ScreenLabeler.classify(app: app, title: title, text: text, categories: candidates)
             ?? (nil, fallbackSummary)
         let window = Self.memoryKey(bundle: bundle, title: title)
-        if let c = result.0, !title.isEmpty {
+        if let c = result.0, !generic {
             if let held = windowLabel[window], held.category != c, candidates.contains(held.category) {
                 if held.against + 1 >= 3 {
                     windowLabel[window] = (c, 0)
@@ -573,6 +623,8 @@ struct ScreenSample {
     /// Keyboard/mouse used in the last 90s: only these count as evidence for
     /// a suggestion (a PDF left open while you walk away isn't "doing Math").
     var active = true
+    /// Label came from your own earlier answer, not the model.
+    var learned = false
     var memoryKey: String { ScreenWatcher.memoryKey(bundle: bundleID, title: title) }
 }
 
@@ -631,6 +683,10 @@ final class ScreenCoach {
         let summary: String
     }
 
+    /// The model labeled the window, or you did earlier: your own label needs
+    /// less proof, so a window you've answered for before is suggested in 45s.
+    private static let learnedRunSeconds: TimeInterval = 45
+
     /// Trailing stretch where ≥ 80% of active samples say the same category.
     /// Two misses in a row, a 60s hole (sleep, away, paused) or the moment you
     /// picked the current category ends it: what was on screen before your
@@ -640,6 +696,7 @@ final class ScreenCoach {
         guard let last = samples.last, last.active, let c = last.category else { return nil }
         var start = last.date, hits = 0, total = 0, missStreak = 0
         var keys: Set<String> = []
+        var allLearned = true
         var newer = last.date
         for s in samples.reversed() {
             if newer.timeIntervalSince(s.date) > 60 { break }
@@ -648,14 +705,17 @@ final class ScreenCoach {
             guard s.active else { continue }
             total += 1
             if s.category == c {
-                hits += 1; missStreak = 0; start = s.date; keys.insert(s.memoryKey)
+                hits += 1; missStreak = 0; start = s.date
+                if !ScreenWatcher.isGeneric(title: s.title, app: s.app) { keys.insert(s.memoryKey) }
+                allLearned = allLearned && s.learned
             } else {
                 missStreak += 1
                 if missStreak >= 2 { total -= 2; break }
             }
         }
-        guard hits >= 4, Double(hits) / Double(max(total, 1)) >= 0.8,
-              last.date.timeIntervalSince(start) >= Double(settings.screenSuggestMinutes) * 60 else { return nil }
+        let needed = allLearned ? Self.learnedRunSeconds : Double(settings.screenSuggestMinutes) * 60
+        guard hits >= (allLearned ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
+              last.date.timeIntervalSince(start) >= needed else { return nil }
         return Run(category: c, start: start, keys: keys, summary: last.summary)
     }
 
@@ -664,7 +724,9 @@ final class ScreenCoach {
               !(AwayCoach.shared?.isBusy ?? false) else { return }
         // In class you're in Class, whatever the screen shows.
         if timer.isActive, !timer.isOnBreak, timer.currentLabel == "Class" { return }
-        if let lecture = ClassCalendar.shared.currentClass() {
+        // "Still SWE" on the class card means you're not in it (10/13: kept
+        // SWE on all four), so the screen gets its say again.
+        if let lecture = ClassCalendar.shared.currentClass(), !classDeclined.contains(Self.classKey(lecture)) {
             suggestClass(lecture)
             return
         }
@@ -690,7 +752,7 @@ final class ScreenCoach {
             PromptLog.answer(logID, "switched to \(label ?? "Break")")
             if let label {
                 self.timer.switchTo(label, at: run.start)
-                ScreenWatcher.learn(run.keys, as: label)
+                if !FocusCategories.isLife(label) { ScreenWatcher.learn(run.keys, as: label) }
             } else {
                 self.timer.startManualBreak(minutes: 0, at: run.start)
             }
@@ -700,9 +762,10 @@ final class ScreenCoach {
         m.onKeep = { [weak self] in
             guard let self else { return }
             PromptLog.answer(logID, "kept \(running ?? "nothing")")
-            // Life categories (Class, Social…) aren't defined by the screen, so
-            // "Still Class" says nothing about what this window is.
-            if let running, running != "Break", !FocusCategories.isLife(running) {
+            // Only focus-vs-focus answers say what a window is (Compiler
+            // Explorer is SWE, not Math). "Still SWE" over Shortcuts or YouTube
+            // means a side trip, which the distraction log counts instead.
+            if let running, running != "Break", !FocusCategories.isLife(running), !FocusCategories.isLife(run.category) {
                 ScreenWatcher.learn(run.keys, as: running)
             }
             self.decline(run.category)
@@ -717,10 +780,17 @@ final class ScreenCoach {
     }
 
     private var classPrompted: Set<String> = []
+    private var classDeclined: Set<String> = []
+
+    /// Title + start, not the event id: the same class on two calendars
+    /// (Google + Yale) showed the card twice.
+    private static func classKey(_ e: EKEvent) -> String {
+        "\(e.title ?? "")@\(Int(e.startDate.timeIntervalSince1970))"
+    }
 
     /// One card per calendar class: switch to Class from when it started.
     private func suggestClass(_ lecture: EKEvent) {
-        let key = "\(lecture.eventIdentifier ?? "")@\(lecture.startDate.timeIntervalSince1970)"
+        let key = Self.classKey(lecture)
         guard !classPrompted.contains(key), settings.tags.contains("Class") else { return }
         classPrompted.insert(key)
         let running: String? = timer.isActive ? (timer.isOnBreak ? "Break" : timer.currentLabel) : nil
@@ -743,6 +813,7 @@ final class ScreenCoach {
         }
         m.onKeep = { [weak self] in
             PromptLog.answer(logID, "kept \(running ?? "nothing")")
+            self?.classDeclined.insert(key)
             self?.panel.dismiss()
         }
         panel.show(m)

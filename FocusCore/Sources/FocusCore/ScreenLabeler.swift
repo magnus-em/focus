@@ -12,9 +12,9 @@ public enum ScreenLabeler {
     /// Tuned against the 3B on-device model: without these it calls a discrete
     /// math problem set "Reading".
     public static let hints: [String: String] = [
-        "Math": "mathematics work: proofs, theorems, discrete math, graphs, combinatorics, math problem sets and lectures",
+        "Math": "mathematics work: proofs, theorems, discrete math, graphs, combinatorics, math problem sets and lectures (math notation, not code)",
         "HW": "homework for non-math classes: essays, assigned readings, econ or history problem sets",
-        "SWE": "coding interview prep: LeetCode, NeetCode, algorithm practice",
+        "SWE": "programming: LeetCode, NeetCode, algorithm practice, and writing, reading or compiling code in any language (C, assembly, Python), Compiler Explorer, debugging, asking an AI chat about code",
         "Quant": "quant interview prep: probability puzzles, brainteasers, mental math, QuantGuide",
         "AI": "building AI/ML projects, coding projects with AI tools",
         "Reading": "reading books or articles, or exploring ideas with an AI chat, for personal curiosity, not for a class",
