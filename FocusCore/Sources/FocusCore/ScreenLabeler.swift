@@ -20,8 +20,6 @@ public enum ScreenLabeler {
         "Reading": "reading books or articles, or exploring ideas with an AI chat, for personal curiosity, not for a class",
         "Leisure": "entertainment: YouTube, streaming, games, social feeds",
         "Admin": "email, forms, calendars, settings, errands online",
-        "Class": "attending a live lecture or class call",
-        "Social": "chatting with friends",
     ]
 
     /// Plain-text output: with a schema the 3B model lists bare terms

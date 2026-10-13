@@ -78,9 +78,6 @@ actor BroadcastNotes {
     private var block: Block?
     private var pending: (category: String, since: Date, count: Int)?
     private let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"
-    /// Same set as the Mac's `ScreenWatcher.offScreenCategories`.
-    private static let offScreen: Set<String> = ["Sleep", "Meals", "Exercise", "Commute", "Chores"]
-
     static var modelAvailable: Bool {
         if #available(iOS 26.0, *) { return ScreenLabeler.modelAvailable }
         return false
@@ -88,7 +85,7 @@ actor BroadcastNotes {
 
     private var categories: [String] {
         (UserDefaults(suiteName: "group.com.magnus.focus")?.stringArray(forKey: "tags") ?? [])
-            .filter { !Self.offScreen.contains($0) }
+            .filter { !FocusCategories.notFromScreen.contains($0) }
     }
 
     func add(text: String, at now: Date) async {

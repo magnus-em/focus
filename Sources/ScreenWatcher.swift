@@ -351,6 +351,12 @@ final class ScreenWatcher: ObservableObject {
 
     func name(for a: ScreenActivity) -> String { notes(for: a)?.title ?? a.topTitle }
 
+    /// Distinct page text read since `date` (in memory only; the prompt log
+    /// copies it out on purpose).
+    func pages(since date: Date) -> [(date: Date, window: String, text: String)] {
+        pageTexts.filter { $0.date >= date }.map { ($0.date, $0.window, $0.text) }
+    }
+
     private func keepPageText(_ text: String, window: String, at date: Date) {
         guard text.count >= 40 else { return }
         if pageTexts.suffix(40).contains(where: { $0.window == window && $0.text == text }) { return }
@@ -523,7 +529,7 @@ final class ScreenWatcher: ObservableObject {
 
     /// Categories you could plausibly be doing on a screen.
     private func candidateCategories() -> [String] {
-        return (settings?.tags ?? []).filter { !Self.offScreenCategories.contains($0) }
+        return (settings?.tags ?? []).filter { !FocusCategories.notFromScreen.contains($0) }
     }
 }
 
@@ -677,8 +683,11 @@ final class ScreenCoach {
             keep: running.map { "Still \($0)" },
             options: [run.category], tags: settings.tags
         )
+        let logID = PromptLog.screenPrompt(model: m, running: running, suggested: run.category, since: run.start,
+                                           samples: watcher.samples, pages: watcher.pages(since: run.start))
         m.onPick = { [weak self] label in
             guard let self else { return }
+            PromptLog.answer(logID, "switched to \(label ?? "Break")")
             if let label {
                 self.timer.switchTo(label, at: run.start)
                 ScreenWatcher.learn(run.keys, as: label)
@@ -690,6 +699,7 @@ final class ScreenCoach {
         }
         m.onKeep = { [weak self] in
             guard let self else { return }
+            PromptLog.answer(logID, "kept \(running ?? "nothing")")
             // Life categories (Class, Social…) aren't defined by the screen, so
             // "Still Class" says nothing about what this window is.
             if let running, running != "Break", !FocusCategories.isLife(running) {
@@ -700,6 +710,7 @@ final class ScreenCoach {
         panel.show(m)
         let close = m.onClose
         m.onClose = { [weak self] in
+            PromptLog.answer(logID, "closed")
             self?.decline(run.category)
             close?()
         }
@@ -722,13 +733,24 @@ final class ScreenCoach {
             keep: running.map { "Still \($0)" },
             options: ["Class"], tags: settings.tags
         )
+        let logID = PromptLog.screenPrompt(model: m, running: running, suggested: "Class", since: lecture.startDate,
+                                           samples: [], pages: [], reason: "calendar event: \(lecture.title ?? "")")
         m.onPick = { [weak self] label in
             guard let self else { return }
+            PromptLog.answer(logID, "switched to \(label ?? "Break")")
             if let label { self.timer.switchTo(label, at: lecture.startDate) } else { self.timer.startManualBreak(minutes: 0, at: lecture.startDate) }
             self.panel.dismiss()
         }
-        m.onKeep = { [weak self] in self?.panel.dismiss() }
+        m.onKeep = { [weak self] in
+            PromptLog.answer(logID, "kept \(running ?? "nothing")")
+            self?.panel.dismiss()
+        }
         panel.show(m)
+        let close = m.onClose
+        m.onClose = {
+            PromptLog.answer(logID, "closed")
+            close?()
+        }
     }
 
     private func decline(_ category: String) {
@@ -739,5 +761,102 @@ final class ScreenCoach {
 
     private static func bump(_ key: String) {
         UserDefaults.standard.set(UserDefaults.standard.integer(forKey: key) + 1, forKey: key)
+    }
+}
+
+// MARK: - Prompt log
+
+/// Every switch card with what it was decided from (snapshots and the page
+/// text read during the run), and what you answered, as JSON lines in
+/// `Focus/prompt-log.jsonl` (14 days). Meant to be handed to Claude to tune
+/// the rules. This is the one place page text is written to disk.
+enum PromptLog {
+    struct Snapshot: Codable {
+        let at: Date
+        let app: String
+        let title: String
+        let summary: String
+        let category: String?
+        let active: Bool
+    }
+
+    struct Page: Codable {
+        let at: Date
+        let window: String
+        let text: String
+    }
+
+    struct Line: Codable {
+        let id: UUID
+        let at: Date
+        var card: String?
+        var subtitle: String?
+        var shownText: String?
+        var running: String?
+        var suggested: String?
+        var since: Date?
+        var reason: String?
+        var snapshots: [Snapshot]?
+        var pages: [Page]?
+        /// Set on the follow-up line for the same id.
+        var answer: String?
+    }
+
+    static let url: URL = {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Focus", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("prompt-log.jsonl")
+    }()
+
+    @discardableResult
+    static func screenPrompt(model m: AwayPromptModel, running: String?, suggested: String, since: Date,
+                             samples: [ScreenSample], pages: [(date: Date, window: String, text: String)],
+                             reason: String = "screen") -> UUID {
+        let id = UUID()
+        let context = since.addingTimeInterval(-3 * 60)
+        append(Line(
+            id: id, at: Date(), card: m.title, subtitle: m.subtitle, shownText: m.question,
+            running: running, suggested: suggested, since: since, reason: reason,
+            snapshots: samples.filter { $0.date >= context }.map {
+                Snapshot(at: $0.date, app: $0.app, title: $0.title, summary: $0.summary, category: $0.category, active: $0.active)
+            },
+            pages: pages.suffix(12).map { Page(at: $0.date, window: $0.window, text: String($0.text.prefix(1500))) }
+        ))
+        return id
+    }
+
+    static func answer(_ id: UUID, _ answer: String) {
+        append(Line(id: id, at: Date(), answer: answer))
+    }
+
+    private static func append(_ line: Line) {
+        let enc = JSONEncoder()
+        enc.dateEncodingStrategy = .iso8601
+        guard var data = try? enc.encode(line) else { return }
+        data.append(0x0A)
+        prune()
+        if let h = try? FileHandle(forWritingTo: url) {
+            h.seekToEndOfFile()
+            h.write(data)
+            try? h.close()
+        } else {
+            try? data.write(to: url)
+        }
+    }
+
+    private static var prunedAt = Date.distantPast
+
+    private static func prune() {
+        guard Date().timeIntervalSince(prunedAt) > 6 * 3600, let raw = try? String(contentsOf: url, encoding: .utf8) else { return }
+        prunedAt = Date()
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        let cutoff = Date().addingTimeInterval(-14 * 86400)
+        let kept = raw.split(separator: "\n").filter {
+            guard let l = try? dec.decode(Line.self, from: Data($0.utf8)) else { return false }
+            return l.at >= cutoff
+        }
+        try? (kept.joined(separator: "\n") + (kept.isEmpty ? "" : "\n")).write(to: url, atomically: true, encoding: .utf8)
     }
 }

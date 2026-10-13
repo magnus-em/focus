@@ -172,6 +172,11 @@ public enum FocusCategories {
     /// Until a device has received the synced list, assume these.
     public static let defaultLifeTags = ["Class", "Meals", "Leisure", "Sleep", "Chores", "Exercise", "Social", "Commute", "Admin"]
 
+    /// Never a screen label: done away from the screen (Sleep, Meals…), or
+    /// known from elsewhere (Class from the calendar). Offered as a choice,
+    /// the model called a ChatGPT chat about C "Class".
+    public static let notFromScreen: Set<String> = ["Sleep", "Meals", "Exercise", "Commute", "Chores", "Class", "Social"]
+
     public static func isLife(_ label: String?) -> Bool {
         guard let label, !label.isEmpty else { return false }
         return (UserDefaults.standard.stringArray(forKey: lifeTagsKey) ?? defaultLifeTags).contains(label)

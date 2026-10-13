@@ -1048,8 +1048,20 @@ private struct ScreenSettings: View {
                 Text("Suggestions accepted: \(accepted) of \(accepted + declined)")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            HStack {
+                Text("Prompt log: each card, what it was based on, your answer")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                Spacer()
+                Button("Show in Finder") {
+                    if FileManager.default.fileExists(atPath: PromptLog.url.path) {
+                        NSWorkspace.shared.activateFileViewerSelecting([PromptLog.url])
+                    } else {
+                        NSWorkspace.shared.open(PromptLog.url.deletingLastPathComponent())
+                    }
+                }.controlSize(.small)
+            }
         }
-        Text("Every 15s and on each app switch, the front window is read on-device with Apple Vision and labeled by Apple Intelligence. Screenshots and text are never saved or sent anywhere; only the window title and a one-line summary are kept on this Mac for 30 days. Passwords, Messages, Mail, WhatsApp, Telegram and FaceTime are never captured. Picking \"Still X\" teaches it.")
+        Text("Every 15s and on each app switch, the front window is read on-device with Apple Vision and labeled by Apple Intelligence. Screenshots and text are never sent anywhere; only the window title and a one-line summary are kept on this Mac for 30 days, plus the page text behind each switch card in the prompt log (14 days). Passwords, Messages, Mail, WhatsApp, Telegram and FaceTime are never captured. Picking \"Still X\" teaches it.")
             .font(.system(size: 10))
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
