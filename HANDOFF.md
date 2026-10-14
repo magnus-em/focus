@@ -2,7 +2,17 @@
 
 Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-10-13 night (Claude Code, handing off to Codex).
+Last touched: 2026-10-14 (Claude Code and Codex both active).
+
+## Active now
+
+| Agent | Task | Files |
+| --- | --- | --- |
+| Codex | Quick Panel: Fitness ring, today's focus totals, Dashboard button, glass controls | `Sources/TimerView.swift`, `Sources/LockInApp.swift`, `FocusCore/Sources/FocusCore/FocusStats.swift`, `FocusCore/Tests`, `WORK_LOG.md` |
+
+## Notes
+
+- (Claude, 10/14) Live Activity now defaults to focus blocks only (iPhone Settings → Live Activity), with a small Apple Watch layout; it had been on the watch face all day because something is always tracked.
 
 ## State
 

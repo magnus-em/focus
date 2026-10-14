@@ -23,3 +23,14 @@ Read these before changing anything:
 - When the screen labels go wrong, read `~/Library/Application Support/Focus/prompt-log.jsonl` and `focus://screen-debug` (writes `Focus/screen-debug.json`), find the cause, fix the rule, and note the lesson in `CLAUDE.md`.
 
 Keep `CLAUDE.md` and `HANDOFF.md` current when you land something, so the next agent (Claude Code or Codex) starts from the truth.
+
+## Two agents, one repo
+
+Claude Code and Codex often work here at the same time, in the same checkout, both committing to `main`.
+
+- **Claim before editing.** Add a row to `HANDOFF.md` → Active now (agent, task, files) before you touch files, and remove it when you've committed. Don't edit files another agent has claimed; if you need one, say so in your row and ask the user.
+- **Commit only your files.** `git add <paths>`, never `git add -A` or `git commit -a`. `git status` will show the other agent's unfinished edits; leave them alone.
+- **Builds take the whole tree.** `./deploy.sh` and `./install_ios.sh` build whatever is on disk, including the other agent's half-done edits. If anyone else has uncommitted changes under `Sources/`, `FocusCore/` or `FocusPad/`, build from a clean copy instead: `git worktree add --detach <scratch dir> HEAD`, copy your changed files in, run the script there, then `git worktree remove` it.
+- **Pull before you commit** (`git pull --rebase`): the other agent and Claude's daily 8:30 tuning task both push to `main`.
+- **Read the other agent's commits** (`git log` since you last looked) before building on them. Put problems you find under Notes in `HANDOFF.md` rather than silently rewriting their work.
+- **Docs:** `CLAUDE.md` is the durable reference (update the file's row when you change how something works); `WORK_LOG.md` is the dated log of what each session did and validated; `HANDOFF.md` is only the current state, trimmed as things land.

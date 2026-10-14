@@ -4,11 +4,30 @@ import Foundation
 import SwiftData
 import FocusCore
 
-/// Keeps one Live Activity in step with the timer: shown while anything is
-/// tracked, ended when nothing is. Changes made on the Mac reach it when this
-/// app next runs (foreground, or a background CloudKit push).
+/// Keeps one Live Activity in step with the timer. By default only focus
+/// blocks get one: something is tracked all day, and iOS mirrors every Live
+/// Activity to the Watch Smart Stack, where it sat on the watch face all day.
+/// Changes made on the Mac reach it when this app next runs (foreground, or a
+/// background CloudKit push).
 @MainActor
 enum FocusLiveActivity {
+    enum Mode: String, CaseIterable {
+        case focus, always, off
+        var title: String {
+            switch self {
+            case .focus: return "Focus blocks"
+            case .always: return "Everything tracked"
+            case .off: return "Off"
+            }
+        }
+    }
+
+    static let modeKey = "liveActivityMode"
+    static var mode: Mode {
+        get { Mode(rawValue: UserDefaults.standard.string(forKey: modeKey) ?? "") ?? .focus }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: modeKey); apply() }
+    }
+
     private static var current: Activity<FocusActivityAttributes>? {
         Activity<FocusActivityAttributes>.activities.first
     }
@@ -54,20 +73,35 @@ enum FocusLiveActivity {
     }
 
     private static var observer: AnyCancellable?
+    private static weak var engine: FocusTimerEngine?
 
     /// Mirror the engine (which also applies peers' state) into the activity.
     static func follow(_ engine: FocusTimerEngine) {
+        self.engine = engine
         observer = engine.$sessionStartTime
             .combineLatest(engine.$currentLabel, engine.$phase)
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .sink { start, label, phase in
-                Task { @MainActor in
-                    if let start {
-                        await show(label: phase.isBreak ? "Break" : label, isBreak: phase.isBreak, since: start)
-                    } else {
-                        await end()
-                    }
-                }
+                Task { @MainActor in await sync(start: start, label: label, isBreak: phase.isBreak) }
             }
+    }
+
+    static func apply() {
+        guard let e = engine else { return }
+        Task { await sync(start: e.sessionStartTime, label: e.currentLabel, isBreak: e.phase.isBreak) }
+    }
+
+    private static func sync(start: Date?, label: String, isBreak: Bool) async {
+        let wanted: Bool
+        switch mode {
+        case .always: wanted = start != nil
+        case .focus: wanted = start != nil && !isBreak && !FocusCategories.isLife(label)
+        case .off: wanted = false
+        }
+        if wanted, let start {
+            await show(label: isBreak ? "Break" : label, isBreak: isBreak, since: start)
+        } else {
+            await end()
+        }
     }
 }

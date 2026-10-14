@@ -99,6 +99,7 @@ struct FocusLiveActivityWidget: Widget {
                     .foregroundStyle(color)
             }
         }
+        .supplementalActivityFamilies([.small])
     }
 }
 
@@ -106,9 +107,18 @@ private let breakBlue = Color(red: 0.27, green: 0.62, blue: 0.83)
 
 private struct LockScreenCard: View {
     let state: FocusActivityAttributes.ContentState
+    @Environment(\.activityFamily) private var family
 
     var body: some View {
         let color = state.isBreak ? breakBlue : categoryColor(state.label)
+        if family == .small {
+            WatchCard(state: state, color: color)
+        } else {
+            card(color)
+        }
+    }
+
+    private func card(_ color: Color) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Circle().fill(color).frame(width: 10, height: 10)
@@ -125,6 +135,28 @@ private struct LockScreenCard: View {
             QuickRow(state: state)
         }
         .padding(14)
+        .foregroundStyle(.white)
+    }
+}
+
+/// Apple Watch Smart Stack: the category and how long, nothing to tap.
+private struct WatchCard: View {
+    let state: FocusActivityAttributes.ContentState
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: state.isBreak ? "cup.and.saucer.fill" : categoryIcon(state.label))
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(color)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(state.label).font(.headline).lineLimit(1)
+                Text(timerInterval: state.since...Date.distantFuture, countsDown: false)
+                    .font(.title3.monospacedDigit().weight(.semibold))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
         .foregroundStyle(.white)
     }
 }

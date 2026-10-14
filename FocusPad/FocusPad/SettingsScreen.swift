@@ -189,6 +189,17 @@ struct SettingsScreen: View {
             }
             .onAppear { forceSyncProbe() }
 
+            Section("Live Activity") {
+                Picker("Show for", selection: Binding(
+                    get: { FocusLiveActivity.mode },
+                    set: { FocusLiveActivity.mode = $0 }
+                )) {
+                    ForEach(FocusLiveActivity.Mode.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                Text("The Lock Screen card also shows on your Apple Watch. To keep it off the watch only: Watch app → Smart Stack → Live Activities → Focus.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Apple Health") {
                 Toggle("Fill Sleep and Exercise from Health", isOn: Binding(
                     get: { HealthImport.enabled },
