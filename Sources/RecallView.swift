@@ -733,6 +733,23 @@ private struct CardEditor: View {
 }
 
 private struct DraftFromNotesSheet: View {
+    /// What the screen saw you study that day (focus blocks' notes), as material.
+    @MainActor
+    private func screenNotes(daysBack: Int) -> String {
+        let cal = Calendar.current
+        let day = cal.date(byAdding: .day, value: -daysBack, to: cal.startOfDay(for: Date()))!
+        let w = ScreenWatcher.shared
+        var seen = Set<String>()
+        return w.activities(from: day, to: cal.date(byAdding: .day, value: 1, to: day)!)
+            .filter { ($0.category.map { !FocusCategories.isLife($0) } ?? false) && $0.minutes >= 5 }
+            .compactMap { a -> String? in
+                guard let n = w.notes(for: a), !n.bullets.isEmpty, seen.insert(n.title).inserted else { return nil }
+                if course.isEmpty, let c = a.category { course = c }
+                return "## \(n.title)\n" + n.bullets.map { "- \($0)" }.joined(separator: "\n")
+            }
+            .joined(separator: "\n\n")
+    }
+
     @ObservedObject var store: RecallStore
     @ObservedObject var settings: AppSettings
     @Binding var isPresented: Bool
@@ -755,6 +772,12 @@ private struct DraftFromNotesSheet: View {
             }
             .frame(width: 240)
             if drafts.isEmpty {
+                HStack(spacing: 12) {
+                    Button("Use today's screen notes") { material = screenNotes(daysBack: 0) }
+                    Button("Yesterday's") { material = screenNotes(daysBack: 1) }
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 12))
                 TextEditor(text: $material)
                     .font(.system(size: 12))
                     .frame(minHeight: 260)
