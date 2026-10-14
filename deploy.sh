@@ -4,6 +4,21 @@
 set -e
 cd "$(dirname "$0")"
 
+# Claude Code and Codex deploy from different checkouts. Only install committed
+# code that contains whatever is installed now, so one agent's deploy can't
+# quietly put back what the other just fixed. FORCE_DEPLOY=1 skips this.
+STAMP="$HOME/Library/Application Support/Focus/deployed-commit"
+if [ -z "$FORCE_DEPLOY" ]; then
+    if [ -n "$(git status --porcelain -- Sources FocusCore VirtualDisplay Package.swift project.yml build.sh)" ]; then
+        echo "Uncommitted changes under Sources/FocusCore. Commit first (another checkout's deploy would drop them), or FORCE_DEPLOY=1."
+        exit 1
+    fi
+    if [ -f "$STAMP" ] && ! git merge-base --is-ancestor "$(cat "$STAMP")" HEAD 2>/dev/null; then
+        echo "The installed build ($(cut -c1-7 "$STAMP")) isn't in this checkout's history. Rebase onto main first, or FORCE_DEPLOY=1."
+        exit 1
+    fi
+fi
+
 ./build.sh
 APP="$PWD/.build/app.noindex/Focus.app"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
@@ -65,6 +80,7 @@ echo "── Installing ──────────────────�
 # rm first — cp -r over an existing .app leaves stale files behind
 rm -rf /Applications/Focus.app
 cp -R "$APP" /Applications/
+git rev-parse HEAD > "$STAMP"
 "$LSREGISTER" -u "$APP" 2>/dev/null || true
 
 echo "── Verifying ────────────────────────────────"

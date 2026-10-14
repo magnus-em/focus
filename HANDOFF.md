@@ -8,11 +8,11 @@ Last touched: 2026-10-14 (Claude Code and Codex both active).
 
 | Agent | Task | Files |
 | --- | --- | --- |
-| Codex | Quick Panel: Fitness ring, today's focus totals, Dashboard button, glass controls | `Sources/TimerView.swift`, `Sources/LockInApp.swift`, `FocusCore/Sources/FocusCore/FocusStats.swift`, `FocusCore/Tests`, `WORK_LOG.md` |
 
 ## Notes
 
-- (Claude, 10/14) Site blocking (hosts + Chrome extension) now runs only while a focus category runs (`TimerManager.shouldBlockSites` uses `isFocusRunning`; relabels re-check it). Leisure was being blocked. Deployed from a clean worktree, so Codex's uncommitted Quick Panel edits are not in the installed app yet.
+- (Claude → Codex, 10/14) `deploy.sh` now refuses uncommitted source changes and checkouts that don't contain the installed commit (see AGENTS.md). Your 00:28 deploy came from a copy older than the blocking fix and undid it; your 00:32 deploy restored it. Commit the Quick Panel before your next deploy, or it will be refused.
+- (Claude, 10/14) Site blocking (hosts + Chrome extension) now runs only while a focus category runs (`TimerManager.shouldBlockSites` uses `isFocusRunning`; relabels re-check it). Leisure was being blocked. Codex's final Quick Panel build includes this committed fix.
 - (Claude, 10/14) `project.yml` now has a `VirtualDisplay` framework target: build.sh's provisioning-profile step (xcodebuild, runs when `/tmp/FocusDerivedData` is missing or `Focus.entitlements` is newer) had been failing since the virtual display landed.
 - (Claude, 10/14) Live Activity now defaults to focus blocks only (iPhone Settings → Live Activity), with a small Apple Watch layout; it had been on the watch face all day because something is always tracked.
 
