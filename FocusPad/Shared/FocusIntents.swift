@@ -112,6 +112,49 @@ struct TakeBreakIntent: LiveActivityIntent {
 }
 
 #if FOCUS_APP
+import SwiftData
+
+/// "Hey Siri, how much have I focused today in Focus?" — on the phone, or a
+/// HomePod through the phone. Reads the synced log, so it counts the Mac too.
+struct FocusTodayIntent: AppIntent {
+    static var title: LocalizedStringResource = "Focus Today"
+    static var description = IntentDescription("How much you've focused today, against your goal, and what's running.")
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let context = ModelContext(FocusPadApp.sharedContainer)
+        let day = Calendar.current.startOfDay(for: Date())
+        let from = day.addingTimeInterval(-86400)
+        let rows = (try? context.fetch(FetchDescriptor<StoredWorkSession>(predicate: #Predicate { $0.startTime > from }))) ?? []
+        var byLabel: [String: Double] = [:]
+        for r in rows where r.isFocus {
+            let end = r.startTime.addingTimeInterval(r.durationMinutes * 60)
+            let m = max(0, end.timeIntervalSince(max(r.startTime, day))) / 60
+            if m > 0 { byLabel[r.label ?? "Focus", default: 0] += m }
+        }
+        var running = ""
+        if let e = FocusPadApp.liveEngine, e.isActive, let start = e.sessionStartTime {
+            let m = Date().timeIntervalSince(start) / 60
+            running = " Right now: \(e.currentLabel.isEmpty ? "focus" : e.currentLabel), \(Self.spoken(m))."
+            if !FocusCategories.isLife(e.currentLabel) { byLabel[e.currentLabel.isEmpty ? "Focus" : e.currentLabel, default: 0] += m }
+        }
+        let total = byLabel.values.reduce(0, +)
+        let goal = Double(UserDefaults.standard.object(forKey: "dailyGoalHours") as? Int ?? 4) * 60
+        let top = byLabel.max { $0.value < $1.value }?.key
+        var text = total < 1 ? "No focus logged yet today." : "You've focused \(Self.spoken(total)) today\(top.map { ", mostly \($0)" } ?? "")."
+        if goal > 0, total >= 1 {
+            text += total >= goal ? " That's your \(Int(goal / 60))-hour goal done." : " \(Self.spoken(goal - total)) to your goal."
+        }
+        return .result(dialog: "\(text + running)")
+    }
+
+    static func spoken(_ minutes: Double) -> String {
+        let h = Int(minutes) / 60, m = Int(minutes) % 60
+        let hs = h == 1 ? "1 hour" : "\(h) hours", ms = m == 1 ? "1 minute" : "\(m) minutes"
+        return h == 0 ? ms : m == 0 ? hs : "\(hs) \(ms)"
+    }
+}
+
 struct FocusShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -129,6 +172,15 @@ struct FocusShortcuts: AppShortcutsProvider {
             phrases: ["Stop tracking in \(.applicationName)"],
             shortTitle: "Stop",
             systemImageName: "stop.fill"
+        )
+        AppShortcut(
+            intent: FocusTodayIntent(),
+            phrases: [
+                "How much have I focused today in \(.applicationName)",
+                "How's my day in \(.applicationName)",
+            ],
+            shortTitle: "Focus today",
+            systemImageName: "chart.bar.fill"
         )
         AppShortcut(
             intent: TakeBreakIntent(),
