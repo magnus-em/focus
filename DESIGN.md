@@ -59,8 +59,10 @@ the directions artifact below.
 | Good | #1F8F55 | #4CD38A |
 | Accent | running category's color | same |
 
-Category colors come from `categoryColor(_:)`; keep them distinct in
-lightness, not only hue.
+Category colors come from `categoryColor(_:)` (FocusCore): focus categories
+vivid and far apart (SWE green, Math deep blue, Quant light cyan, AI purple,
+HW amber, Class coral), life categories quieter. Keep them distinct in
+lightness, not only hue; check new ones against the neighbours in grayscale.
 
 ## SwiftUI rules
 
@@ -72,6 +74,13 @@ lightness, not only hue.
 - Every icon-only button has `.help` and an accessibility label; tab icons get
   a visible caption.
 - No new hardcoded font sizes outside the scale above.
+
+## When information shows (popover)
+
+Default: what's running, how long, the goal ring, controls, and at most one
+line that needs you now. Everything else (day strip, what the screen sees,
+today's log) is one grabber pull away. Category chips only when nothing is
+running. Nags expire: yesterday's holes only in the morning.
 
 ## Known problems (popover, 2026-10-13, before the A+B rebuild)
 
