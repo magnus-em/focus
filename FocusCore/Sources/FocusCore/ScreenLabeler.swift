@@ -14,12 +14,12 @@ public enum ScreenLabeler {
     public static let hints: [String: String] = [
         "Math": "mathematics work, right now mostly discrete math: logic, sets, functions, relations, proofs by induction or contradiction, counting, combinatorics, graphs, math problem sets and lectures (math notation only; never programming, C, assembly, memory or operating systems)",
         "HW": "homework for non-math classes: essays, assigned readings, econ or history problem sets",
-        "SWE": "programming: LeetCode, NeetCode, algorithm practice, and writing, reading or compiling code in any language (C, assembly, Python), Compiler Explorer, debugging, asking an AI chat about code, building their own apps (like the Focus app) with Claude, Claude Code or Codex, and studying CS systems courses (C, assembly, memory layout, processes, compilers), midterms included",
+        "SWE": "programming: LeetCode, NeetCode, algorithm practice, and writing, reading or compiling code in any language (C, assembly, Python), Compiler Explorer, debugging, asking an AI chat about code, building their own apps (like the Focus app) with Claude, Claude Code or Codex, including its docs, design and roadmap, and studying CS systems courses (C, assembly, memory layout, processes, compilers), midterms included",
         "Quant": "quant interview prep: probability puzzles, brainteasers, mental math, QuantGuide",
         "AI": "AI/ML work: machine learning models, training, datasets, neural networks, ML papers (using an AI chat or coding assistant is not AI by itself)",
         "Reading": "reading books or articles, or exploring ideas with an AI chat, for personal curiosity, not for a class",
         "Leisure": "entertainment: YouTube, streaming, games, social feeds",
-        "Admin": "email, forms, calendars, settings, errands online",
+        "Admin": "email, forms, calendars, system settings, errands online (not a software project's docs or settings)",
     ]
 
     /// Plain-text output: with a schema the 3B model lists bare terms
@@ -73,6 +73,10 @@ public enum ScreenLabeler {
     /// `current`: what the student says they're doing. The 3B model calls any
     /// page of numbers Math (two's complement during C/systems review), so it
     /// keeps the student's own label unless the screen clearly shows other work.
+    /// Why the last `classify` returned nil (the model threw: rate limit for a
+    /// background app, guardrails, context size). For the debug dump.
+    nonisolated(unsafe) public static var lastError: String?
+
     public static func classify(app: String, title: String, text: String, categories: [String],
                                 current: String? = nil) async -> (String?, String)? {
         let lines = categories.map { c in hints[c].map { "- \(c): \($0)" } ?? "- \(c)" }
@@ -97,6 +101,7 @@ public enum ScreenLabeler {
             let summary = try r.content.value(String.self, forProperty: "summary")
             return (categories.contains(category) ? category : nil, summary)
         } catch {
+            lastError = "\(Date()): \(error)"
             return nil
         }
     }

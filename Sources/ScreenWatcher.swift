@@ -255,7 +255,8 @@ final class ScreenWatcher: ObservableObject {
     /// reasoning as JSON in `Focus/screen-debug.json`, for Claude to read.
     func dumpDebug() {
         let iso = ISO8601DateFormatter()
-        var d: [String: Any] = ["status": status, "coach": coachStatus, "ignored": Self.userIgnored]
+        var d: [String: Any] = ["status": status, "coach": coachStatus, "ignored": Self.userIgnored,
+                                "modelError": { if #available(macOS 26.0, *) { return ScreenLabeler.lastError ?? "" }; return "" }()]
         if let x = lastSnapshot {
             d["snapshot"] = ["at": iso.string(from: x.date), "app": x.app, "bundle": x.bundle, "title": x.title,
                              "category": x.category ?? "none", "summary": x.summary, "source": x.source,
@@ -769,10 +770,15 @@ final class ScreenWatcher: ObservableObject {
             let short = u.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
             return "\(title) (\(String(short.prefix(120))))"
         } ?? title
-        var result = await ScreenLabeler.classify(app: app, title: shownTitle, text: text, categories: candidates,
-                                                  current: generic ? runningCategory() : nil)
-            ?? (nil, fallbackSummary)
         let window = Self.memoryKey(bundle: bundle, title: title)
+        guard var result = await ScreenLabeler.classify(app: app, title: shownTitle, text: text, categories: candidates,
+                                                        current: generic ? runningCategory() : nil) else {
+            // The model threw (often its rate limit for background apps): keep
+            // this window's last label instead of leaving a hole in the log.
+            let held = generic ? samples.last { $0.bundleID == bundle }?.category : windowLabel[window]?.category
+            labelSource = "kept \(held ?? "nothing"): the model failed (\(ScreenLabeler.lastError ?? "unknown"))"
+            return (held, fallbackSummary)
+        }
         if let c = result.0, !generic {
             if let held = windowLabel[window], held.category != c, candidates.contains(held.category) {
                 if held.against + 1 >= (settings?.screenEverySwitch == true ? 2 : 3) {
@@ -920,7 +926,7 @@ final class ScreenCoach {
     /// picked the current category ends it: what was on screen before your
     /// own choice isn't evidence against it.
     private func trailingRun(notBefore floor: Date?) -> Run? {
-        let samples = watcher.samples.filter { $0.bundleID != ScreenWatcher.ownBundle }
+        let samples = watcher.samples.filter { $0.bundleID != ScreenWatcher.ownBundle && $0.summary != "Private" }
         guard let last = samples.last, last.active, let c = last.category else { return nil }
         var start = last.date, hits = 0, total = 0, missStreak = 0
         var keyCounts: [String: Int] = [:]
@@ -955,7 +961,8 @@ final class ScreenCoach {
     private func evidenceStatus(running: String?) -> String {
         let floor = timer.isActive ? timer.sessionStartTime : nil
         let recent = watcher.samples.filter { s in
-            Date().timeIntervalSince(s.date) < 600 && s.date >= (floor ?? .distantPast) && s.bundleID != ScreenWatcher.ownBundle
+            Date().timeIntervalSince(s.date) < 600 && s.date >= (floor ?? .distantPast)
+                && s.bundleID != ScreenWatcher.ownBundle && s.summary != "Private"
         }
         guard let last = recent.last else { return "No snapshots since you picked \(running ?? "this")" }
         guard last.active else { return "You've been idle, so snapshots don't count" }
