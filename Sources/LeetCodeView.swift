@@ -403,7 +403,7 @@ struct LeetCodeView: View {
     private func pickCard(_ items: [LCProblem]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                sectionLabel("WHAT NEXT?")
+                sectionLabel("What next?")
                 Spacer()
                 Button {
                     pickMode = .smart
@@ -461,7 +461,7 @@ struct LeetCodeView: View {
     private var reviewCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("REDO QUEUE")
+                sectionLabel("Redo queue")
                 Text("\(store.reviewQueue.count) due").font(.system(size: 10, weight: .semibold)).foregroundStyle(.orange)
                 Spacer()
                 Button("Show all") { status = .review }
@@ -499,7 +499,7 @@ struct LeetCodeView: View {
         let solved = store.uniqueSolved
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                sectionLabel("GRIND TARGET")
+                sectionLabel("Grind target")
                 Spacer()
                 Stepper("\(target) problems", value: $settings.leetCodeTarget, in: 10...1000, step: 10)
                     .font(.system(size: 11, weight: .medium))
@@ -593,7 +593,7 @@ struct LeetCodeView: View {
         let days = store.series(days: 28)
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("LAST 28 DAYS")
+                sectionLabel("Last 28 days")
                 Spacer()
                 Text("dashed line = daily goal").font(.system(size: 9)).foregroundStyle(.tertiary)
             }
@@ -625,7 +625,7 @@ struct LeetCodeView: View {
         let focus = Set(store.weakestPatterns.prefix(3).map(\.category))
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("PATTERN COVERAGE")
+                sectionLabel("Pattern coverage")
                 Spacer()
                 Text("orange = focus next · click to filter").font(.system(size: 9)).foregroundStyle(.tertiary)
             }
@@ -678,7 +678,7 @@ struct LeetCodeView: View {
     private var mixCard: some View {
         let mix = store.difficultyMix()
         return VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("DIFFICULTY MIX · 30D")
+            sectionLabel("Difficulty mix, 30 days")
             ForEach(mix, id: \.0) { d, share in
                 let target = LeetCodeStore.targetMix[d]!
                 VStack(alignment: .leading, spacing: 3) {
@@ -717,7 +717,7 @@ struct LeetCodeView: View {
 
     private var speedCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("SOLVE TIME · MEDIAN")
+            sectionLabel("Median solve time")
             ForEach(ProblemDifficulty.allCases, id: \.self) { d in
                 let target = LeetCodeStore.targetMinutes[d]!
                 HStack {
@@ -753,7 +753,7 @@ struct LeetCodeView: View {
         let split = store.confidenceSplit()
         let total = max(1, split.reduce(0) { $0 + $1.1 })
         return VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("QUALITY · LAST 30")
+            sectionLabel("Quality, last 30")
             GeometryReader { geo in
                 HStack(spacing: 0) {
                     ForEach(split, id: \.0) { c, n in
@@ -784,7 +784,7 @@ struct LeetCodeView: View {
 
     private var listsCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("CURATED LISTS")
+            sectionLabel("Curated lists")
             ForEach(LCList.allCases) { l in
                 let p = store.progress(in: l)
                 Button { list = l; status = .todo } label: {
@@ -813,7 +813,7 @@ struct LeetCodeView: View {
         let next = all.filter { !$0.unlocked }.sorted { $0.progress > $1.progress }.prefix(4)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                sectionLabel("MILESTONES")
+                sectionLabel("Milestones")
                 Text("\(unlocked.count)/\(all.count)").font(.system(size: 10)).foregroundStyle(.secondary)
             }
             if !unlocked.isEmpty {
@@ -860,7 +860,7 @@ struct LeetCodeView: View {
     }
 
     private func sectionLabel(_ t: String) -> some View {
-        Text(t).font(.system(size: 10, weight: .bold)).tracking(1).foregroundStyle(.secondary)
+        Text(t).font(.system(size: 15, weight: .semibold))
     }
 
     @ViewBuilder

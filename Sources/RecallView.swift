@@ -56,9 +56,8 @@ private func gradeColor(_ g: RecallGrade) -> Color {
 
 private func sectionLabel(_ s: String) -> some View {
     Text(s)
-        .font(.system(size: 9.5, weight: .semibold))
-        .tracking(1)
-        .foregroundStyle(.secondary)
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundStyle(Color.secondaryText)
 }
 
 /// Retrieval practice: review due cards, manage cards, read recall notes,
@@ -302,7 +301,7 @@ private struct ReviewSessionView: View {
     private func revealedSection(_ item: StoredKnowledgeItem) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("REFERENCE")
+                sectionLabel("Reference")
                 if item.answerByAI {
                     Text("drafted by Claude · unverified")
                         .font(.system(size: 9.5))
@@ -618,12 +617,12 @@ private struct CardEditor: View {
                 TextField("Topic (not shown while reviewing)", text: $topic)
                     .textFieldStyle(.roundedBorder)
 
-                sectionLabel("PROMPT — ASK FOR AN EXPLANATION, DERIVATION OR RECONSTRUCTION; DON'T GIVE THE ANSWER AWAY")
+                sectionLabel("Prompt (ask for an explanation, derivation or reconstruction; don't give the answer away)")
                 TextField("e.g. Why does an LSTM's cell state let gradients survive long sequences?", text: $prompt, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(2...5)
 
-                sectionLabel("REFERENCE ANSWER")
+                sectionLabel("Reference answer")
                 TextField("What a correct answer contains", text: $answer, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(4...14)
@@ -665,7 +664,7 @@ private struct CardEditor: View {
         let hist = store.attempts(for: item)
         Divider().padding(.vertical, 4)
         HStack {
-            sectionLabel("HISTORY")
+            sectionLabel("History")
             Spacer()
             Text("interval \(shortDays(item.intervalDays)) · \(item.archived ? "archived" : dueLabel(item.nextDue)) · \(item.lapses) lapses")
                 .font(.system(size: 10))
@@ -948,7 +947,7 @@ private struct RecallProgressView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    sectionLabel("UNAIDED RECALL BY TIME SINCE LAST SEEN · ALL TIME")
+                    sectionLabel("Unaided recall by time since last seen")
                     Chart(buckets) { b in
                         BarMark(x: .value("Delay", b.label), y: .value("Unaided", (b.rate ?? 0) * 100))
                             .foregroundStyle(recallPurple.gradient)
@@ -979,7 +978,7 @@ private struct RecallProgressView: View {
                 let hard = store.hardest()
                 if !hard.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        sectionLabel("KEEPS SLIPPING")
+                        sectionLabel("Keeps slipping")
                         ForEach(hard, id: \.id) { item in
                             HStack {
                                 Text(item.prompt).font(.system(size: 12)).lineLimit(1)
@@ -1015,7 +1014,7 @@ private struct RecallProgressView: View {
 
     private func weeksTable(_ weeks: [RecallWeek]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            sectionLabel("WEEK BY WEEK — IS MORE STUDY TURNING INTO MORE RETENTION?")
+            sectionLabel("Week by week: is more study turning into more retention?")
             Grid(alignment: .trailing, horizontalSpacing: 18, verticalSpacing: 5) {
                 GridRow {
                     Text("Week").gridColumnAlignment(.leading)
