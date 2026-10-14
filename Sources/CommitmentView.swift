@@ -3,7 +3,10 @@ import SwiftUI
 struct CommitmentView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var dayStore: DayStore
+    @ObservedObject var store: SessionStore
+    let timer: TimerManager
     @Binding var isShowing: Bool
+    var previewMorningReview = false
 
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -53,6 +56,8 @@ struct CommitmentView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        MorningCorrectionView(store: store, settings: settings, timer: timer,
+                                              preview: previewMorningReview)
                         // Written commitment
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Today's commitment")
@@ -101,6 +106,7 @@ struct CommitmentView: View {
 
                 VStack(spacing: 6) {
                     Button {
+                        guard !previewMorningReview else { return }
                         let cleaned = text.trimmingCharacters(in: .whitespaces)
                         settings.markCommitmentDone(text: cleaned)
                         dayStore.setCommitment(text: cleaned)
@@ -118,6 +124,7 @@ struct CommitmentView: View {
                     .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
 
                     Button {
+                        guard !previewMorningReview else { return }
                         settings.markCommitmentDone(text: "")
                         dayStore.setCommitment(text: "")
                         isShowing = false

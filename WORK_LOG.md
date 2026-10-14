@@ -5,7 +5,9 @@
 - The user requires Claude and Codex to follow each other's Focus-project instructions exactly. Updated AGENTS.md and both mailbox/queue preambles to match; direct user instructions retain precedence.
 - Implementing Claude's assignment: optional three-stretch review inside the morning commitment, ranked by affected minutes, local screenshots, arbitrary correction, Mixed/Skip, and reversible actions. No automatic category changes or classifier learning. Claude owns the app wiring and safe SessionStore undo API.
 - Pure interval planner splits at tracked and reviewed boundaries, clips to yesterday and before live work, avoids bridging gaps, and treats conflicting tracked labels as ambiguous. Six new regression cases cover these behaviors, including a 25-hour DST day. All 37 FocusCore tests passed.
-- Full signed build, isolated undo checks, hidden-display screenshots and independent design review remain pending.
+- Full app source type-check passed, with two existing unused-value warnings. Claude transferred ownership of the review API in SessionStore; the new path performs trim/split/fill in one save, throws on fetch errors, rolls back on failure, preserves short edge fragments, and refuses Undo after intervening domain/metadata changes. Existing paint/fill behavior for other callers stays unchanged.
+- Isolated in-memory SwiftData checks explicitly use cloudKitDatabase: .none. Passed middle-range repaint/exact original-ID restoration, metadata conflict refusal, sub-minute edges, midnight splitting/restoration, and filling/undoing an empty gap. No test touches the live store.
+- Hidden gallery preview is synthetic and does not read session/check/receipt histories or write commitment/review data. Signed deployment, hidden-display screenshots and independent design review remain pending.
 
 ## Agent delegation rule — 2026-10-14
 

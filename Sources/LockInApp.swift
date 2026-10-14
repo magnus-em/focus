@@ -232,6 +232,10 @@ struct FocusApp: App {
             case "review":
                 DesignGallery.show(EveningReviewView(store: store, days: days, settings: appSettings, timer: timer, recall: recall) {},
                                    name: name, dark: dark, size: NSSize(width: 620, height: 900))
+            case "morning-correction":
+                DesignGallery.show(CommitmentView(settings: appSettings, dayStore: days, store: store, timer: timer,
+                                                  isShowing: .constant(true), previewMorningReview: true),
+                                   name: name, dark: dark, size: NSSize(width: 360, height: 850))
             default:
                 var spec = name.replacingOccurrences(of: "popover-", with: "")
                 let detent: TimerView.Detent? = switch spec.last {
@@ -525,7 +529,8 @@ struct PopoverContent: View {
             }
 
             if showCommitment {
-                CommitmentView(settings: settings, dayStore: dayStore, isShowing: $showCommitment)
+                CommitmentView(settings: settings, dayStore: dayStore, store: sessionStore, timer: timerManager,
+                               isShowing: $showCommitment)
                     .transition(.opacity.animation(.easeInOut(duration: 0.2)))
                     .zIndex(10)
             }

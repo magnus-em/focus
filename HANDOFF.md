@@ -19,6 +19,8 @@ Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 
 ## State
 
+- Codex morning correction pass is implemented inside the commitment: three largest unresolved stretches, screenshot evidence, explicit category correction, Mixed/Skip and Undo. Atomic review repaint preserves short edges and midnight boundaries; isolated CloudKit-disabled checks and all 37 core tests pass. Clean signed deploy and hidden-display design QA are next. Claude owns the switch-card rounded-focus/keyboard request and the live-store incident; do not inspect or modify the real store during that incident.
+
 - Codex local tracker update is built and deployed. Scope: screenshot evidence/corrections, local task context and AI safeguards, faster Today / Review / Trends dashboard. See WORK_LOG.md for validation and remaining limits.
 - **Screen test mode is ON** (`screenEverySwitch`): a switch card ~25s after every change the screen sees. The user was switching SWE↔Math every ~5 min to test. Ask before turning it off.
 - **iOS installed and launched** on both iPhone and iPad during this Codex session. Health import and Siri still need functional checks.
