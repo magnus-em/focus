@@ -91,10 +91,9 @@ struct ProblemsView: View {
 
         return HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("INTERVIEW IN")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(1)
-                    .foregroundStyle(.tertiary)
+                Text("Interview in")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("\(days)")
                         .font(.system(size: 26, weight: .bold, design: .rounded))
@@ -165,9 +164,8 @@ struct ProblemsView: View {
                     Image(systemName: "arrow.clockwise.circle.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(.orange)
-                    Text("REVIEW QUEUE")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1)
+                    Text("Review queue")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.orange)
                     Text("\(total)")
                         .font(.system(size: 9, weight: .bold))
@@ -218,10 +216,9 @@ struct ProblemsView: View {
     private var progressCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("LAST 7 DAYS")
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.2)
-                    .foregroundStyle(.secondary)
+                Text("Last 7 days")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
                 Spacer()
                 let streak = store.problemStreak
                 if streak > 0 {
@@ -315,10 +312,9 @@ struct ProblemsView: View {
             if !weak.isEmpty {
                 Divider()
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("FOCUS ON")
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(1)
-                        .foregroundStyle(.tertiary)
+                    Text("Focus on")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
                     ForEach(weak, id: \.category) { item in
                         HStack(spacing: 7) {
                             Circle()
@@ -353,19 +349,14 @@ struct ProblemsView: View {
             HStack(spacing: 7) {
                 Image(systemName: "plus.circle.fill")
                     .font(.system(size: 14, weight: .semibold))
-                Text("Log a Problem")
-                    .font(.system(size: 13, weight: .semibold))
+                Text("Log a problem")
+                    .font(.system(size: 15, weight: .semibold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 9)
-            .background(
-                LinearGradient(
-                    colors: [ProblemDomain.quant.color, ProblemDomain.swe.color],
-                    startPoint: .leading, endPoint: .trailing
-                )
-            )
-            .cornerRadius(10)
+            .frame(minHeight: 26)
+            .background(Capsule().fill(Color.accentColor))
         }
         .buttonStyle(.plain)
     }
@@ -413,10 +404,9 @@ struct ProblemsView: View {
 
     private var recentSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("RECENT")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .tracking(1.5)
-                .foregroundStyle(.secondary)
+            Text("Recent")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.primary)
 
             let days = mergedRecentByDay
             if days.isEmpty {
@@ -757,10 +747,9 @@ struct LogProblemOverlay: View {
 
             VStack(spacing: 0) {
                 HStack {
-                    Text("LOG A PROBLEM")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .tracking(1.5)
-                        .foregroundStyle(.secondary)
+                    Text("Log a problem")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
                     Spacer()
                     Button { isShowing = false } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -806,10 +795,9 @@ struct LogProblemOverlay: View {
                         // Title — required
                         VStack(alignment: .leading, spacing: 5) {
                             HStack(spacing: 4) {
-                                Text("NAME")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .tracking(1)
-                                    .foregroundStyle(.secondary)
+                                Text("Name")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Color.secondaryText)
                                 Text("required")
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundStyle(.tertiary)
@@ -851,10 +839,9 @@ struct LogProblemOverlay: View {
                         if !settings.problemSources.isEmpty {
                             VStack(alignment: .leading, spacing: 7) {
                                 HStack(spacing: 4) {
-                                    Text("SOURCE")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .tracking(1)
-                                        .foregroundStyle(.secondary)
+                                    Text("Source")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(Color.secondaryText)
                                     Text("required")
                                         .font(.system(size: 9, weight: .medium))
                                         .foregroundStyle(.tertiary)
@@ -884,10 +871,9 @@ struct LogProblemOverlay: View {
                         // Category — multi-select
                         VStack(alignment: .leading, spacing: 7) {
                             HStack(spacing: 4) {
-                                Text("CATEGORY")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .tracking(1)
-                                    .foregroundStyle(.secondary)
+                                Text("Category")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Color.secondaryText)
                                 Text("required")
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundStyle(.tertiary)
@@ -919,10 +905,9 @@ struct LogProblemOverlay: View {
 
                         // Difficulty
                         VStack(alignment: .leading, spacing: 7) {
-                            Text("DIFFICULTY")
-                                .font(.system(size: 10, weight: .bold))
-                                .tracking(1)
-                                .foregroundStyle(.secondary)
+                            Text("Difficulty")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.secondaryText)
                             HStack(spacing: 6) {
                                 ForEach(ProblemDifficulty.allCases, id: \.self) { diff in
                                     let sel = selectedDifficulty == diff
@@ -945,10 +930,9 @@ struct LogProblemOverlay: View {
                         // Solve time — optional
                         VStack(alignment: .leading, spacing: 7) {
                             HStack(spacing: 4) {
-                                Text("SOLVE TIME")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .tracking(1)
-                                    .foregroundStyle(.secondary)
+                                Text("Solve time")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Color.secondaryText)
                                 Text("optional")
                                     .font(.system(size: 9))
                                     .foregroundStyle(.quaternary)
@@ -974,10 +958,9 @@ struct LogProblemOverlay: View {
 
                         // Confidence
                         VStack(alignment: .leading, spacing: 7) {
-                            Text("CONFIDENCE")
-                                .font(.system(size: 10, weight: .bold))
-                                .tracking(1)
-                                .foregroundStyle(.secondary)
+                            Text("Confidence")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.secondaryText)
                             HStack(spacing: 6) {
                                 ForEach(Confidence.allCases, id: \.self) { conf in
                                     let sel = selectedConfidence == conf
@@ -1000,10 +983,9 @@ struct LogProblemOverlay: View {
                         // URL — optional
                         VStack(alignment: .leading, spacing: 5) {
                             HStack(spacing: 4) {
-                                Text("LINK")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .tracking(1)
-                                    .foregroundStyle(.secondary)
+                                Text("Link")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(Color.secondaryText)
                                 Text("optional")
                                     .font(.system(size: 9))
                                     .foregroundStyle(.quaternary)
@@ -1071,10 +1053,9 @@ struct LogProblemOverlay: View {
         let next = Grind75Catalog.all.first { !done.contains($0.slug) }
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
-                Text("GRIND 75")
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1)
-                    .foregroundStyle(.secondary)
+                Text("Grind 75")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
                 Text("\(done.count)/\(Grind75Catalog.all.count)")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(ProblemDomain.swe.color)

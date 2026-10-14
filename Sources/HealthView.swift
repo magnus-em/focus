@@ -40,7 +40,7 @@ struct HealthView: View {
     private var logCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                label(tracker.displayName.uppercased())
+                label(tracker.displayName)
                 Spacer()
                 Text(lastText)
                     .font(.system(size: 10))
@@ -111,7 +111,7 @@ struct HealthView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .contentCard()
     }
 
     private var backdatePopover: some View {
@@ -171,14 +171,14 @@ struct HealthView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .glassCard(cornerRadius: 8)
+        .contentCard(cornerRadius: 14)
     }
 
     // MARK: - Chart
 
     private var chartCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            label(tracker.unit.isEmpty ? "PER WEEK · 12 WEEKS" : "MG PER WEEK · 12 WEEKS")
+            label(tracker.unit.isEmpty ? "Per week, last 12 weeks" : "mg per week, last 12 weeks")
             Chart(weeks) { w in
                 BarMark(
                     x: .value("Week", w.start, unit: .weekOfYear),
@@ -201,7 +201,7 @@ struct HealthView: View {
             .frame(height: 110)
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .contentCard()
     }
 
     // MARK: - Weeks vs focus
@@ -211,9 +211,9 @@ struct HealthView: View {
         let maxCount = max(1, w.map(\.total).max() ?? 1)
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
-                label("WEEK")
+                Text("Week").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                 Spacer()
-                label("FOCUS")
+                Text("Focus").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
             }
             ForEach(w) { week in
                 HStack(spacing: 8) {
@@ -246,7 +246,7 @@ struct HealthView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .contentCard()
     }
 
     /// Splits completed weeks at the median count and compares average focus
@@ -275,7 +275,7 @@ struct HealthView: View {
     private var recentCard: some View {
         let recent = Array(store.events(tracker).prefix(12))
         return VStack(alignment: .leading, spacing: 6) {
-            label("RECENT")
+            label("Recent")
             if recent.isEmpty {
                 Text("Tap Log now each time. Patterns show up after a few weeks.")
                     .font(.system(size: 11))
@@ -304,13 +304,11 @@ struct HealthView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(cornerRadius: 10)
+        .contentCard()
     }
 
     private func label(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .bold))
-            .tracking(1.2)
-            .foregroundStyle(.secondary)
+            .font(.system(size: 15, weight: .semibold))
     }
 }
