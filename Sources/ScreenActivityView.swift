@@ -1139,7 +1139,7 @@ struct ScreenReviewSection: View {
             let canPaint = runningStart.map { st.end <= $0 } ?? true
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text("\(min(index, list.count - 1) + 1) of \(list.count)")
+                    Text("\(min(index, list.count - 1) + 1) of \(list.count)\(focused ? " · Y, N or S" : " · click for Y/N/S keys")")
                         .font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
                     Spacer()
                     Text("\(st.start.formatted(date: .omitted, time: .shortened))–\(st.end.formatted(date: .omitted, time: .shortened)) · \(durationText(minutes: st.minutes))")
@@ -1180,10 +1180,16 @@ struct ScreenReviewSection: View {
                     }
                 }
             }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(focused ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1.5))
+            .contentShape(Rectangle())
+            // Keys only after you click the card: a stray "y" elsewhere on
+            // the Dashboard shouldn't relabel time.
+            .onTapGesture { focused = true }
             .focusable()
             .focused($focused)
             .focusEffectDisabled()
-            .onAppear { focused = true }
             .onKeyPress(characters: .init(charactersIn: "ynsYNS")) { press in
                 switch press.characters.lowercased() {
                 case "y" where canPaint:
