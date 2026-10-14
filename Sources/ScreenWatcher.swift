@@ -617,11 +617,11 @@ final class ScreenWatcher: ObservableObject {
 
     /// Their tab strip and bookmarks bar OCR first and filled the 1500-char
     /// budget (godbolt read as "Ask Gemini / 3231 Study Guides / …" → Math).
-    private static let browsers: Set<String> = [
+    nonisolated private static let browsers: Set<String> = [
         "com.google.Chrome", "com.apple.Safari", "company.thebrowser.Browser", "org.mozilla.firefox",
         "com.microsoft.edgemac", "com.brave.Browser",
     ]
-    private static let browserChromePoints: CGFloat = 120
+    nonisolated private static let browserChromePoints: CGFloat = 120
 
     private struct Capture {
         let front: Shot
@@ -933,7 +933,7 @@ final class ScreenCoach {
         }
         watcher.start(settings: settings)
         ClassCalendar.shared.start()
-        let reset: (Notification) -> Void = { [weak self] _ in
+        let reset: @Sendable (Notification) -> Void = { [weak self] _ in
             Task { @MainActor in
                 self?.watcher.resetEvidence()
                 self?.panel.dismiss()
