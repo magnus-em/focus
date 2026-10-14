@@ -14,6 +14,8 @@ The repo lives at `~/Code/focus` (moved out of `~/Documents` and renamed from `f
 ./deploy.sh      # build → back up SwiftData store → quit → replace /Applications/Focus.app → relaunch
 ```
 
+Tests: `cd FocusCore && swift test` (recall scheduler, timer display, duration text). The app targets have none.
+
 `build.sh` alone builds to `.build/app.noindex/Focus.app` (the `.noindex` keeps Spotlight from listing a duplicate). `/Applications/Focus.app` is the only copy that should exist. `deploy.sh` also deletes stale `Focus.app` / `LockIn.app` / `FocusTimer.app` bundles left in the repo root by older builds.
 
 > **Always use `./build.sh` / `./deploy.sh`, never bare `swift build`.** Bare `swift build` only rebuilds `.build/release/Focus`, not the app bundle.
