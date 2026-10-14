@@ -220,26 +220,29 @@ Read `DESIGN.md` first: principles, type/spacing/corner scale, color roles and t
 - **Popover redesign**: the user picked **A + B** (board "A+B" at https://claude.ai/artifact/KSWGrRXt5A5qfnpwmQRKx4) in a native-Apple style (newest iOS Maps / Podcasts: elegant, minimal, Liquid Glass); see DESIGN.md → Direction. Next: build it in `TimerView`/`PopoverContent` following the UI loop (shots only while the user is idle).
 - Pending chores: `./install_ios.sh` once the iPad is unlocked (the iPhone's old build re-saves stale sessions); user to reload the Chrome extension (new `/tab` posting); untested: iPad broadcast, calendar permission, dual monitors.
 
-### Ranked roadmap (2026-10-13; value for interview prep + study + trustworthy tracking, per effort)
-1. **Popover redesign** (in flight, above), then the Dashboard.
-2. **Screen Review**: rework of the activity log into a review of how the auto-logging is doing (spec below).
-3. **Apple Health sleep + workouts** → Sleep/Exercise blocks automatically (iPhone app).
-4. **Recall from notes**: Claude-drafted cards from activity-block notes (user approves) + "tonight's 3 questions" in the End of Day review.
-5. **Few-shot labels**: 3–5 most similar checked/learned snapshots as examples in the classify prompt (`NLEmbedding`).
-6. **Screen Time** on the phone: use during focus into the off-task log; app shields during focus.
-7. **Embedding classifier** over checks + `screenMemory`; model only for unfamiliar pages.
-8. **iPad Notability path**: verify the broadcast end to end (handwriting OCR), notes into morning recall.
-9. **HomePod**: per-category Home scenes via shortcuts; Siri phrases + a spoken "how much have I focused today?".
-10. **Lecture notes** for calendar classes (on-device transcription; consent, battery).
-11. **Exam radar + plan**: exams from the calendar (countdown, hours studied for each); commitment pre-filled from free slots, exams, LeetCode pace.
-12. **Virtual display** for idle-free screenshots (private `CGVirtualDisplay`, like DeskPad; may break on OS updates; test the window-layout nudge while the user is away).
-13. **Insights**: best hours of day; Sunday Claude-written weekly letter (shareable page); sleep + drift in the health correlations.
-14. **Places** (CoreLocation visits) → suggested categories backdated to arrival; Commute from movement.
-15. **Apple Watch**: complication/Action button switching, wrist tap on drift, heart rate during focus.
-16. HomePod extras: spoken nudges, room temperature vs drift, Apple TV playing during focus.
-17. Shared live status with a study partner; auto-pause when all devices say you left.
-18. All-day voice capture → a model of the user (biggest privacy design).
-19. Apple Journal hand-off revisit (blocked until Journal's Create Entry can target a journal).
+### Ranked roadmap (re-ranked 2026-10-13 evening; value for interview prep + study + trustworthy tracking, per effort)
+Done today: popover A+B, Dashboard day ring / Now Playing / wash / big numbers, Snapshot timeline (the first part of Screen Review), virtual display, Stats + End of Day restyle.
+1. **Finish the redesign sweep**: Settings (grouped 18pt cards; category rows = dot · name · hours · Life toggle, drag to reorder, delete from a context menu), Problems / Scratchpad / Health pages, corner cards as small glass pills that expand on hover (Live Activity style), menu bar glyph as a small category-colored ring with time on hover. Last review scores: popover 84, End of Day 77, Dashboard 74, Stats 68, Settings 45.
+2. **Rest of Screen Review**: triage keys (Y/N/S), confusion grid, worst windows with one-click fixes, card ledger; persist label source + snapshot agreement on `ScreenSpan`, detection delay.
+3. **Tune from the 10/13 switch testing**, then turn test mode off.
+4. **Apple Health sleep + workouts** → Sleep/Exercise blocks.
+5. **Recall from notes** + tonight's 3 questions.
+6. **Few-shot labels** (`NLEmbedding` nearest checked snapshots in the prompt).
+7. **Screen Time** on the phone (use during focus, shields).
+8. **Embedding classifier**; model only for unfamiliar pages.
+9. **Spotlight-style switcher** for ⌃⌥⌘J (type "ma" ↩; also log a problem, start a break).
+10. **iPad Notability path** + iOS installs.
+11. **HomePod scenes + Siri**.
+12. **Exam radar + plan**.
+13. **Lecture notes** for calendar classes.
+14. **Insights**: best hours, Sunday weekly letter.
+15. **End of Day as a short story** (Photos Memories style) + **Recall as a card deck**.
+16. **Places** → suggested categories; Commute from movement.
+17. **Apple Watch**.
+18. HomePod extras.
+19. Shared live status; auto-pause when every device says you left.
+20. All-day voice capture → a model of the user.
+21. Apple Journal hand-off revisit.
 
 #### Screen Review spec (roadmap #2)
 Goal: see in 30 seconds whether the auto-log was right today, fix what wasn't, and watch accuracy improve.
