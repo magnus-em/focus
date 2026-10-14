@@ -55,6 +55,458 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                SettingsCard("Focus") {
+                    IntervalRow(label: "Focus block length", value: $settings.workMinutes, range: 5...90, step: 5, unit: "min")
+                    IntRow(label: "Daily goal", value: $settings.dailyGoal, range: 0...12, suffix: "h", zeroLabel: "Off")
+                }
+
+                SettingsCard("Categories") {
+                    CategoriesEditor(settings: settings, store: store)
+                }
+
+                SettingsCard("iCloud sync") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Circle().fill(cloudStatusColor).frame(width: 8, height: 8)
+                            Text(cloudStatus)
+                                .font(.system(size: 12, weight: .medium))
+                            Spacer()
+                            Button { probeSync() } label: {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                    .font(.system(size: 11))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                        if !cloudDetail.isEmpty {
+                            Text(cloudDetail)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                        SyncHealthRows()
+                        Text("Container: \(FocusModelContainer.cloudKitContainerID)")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .textSelection(.enabled)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(Color.secondary.opacity(0.05))
+                    .cornerRadius(7)
+                    .onAppear { probeSync() }
+                }
+
+                SettingsCard("Commitment") {
+                    ToggleRow(label: "Daily commitment prompt", isOn: $settings.commitmentEnabled)
+                    if settings.commitmentEnabled {
+                        Text("You'll be prompted each morning to write your commitment for the day.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ToggleRow(label: "Evening check-in", isOn: $settings.commitmentReviewReminder)
+                        if settings.commitmentReviewReminder {
+                            HStack {
+                                Text("Remind me at")
+                                    .font(.system(size: 12, weight: .medium))
+                                Spacer()
+                                DatePicker("", selection: timeBinding(\.commitmentReviewMinutes), displayedComponents: .hourAndMinute)
+                                    .labelsHidden()
+                                    .datePickerStyle(.field)
+                                    .fixedSize()
+                            }
+                            Text("A notification asks whether you kept today's commitment. Answer Yes/No right from the banner.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.secondaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+
+                SettingsCard("Screen") {
+                    ScreenSettings(settings: settings)
+                }
+
+                SettingsCard("Focus modes") {
+                    FocusModeSettings(tags: settings.tags)
+                }
+
+                SettingsCard("Away & gaps") {
+                    ToggleRow(label: "Ask when I come back", isOn: $settings.awayPrompts)
+                    if settings.awayPrompts {
+                        IntRow(label: "After being away", value: $settings.awayPromptMinutes, range: 5...120, suffix: "min")
+                    }
+                    ToggleRow(label: "Nudge when nothing's running", isOn: $settings.idleNudge)
+                    Text("Away = screen locked, display off, Mac asleep, or no keyboard/mouse for 10 min. A card asks what that time was; nothing changes unless you pick something.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                SettingsCard("Recall") {
+                    ToggleRow(label: "Recall prompt after focus", isOn: $settings.recallAfterSession)
+                    if settings.recallAfterSession {
+                        IntRow(label: "For blocks of at least", value: $settings.recallMinMinutes, range: 5...120, suffix: "min")
+                    }
+                    ToggleRow(label: "Morning review of yesterday", isOn: $settings.morningRecall)
+                    if settings.morningRecall {
+                        HStack(spacing: 6) {
+                            Text("Send to Journal via shortcut").font(.system(size: 12))
+                            Spacer()
+                            TextField("off", text: $settings.journalShortcut)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 11))
+                                .frame(width: 120)
+                        }
+                    }
+                    IntRow(label: "Max reviews per day", value: $settings.recallDailyCap, range: 3...60)
+                    Text("After a focus block, write what you learned from memory. Cards come back after 1, 3, 7, 14, 30 days. ⌃⌥⌘; opens Recall.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 6) {
+                        SecureField(claudeKeySet ? "Claude API key saved" : "Claude API key (optional)", text: $claudeKey)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11))
+                        Button(claudeKey.isEmpty && claudeKeySet ? "Remove" : "Save") {
+                            RecallCoach.setAPIKey(claudeKey.isEmpty ? nil : claudeKey)
+                            claudeKey = ""
+                            claudeKeySet = RecallCoach.isConfigured
+                        }
+                        .controlSize(.small)
+                        .disabled(claudeKey.isEmpty && !claudeKeySet)
+                    }
+                    Text("With a key, Claude checks your recall, drafts cards, grades answers and gives hints. Stored in the Keychain.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                SettingsCard("LeetCode") {
+                    ToggleRow(label: "Evening nudge if under goal", isOn: $settings.leetCodeNudge)
+                    if settings.leetCodeNudge {
+                        HStack {
+                            Text("Nudge at")
+                                .font(.system(size: 12, weight: .medium))
+                            Spacer()
+                            DatePicker("", selection: timeBinding(\.leetCodeNudgeMinutes), displayedComponents: .hourAndMinute)
+                                .labelsHidden()
+                                .datePickerStyle(.field)
+                                .fixedSize()
+                        }
+                        Text("Only fires if you're below today's SWE problem goal — and warns when your streak is on the line.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                SettingsCard("Behavior") {
+                    ToggleRow(label: "Auto-break after session", isOn: $settings.autoBreakEnabled)
+                    ToggleRow(label: "Auto-start focus", isOn: $settings.autoStartWork)
+                    ToggleRow(label: "Sound effects", isOn: $settings.soundEnabled)
+                    IntRow(label: "Auto-end pause after", value: $settings.pauseGraceMinutes, range: 2...60, suffix: "min")
+
+                    HStack {
+                        Text("Quick start / stop")
+                            .font(.system(size: 12, weight: .medium))
+                        Spacer()
+                        Picker("", selection: $settings.quickStartTag) {
+                            ForEach(settings.tags, id: \.self) { Text($0).tag($0) }
+                        }
+                        .labelsHidden()
+                        .controlSize(.small)
+                        .fixedSize()
+                        Text("⌃⌥⌘K")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.1))
+                            .cornerRadius(4)
+                    }
+
+                    Text("⌃⌥⌘J switcher · ⌃⌥⌘U I O P M , . / switch category · ⌃⌥⌘L break · ⌃⌥⌘0 stop · ⌃⌥⌘; recall")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.secondaryText)
+
+                    HStack {
+                        Text("Pause / resume hotkey")
+                            .font(.system(size: 12, weight: .medium))
+                        Spacer()
+                        Text("⌃⌥⌘Space")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.1))
+                            .cornerRadius(4)
+                    }
+                }
+
+                SettingsCard("Site blocking") {
+                    ToggleRow(label: "Block distracting sites", isOn: $settings.siteBlockingEnabled)
+
+                    if settings.siteBlockingEnabled {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(SiteBlocker.isSetUp ? Color.green : Color.orange)
+                                .frame(width: 7, height: 7)
+                            Text(SiteBlocker.isSetUp ? "Helper installed" : "Helper not installed — tap to set up")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if !SiteBlocker.isSetUp {
+                                Button("Set Up") {
+                                    DispatchQueue.global(qos: .userInitiated).async { SiteBlocker.setUp() }
+                                }
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
+                                .buttonStyle(.plain)
+                            } else {
+                                Button("Re-install") {
+                                    DispatchQueue.global(qos: .userInitiated).async { SiteBlocker.setUp() }
+                                }
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        chromeExtensionRow
+                        ToggleRow(label: "Block during breaks too", isOn: $settings.blockDuringBreaks)
+                        BlockedSitesView(settings: settings)
+                            .padding(.top, 2)
+                    }
+                }
+
+                SettingsCard("Interview") {
+                    if let date = settings.interviewDate {
+                        HStack {
+                            Text("Target date")
+                                .font(.system(size: 12, weight: .medium))
+                            Spacer()
+                            DatePicker(
+                                "",
+                                selection: Binding(get: { date }, set: { settings.interviewDate = $0 }),
+                                in: Date()...,
+                                displayedComponents: .date
+                            )
+                            .labelsHidden()
+                            .controlSize(.small)
+
+                            Button {
+                                settings.interviewDate = nil
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } else {
+                        Button {
+                            // Default to 4 months from now
+                            settings.interviewDate = Calendar.current.date(byAdding: .month, value: 4, to: Date())
+                        } label: {
+                            HStack {
+                                Image(systemName: "calendar.badge.plus")
+                                Text("Set interview date")
+                            }
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                SettingsCard("Practice mode") {
+                    PracticeNewCapRow()
+                }
+
+                SettingsCard("Problem goals") {
+                    HStack {
+                        Spacer()
+                        Text("Daily").font(.system(size: 10, weight: .medium)).foregroundStyle(.tertiary).frame(width: 72, alignment: .trailing)
+                        Text("Weekly").font(.system(size: 10, weight: .medium)).foregroundStyle(.tertiary).frame(width: 72, alignment: .trailing)
+                    }
+                    ProblemGoalRow(label: "Quant", daily: $settings.quantGoal, weekly: $settings.quantWeeklyGoal)
+                    ProblemGoalRow(label: "SWE", daily: $settings.sweGoal, weekly: $settings.sweWeeklyGoal)
+                    HStack {
+                        Text("Homework").font(.system(size: 12, weight: .medium))
+                        Spacer()
+                        InlineIntField(value: $settings.homeworkDailyGoal).frame(width: 72)
+                        Text("—").font(.system(size: 11)).foregroundStyle(.tertiary).frame(width: 72, alignment: .trailing)
+                    }
+                }
+
+                SettingsCard("Problem sources") {
+                    VStack(spacing: 5) {
+                        ForEach(settings.problemSources, id: \.self) { source in
+                            HStack {
+                                Text(source)
+                                    .font(.system(size: 12, weight: .medium))
+                                Spacer()
+                                Button {
+                                    settings.problemSources.removeAll { $0 == source }
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.tertiary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        HStack(spacing: 6) {
+                            TextField("New source…", text: $newSourceText)
+                                .font(.system(size: 12))
+                                .textFieldStyle(.plain)
+                                .onSubmit { addSource() }
+                            if !newSourceText.isEmpty {
+                                Button("Add") { addSource() }
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(Color.accentColor)
+                                    .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.secondary.opacity(0.06))
+                        .cornerRadius(7)
+                    }
+                }
+
+                SettingsCard("Log manual session") {
+                    VStack(spacing: 10) {
+                        IntRow(label: "Duration", value: $manualMinutes, range: 1...480, suffix: "min")
+
+                        HStack {
+                            Text("Date")
+                                .font(.system(size: 12, weight: .medium))
+                            Spacer()
+                            DatePicker("", selection: $manualDate, in: ...Date(), displayedComponents: .date)
+                                .labelsHidden()
+                                .controlSize(.small)
+                        }
+
+                        if !settings.tags.isEmpty {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Label (optional)")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 5) {
+                                        let noneSelected = manualLabel.isEmpty
+                                        Button("None") { manualLabel = "" }
+                                            .font(.system(size: 10, weight: .medium))
+                                            .padding(.horizontal, 9)
+                                            .padding(.vertical, 5)
+                                            .background(noneSelected ? Color.secondary.opacity(0.18) : Color.secondary.opacity(0.07))
+                                            .foregroundStyle(noneSelected ? .primary : .secondary)
+                                            .cornerRadius(6)
+                                            .buttonStyle(.plain)
+                                        ForEach(settings.tags, id: \.self) { tag in
+                                            let sel = manualLabel == tag
+                                            Button(tag) { manualLabel = sel ? "" : tag }
+                                                .font(.system(size: 10, weight: .medium))
+                                                .padding(.horizontal, 9)
+                                                .padding(.vertical, 5)
+                                                .background(sel ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.07))
+                                                .foregroundStyle(sel ? Color.accentColor : Color.secondary)
+                                                .cornerRadius(6)
+                                                .buttonStyle(.plain)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Button {
+                            let startTime = Calendar.current.startOfDay(for: manualDate)
+                            let session = WorkSession(
+                                startTime: startTime,
+                                durationMinutes: Double(manualMinutes),
+                                type: .work,
+                                label: manualLabel.isEmpty ? nil : manualLabel
+                            )
+                            store.addSession(session)
+                            manualLogged = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { manualLogged = false }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if manualLogged {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text("Logged!")
+                                        .font(.system(size: 12, weight: .semibold))
+                                } else {
+                                    Text("Log \(manualMinutes) min session")
+                                        .font(.system(size: 12, weight: .semibold))
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(manualLogged ? Color.green.opacity(0.15) : Color.accentColor.opacity(0.12))
+                            .foregroundStyle(manualLogged ? Color.green : Color.accentColor)
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(manualLogged ? Color.green.opacity(0.3) : Color.accentColor.opacity(0.2), lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .animation(.easeInOut(duration: 0.2), value: manualLogged)
+                    }
+                }
+
+                SettingsCard("Data") {
+                    Button {
+                        DataExport.showSavePanel(container: modelContext.container)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("Export Snapshot (JSON)").font(.system(size: 12, weight: .medium))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color.secondary.opacity(0.06))
+                        .cornerRadius(7)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        let n = FocusMigration.dedupeWorkSessions(container: modelContext.container)
+                        dedupResult = n == 0
+                            ? "No exact duplicates found."
+                            : "Removed \(n) duplicate session\(n == 1 ? "" : "s")."
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "wand.and.sparkles")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("Clean Exact Duplicates").font(.system(size: 12, weight: .medium))
+                            Spacer()
+                            if !dedupResult.isEmpty {
+                                Text(dedupResult)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color.secondary.opacity(0.06))
+                        .cornerRadius(7)
+                    }
+                    .buttonStyle(.plain)
+                    Text("Removes only rows matching another row on time-to-the-second, type, label, AND duration. Use if Mac/iPad show a doubled session.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 10)
+                }
+
+
 
                 if let openOnboarding {
                     Button { openOnboarding() } label: {
@@ -70,484 +522,8 @@ struct SettingsView: View {
                         .cornerRadius(7)
                     }
                     .buttonStyle(.plain)
-
-                    Divider()
                 }
 
-                SectionLabel("Intervals")
-                IntervalRow(label: "Focus", value: $settings.workMinutes, range: 5...90, step: 5, unit: "min")
-
-                Divider()
-
-                SectionLabel("Daily goal")
-                IntRow(label: "Daily target", value: $settings.dailyGoal, range: 0...12, suffix: "h", zeroLabel: "Off")
-
-                Divider()
-
-                SectionLabel("Categories")
-                CategoriesEditor(settings: settings, store: store)
-
-                Divider()
-
-                SectionLabel("iCloud sync")
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Circle().fill(cloudStatusColor).frame(width: 8, height: 8)
-                        Text(cloudStatus)
-                            .font(.system(size: 12, weight: .medium))
-                        Spacer()
-                        Button { probeSync() } label: {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 11))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                    }
-                    if !cloudDetail.isEmpty {
-                        Text(cloudDetail)
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                    }
-                    SyncHealthRows()
-                    Text("Container: \(FocusModelContainer.cloudKitContainerID)")
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                        .textSelection(.enabled)
-                }
-                .padding(.horizontal, 8).padding(.vertical, 6)
-                .background(Color.secondary.opacity(0.05))
-                .cornerRadius(7)
-                .onAppear { probeSync() }
-
-                Divider()
-
-                SectionLabel("Commitment")
-                ToggleRow(label: "Daily commitment prompt", isOn: $settings.commitmentEnabled)
-                if settings.commitmentEnabled {
-                    Text("You'll be prompted each morning to write your commitment for the day.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    ToggleRow(label: "Evening check-in", isOn: $settings.commitmentReviewReminder)
-                    if settings.commitmentReviewReminder {
-                        HStack {
-                            Text("Remind me at")
-                                .font(.system(size: 12, weight: .medium))
-                            Spacer()
-                            DatePicker("", selection: timeBinding(\.commitmentReviewMinutes), displayedComponents: .hourAndMinute)
-                                .labelsHidden()
-                                .datePickerStyle(.field)
-                                .fixedSize()
-                        }
-                        Text("A notification asks whether you kept today's commitment. Answer Yes/No right from the banner.")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                Divider()
-
-                SectionLabel("Screen")
-                ScreenSettings(settings: settings)
-
-                Divider()
-
-                SectionLabel("Focus modes")
-                FocusModeSettings(tags: settings.tags)
-
-                Divider()
-
-                SectionLabel("Away & gaps")
-                ToggleRow(label: "Ask when I come back", isOn: $settings.awayPrompts)
-                if settings.awayPrompts {
-                    IntRow(label: "After being away", value: $settings.awayPromptMinutes, range: 5...120, suffix: "min")
-                }
-                ToggleRow(label: "Nudge when nothing's running", isOn: $settings.idleNudge)
-                Text("Away = screen locked, display off, Mac asleep, or no keyboard/mouse for 10 min. A card asks what that time was; nothing changes unless you pick something.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Divider()
-
-                SectionLabel("Recall")
-                ToggleRow(label: "Recall prompt after focus", isOn: $settings.recallAfterSession)
-                if settings.recallAfterSession {
-                    IntRow(label: "For blocks of at least", value: $settings.recallMinMinutes, range: 5...120, suffix: "min")
-                }
-                ToggleRow(label: "Morning review of yesterday", isOn: $settings.morningRecall)
-                if settings.morningRecall {
-                    HStack(spacing: 6) {
-                        Text("Send to Journal via shortcut").font(.system(size: 12))
-                        Spacer()
-                        TextField("off", text: $settings.journalShortcut)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 11))
-                            .frame(width: 120)
-                    }
-                }
-                IntRow(label: "Max reviews per day", value: $settings.recallDailyCap, range: 3...60)
-                Text("After a focus block, write what you learned from memory. Cards come back after 1, 3, 7, 14, 30 days. ⌃⌥⌘; opens Recall.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 6) {
-                    SecureField(claudeKeySet ? "Claude API key saved" : "Claude API key (optional)", text: $claudeKey)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 11))
-                    Button(claudeKey.isEmpty && claudeKeySet ? "Remove" : "Save") {
-                        RecallCoach.setAPIKey(claudeKey.isEmpty ? nil : claudeKey)
-                        claudeKey = ""
-                        claudeKeySet = RecallCoach.isConfigured
-                    }
-                    .controlSize(.small)
-                    .disabled(claudeKey.isEmpty && !claudeKeySet)
-                }
-                Text("With a key, Claude checks your recall, drafts cards, grades answers and gives hints. Stored in the Keychain.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Divider()
-
-                SectionLabel("LeetCode")
-                ToggleRow(label: "Evening nudge if under goal", isOn: $settings.leetCodeNudge)
-                if settings.leetCodeNudge {
-                    HStack {
-                        Text("Nudge at")
-                            .font(.system(size: 12, weight: .medium))
-                        Spacer()
-                        DatePicker("", selection: timeBinding(\.leetCodeNudgeMinutes), displayedComponents: .hourAndMinute)
-                            .labelsHidden()
-                            .datePickerStyle(.field)
-                            .fixedSize()
-                    }
-                    Text("Only fires if you're below today's SWE problem goal — and warns when your streak is on the line.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Divider()
-
-                SectionLabel("Behavior")
-                ToggleRow(label: "Auto-break after session", isOn: $settings.autoBreakEnabled)
-                ToggleRow(label: "Auto-start focus", isOn: $settings.autoStartWork)
-                ToggleRow(label: "Sound effects", isOn: $settings.soundEnabled)
-                IntRow(label: "Auto-end pause after", value: $settings.pauseGraceMinutes, range: 2...60, suffix: "min")
-
-                HStack {
-                    Text("Quick start / stop")
-                        .font(.system(size: 12, weight: .medium))
-                    Spacer()
-                    Picker("", selection: $settings.quickStartTag) {
-                        ForEach(settings.tags, id: \.self) { Text($0).tag($0) }
-                    }
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .fixedSize()
-                    Text("⌃⌥⌘K")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(4)
-                }
-
-                Text("⌃⌥⌘J switcher · ⌃⌥⌘U I O P M , . / switch category · ⌃⌥⌘L break · ⌃⌥⌘0 stop · ⌃⌥⌘; recall")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-
-                HStack {
-                    Text("Pause / resume hotkey")
-                        .font(.system(size: 12, weight: .medium))
-                    Spacer()
-                    Text("⌃⌥⌘Space")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.secondary.opacity(0.1))
-                        .cornerRadius(4)
-                }
-
-                Divider()
-
-                SectionLabel("Site blocking")
-                ToggleRow(label: "Block distracting sites", isOn: $settings.siteBlockingEnabled)
-
-                if settings.siteBlockingEnabled {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(SiteBlocker.isSetUp ? Color.green : Color.orange)
-                            .frame(width: 7, height: 7)
-                        Text(SiteBlocker.isSetUp ? "Helper installed" : "Helper not installed — tap to set up")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if !SiteBlocker.isSetUp {
-                            Button("Set Up") {
-                                DispatchQueue.global(qos: .userInitiated).async { SiteBlocker.setUp() }
-                            }
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Color(red: 0.96, green: 0.36, blue: 0.36))
-                            .buttonStyle(.plain)
-                        } else {
-                            Button("Re-install") {
-                                DispatchQueue.global(qos: .userInitiated).async { SiteBlocker.setUp() }
-                            }
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    chromeExtensionRow
-                    ToggleRow(label: "Block during breaks too", isOn: $settings.blockDuringBreaks)
-                    BlockedSitesView(settings: settings)
-                        .padding(.top, 2)
-                }
-
-                Divider()
-
-                SectionLabel("Interview")
-
-                if let date = settings.interviewDate {
-                    HStack {
-                        Text("Target date")
-                            .font(.system(size: 12, weight: .medium))
-                        Spacer()
-                        DatePicker(
-                            "",
-                            selection: Binding(get: { date }, set: { settings.interviewDate = $0 }),
-                            in: Date()...,
-                            displayedComponents: .date
-                        )
-                        .labelsHidden()
-                        .controlSize(.small)
-
-                        Button {
-                            settings.interviewDate = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 14))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } else {
-                    Button {
-                        // Default to 4 months from now
-                        settings.interviewDate = Calendar.current.date(byAdding: .month, value: 4, to: Date())
-                    } label: {
-                        HStack {
-                            Image(systemName: "calendar.badge.plus")
-                            Text("Set interview date")
-                        }
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Divider()
-
-                SectionLabel("Practice mode")
-                PracticeNewCapRow()
-
-                Divider()
-
-                SectionLabel("Problem goals")
-                HStack {
-                    Spacer()
-                    Text("Daily").font(.system(size: 10, weight: .medium)).foregroundStyle(.tertiary).frame(width: 72, alignment: .trailing)
-                    Text("Weekly").font(.system(size: 10, weight: .medium)).foregroundStyle(.tertiary).frame(width: 72, alignment: .trailing)
-                }
-                ProblemGoalRow(label: "Quant", daily: $settings.quantGoal, weekly: $settings.quantWeeklyGoal)
-                ProblemGoalRow(label: "SWE", daily: $settings.sweGoal, weekly: $settings.sweWeeklyGoal)
-                HStack {
-                    Text("Homework").font(.system(size: 12, weight: .medium))
-                    Spacer()
-                    InlineIntField(value: $settings.homeworkDailyGoal).frame(width: 72)
-                    Text("—").font(.system(size: 11)).foregroundStyle(.tertiary).frame(width: 72, alignment: .trailing)
-                }
-
-                Divider()
-
-                SectionLabel("Problem sources")
-
-                VStack(spacing: 5) {
-                    ForEach(settings.problemSources, id: \.self) { source in
-                        HStack {
-                            Text(source)
-                                .font(.system(size: 12, weight: .medium))
-                            Spacer()
-                            Button {
-                                settings.problemSources.removeAll { $0 == source }
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    HStack(spacing: 6) {
-                        TextField("New source…", text: $newSourceText)
-                            .font(.system(size: 12))
-                            .textFieldStyle(.plain)
-                            .onSubmit { addSource() }
-                        if !newSourceText.isEmpty {
-                            Button("Add") { addSource() }
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(Color(red: 0.96, green: 0.36, blue: 0.36))
-                                .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color.secondary.opacity(0.06))
-                    .cornerRadius(7)
-                }
-
-                Divider()
-
-                SectionLabel("Log manual session")
-
-                VStack(spacing: 10) {
-                    IntRow(label: "Duration", value: $manualMinutes, range: 1...480, suffix: "min")
-
-                    HStack {
-                        Text("Date")
-                            .font(.system(size: 12, weight: .medium))
-                        Spacer()
-                        DatePicker("", selection: $manualDate, in: ...Date(), displayedComponents: .date)
-                            .labelsHidden()
-                            .controlSize(.small)
-                    }
-
-                    if !settings.tags.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Label (optional)")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 5) {
-                                    let noneSelected = manualLabel.isEmpty
-                                    Button("None") { manualLabel = "" }
-                                        .font(.system(size: 10, weight: .medium))
-                                        .padding(.horizontal, 9)
-                                        .padding(.vertical, 5)
-                                        .background(noneSelected ? Color.secondary.opacity(0.18) : Color.secondary.opacity(0.07))
-                                        .foregroundStyle(noneSelected ? .primary : .secondary)
-                                        .cornerRadius(6)
-                                        .buttonStyle(.plain)
-                                    ForEach(settings.tags, id: \.self) { tag in
-                                        let sel = manualLabel == tag
-                                        Button(tag) { manualLabel = sel ? "" : tag }
-                                            .font(.system(size: 10, weight: .medium))
-                                            .padding(.horizontal, 9)
-                                            .padding(.vertical, 5)
-                                            .background(sel ? Color(red: 0.96, green: 0.36, blue: 0.36).opacity(0.15) : Color.secondary.opacity(0.07))
-                                            .foregroundStyle(sel ? Color(red: 0.96, green: 0.36, blue: 0.36) : Color.secondary)
-                                            .cornerRadius(6)
-                                            .buttonStyle(.plain)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Button {
-                        let startTime = Calendar.current.startOfDay(for: manualDate)
-                        let session = WorkSession(
-                            startTime: startTime,
-                            durationMinutes: Double(manualMinutes),
-                            type: .work,
-                            label: manualLabel.isEmpty ? nil : manualLabel
-                        )
-                        store.addSession(session)
-                        manualLogged = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { manualLogged = false }
-                    } label: {
-                        HStack(spacing: 6) {
-                            if manualLogged {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 11, weight: .bold))
-                                Text("Logged!")
-                                    .font(.system(size: 12, weight: .semibold))
-                            } else {
-                                Text("Log \(manualMinutes) min session")
-                                    .font(.system(size: 12, weight: .semibold))
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(manualLogged ? Color.green.opacity(0.15) : Color(red: 0.96, green: 0.36, blue: 0.36).opacity(0.12))
-                        .foregroundStyle(manualLogged ? Color.green : Color(red: 0.96, green: 0.36, blue: 0.36))
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(manualLogged ? Color.green.opacity(0.3) : Color(red: 0.96, green: 0.36, blue: 0.36).opacity(0.2), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .animation(.easeInOut(duration: 0.2), value: manualLogged)
-                }
-
-                Divider()
-
-                SectionLabel("Data")
-                Button {
-                    DataExport.showSavePanel(container: modelContext.container)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Export Snapshot (JSON)").font(.system(size: 12, weight: .medium))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color.secondary.opacity(0.06))
-                    .cornerRadius(7)
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    let n = FocusMigration.dedupeWorkSessions(container: modelContext.container)
-                    dedupResult = n == 0
-                        ? "No exact duplicates found."
-                        : "Removed \(n) duplicate session\(n == 1 ? "" : "s")."
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "wand.and.sparkles")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Clean Exact Duplicates").font(.system(size: 12, weight: .medium))
-                        Spacer()
-                        if !dedupResult.isEmpty {
-                            Text(dedupResult)
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Color.secondary.opacity(0.06))
-                    .cornerRadius(7)
-                }
-                .buttonStyle(.plain)
-                Text("Removes only rows matching another row on time-to-the-second, type, label, AND duration. Use if Mac/iPad show a doubled session.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 10)
-
-                Divider()
 
                 if showResetConfirm {
                     VStack(spacing: 8) {
@@ -773,18 +749,18 @@ private struct IntervalRow: View {
 
     var body: some View {
         HStack {
-            Text(label).font(.system(size: 12, weight: .medium))
+            Text(label).font(.system(size: 13))
             Spacer()
             HStack(spacing: 4) {
                 TextField("", text: $text)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(.system(size: 13).monospacedDigit())
                     .multilineTextAlignment(.trailing)
                     .frame(width: 36)
                     .textFieldStyle(.plain)
                     .focused($isFocused)
                     .onSubmit { commit() }
                     .onChange(of: isFocused) { _, focused in if !focused { commit() } }
-                Text(unit).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(unit).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             }
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
@@ -815,11 +791,11 @@ private struct IntRow: View {
 
     var body: some View {
         HStack {
-            Text(label).font(.system(size: 12, weight: .medium))
+            Text(label).font(.system(size: 13))
             Spacer()
             HStack(spacing: 4) {
                 TextField("", text: $text)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(.system(size: 13).monospacedDigit())
                     .multilineTextAlignment(.trailing)
                     .frame(width: suffix.isEmpty ? 44 : 40)
                     .textFieldStyle(.plain)
@@ -827,7 +803,7 @@ private struct IntRow: View {
                     .onSubmit { commit() }
                     .onChange(of: isFocused) { _, focused in if !focused { commit() } }
                 if !suffix.isEmpty {
-                    Text(suffix).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(suffix).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 }
             }
             .padding(.horizontal, 7)
@@ -854,7 +830,7 @@ private struct ProblemGoalRow: View {
 
     var body: some View {
         HStack {
-            Text(label).font(.system(size: 12, weight: .medium))
+            Text(label).font(.system(size: 13))
             Spacer()
             InlineIntField(value: $daily).frame(width: 72)
             InlineIntField(value: $weekly).frame(width: 72)
@@ -870,7 +846,7 @@ private struct InlineIntField: View {
     var body: some View {
         HStack(spacing: 3) {
             TextField("0", text: $text)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(.system(size: 13).monospacedDigit())
                 .multilineTextAlignment(.trailing)
                 .frame(width: 36)
                 .textFieldStyle(.plain)
@@ -901,7 +877,7 @@ private struct ToggleRow: View {
 
     var body: some View {
         Toggle(isOn: $isOn) {
-            Text(label).font(.system(size: 12, weight: .medium))
+            Text(label).font(.system(size: 13))
         }
         .toggleStyle(.switch)
         .controlSize(.small)
@@ -918,8 +894,8 @@ private struct PracticeNewCapRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("New problems per day").font(.system(size: 12, weight: .medium))
                 Text("Cap on fresh familiarizations. Reviews don't count toward this.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.secondaryText)
             }
             Spacer()
             Stepper(value: $cap, in: 1...20) {
@@ -938,77 +914,79 @@ private struct CategoriesEditor: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var store: SessionStore
     @State private var newTag = ""
+    @State private var removing: String?
 
     var body: some View {
         let lifetime = Dictionary(store.minutesByTag(includeLife: true).map { ($0.tag, $0.minutes) },
                                   uniquingKeysWith: +)
-        VStack(spacing: 4) {
+        VStack(spacing: 0) {
             ForEach(Array(settings.tags.enumerated()), id: \.element) { i, tag in
                 let isLife = settings.lifeTags.contains(tag)
-                HStack(spacing: 8) {
-                    Text(i < 9 ? "\(i + 1)" : "")
-                        .font(.system(size: 9, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 10)
-                    Circle().fill(categoryColor(tag)).frame(width: 7, height: 7)
-                    Text(tag).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                HStack(spacing: 10) {
+                    Circle().fill(categoryColor(tag)).frame(width: 9, height: 9)
+                    Text(tag).font(.system(size: 13, weight: .medium)).lineLimit(1)
                     Text(hours(lifetime[tag] ?? 0))
-                        .font(.system(size: 10).monospacedDigit())
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(Color.secondaryText)
                     Spacer(minLength: 4)
-                    Picker("", selection: Binding(
+                    if i < QuickSwitch.categoryKeys.count {
+                        Text("⌃⌥⌘\(String(QuickSwitch.categoryKeys[i].key).uppercased())")
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(Color.secondaryText)
+                            .help("Hotkey; reorder to change it")
+                    }
+                    Toggle("Life", isOn: Binding(
                         get: { isLife },
                         set: { life in
                             if life { if !isLife { settings.lifeTags.append(tag) } }
                             else { settings.lifeTags.removeAll { $0 == tag } }
                         }
-                    )) {
-                        Text("Focus").tag(false)
-                        Text("Life").tag(true)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    ))
+                    .toggleStyle(.switch)
                     .controlSize(.mini)
+                    .font(.system(size: 12))
                     .fixedSize()
-                    .help("Focus counts toward the daily goal; Life is tracked only")
-                    Button {
-                        guard i > 0 else { return }
-                        settings.tags.swapAt(i, i - 1)
-                    } label: {
-                        Image(systemName: "arrow.up").font(.system(size: 9, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(i > 0 ? Color.secondary : Color.clear)
-                    .disabled(i == 0)
-                    .help("Move up (changes its hotkey number)")
-                    Button {
-                        settings.tags.removeAll { $0 == tag }
-                        settings.lifeTags.removeAll { $0 == tag }
-                    } label: {
-                        Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tertiary)
-                    .help("Remove category (past sessions keep their label)")
+                    .help("Life categories are tracked but don't count toward the daily goal")
                 }
-                .padding(.vertical, 2)
+                .frame(minHeight: 32)
+                .contentShape(Rectangle())
+                .contextMenu {
+                    Button("Move up") { settings.tags.swapAt(i, i - 1) }.disabled(i == 0)
+                    Button("Move down") { settings.tags.swapAt(i, i + 1) }.disabled(i == settings.tags.count - 1)
+                    Divider()
+                    Button("Remove \(tag)…", role: .destructive) { removing = tag }
+                }
+                if i < settings.tags.count - 1 { Divider().padding(.leading, 19) }
             }
             HStack(spacing: 6) {
-                TextField("New category…", text: $newTag)
-                    .font(.system(size: 11))
+                Image(systemName: "plus.circle.fill").foregroundStyle(Color.secondaryText)
+                TextField("New category", text: $newTag)
+                    .font(.system(size: 13))
                     .textFieldStyle(.plain)
                     .onSubmit(add)
                 if !newTag.isEmpty {
                     Button("Add", action: add)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.secondary.opacity(0.06))
-            .cornerRadius(7)
+            .frame(minHeight: 32)
             .padding(.top, 4)
+            Text("Right-click a category to reorder or remove it.")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .confirmationDialog("Remove \(removing ?? "")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Remove", role: .destructive) {
+                if let tag = removing {
+                    settings.tags.removeAll { $0 == tag }
+                    settings.lifeTags.removeAll { $0 == tag }
+                }
+                removing = nil
+            }
+        } message: {
+            Text("Past sessions keep their label.")
         }
     }
 
@@ -1039,25 +1017,25 @@ private struct ScreenSettings: View {
                 ToggleRow(label: "Ask on every switch it sees (testing, ~30s)", isOn: $settings.screenEverySwitch)
             }
             HStack(spacing: 6) {
-                Text(watcher.status).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(watcher.status).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 Spacer()
                 if watcher.status.hasPrefix("Needs") {
                     Button("Grant…") { watcher.requestPermission() }.controlSize(.small)
                 }
             }
             Text("Classes: \(calendar.status)")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
             let accepted = UserDefaults.standard.integer(forKey: ScreenCoach.acceptedKey)
             let declined = UserDefaults.standard.integer(forKey: ScreenCoach.declinedKey)
             if accepted + declined > 0 {
                 Text("Suggestions accepted: \(accepted) of \(accepted + declined)")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             }
             let ignored = ScreenWatcher.userIgnored.sorted { $0.value < $1.value }
             HStack {
                 Text(ignored.isEmpty ? "Ignored apps: none" : "Ignored apps: " + ignored.map(\.value).joined(separator: ", "))
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 Menu("Edit") {
@@ -1071,7 +1049,7 @@ private struct ScreenSettings: View {
             }
             HStack {
                 Text("Prompt log: each card, what it was based on, your answer")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 Spacer()
                 Button("Show in Finder") {
                     if FileManager.default.fileExists(atPath: PromptLog.url.path) {
@@ -1083,8 +1061,8 @@ private struct ScreenSettings: View {
             }
         }
         Text("Every 15s and on each app switch, the front window is read on-device with Apple Vision and labeled by Apple Intelligence. Screenshots and text are never sent anywhere; only the window title and a one-line summary are kept on this Mac for 30 days, plus the page text behind each switch card in the prompt log (14 days). Passwords, Messages, Mail, WhatsApp, Telegram and FaceTime are never captured. Picking \"Still X\" teaches it.")
-            .font(.system(size: 10))
-            .foregroundStyle(.tertiary)
+            .font(.system(size: 11))
+            .foregroundStyle(Color.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -1121,8 +1099,28 @@ private struct FocusModeSettings: View {
             }
         }
         Text("Runs your shortcut “Focus School”, “Focus Personal”, “Focus Sleep” or “Focus Off” (each one Set Focus action) when the category changes. With Share across devices on, your iPhone and iPad follow. A mode you set yourself stays until a switch wants a different one.")
-            .font(.system(size: 10))
-            .foregroundStyle(.tertiary)
+            .font(.system(size: 11))
+            .foregroundStyle(Color.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// One grouped card per topic, title above (DESIGN.md: content cards, sentence case).
+private struct SettingsCard<Content: View>: View {
+    let title: String
+    let content: Content
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title).font(.system(size: 15, weight: .semibold)).padding(.leading, 4)
+            VStack(alignment: .leading, spacing: 10) { content }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .contentCard()
+        }
     }
 }
