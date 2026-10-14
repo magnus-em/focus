@@ -378,6 +378,7 @@ struct DashboardView: View {
                         || Calendar.current.isDate($0.startTime.addingTimeInterval($0.durationMinutes * 60), inSameDayAs: selectedDay) }
                 )
                 DistractionSection(watcher: screenWatcher, day: selectedDay, sessions: liveSessions)
+                InsightsSection(watcher: screenWatcher, sessions: sessionStore.sessions)
                 dayTimelineSection
                 WhereTimeWentSection(
                     store: sessionStore, settings: settings,
@@ -2500,6 +2501,149 @@ struct ExamRadarSection: View {
             }
             .padding(16)
             .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
+        }
+    }
+}
+
+
+// MARK: - Insights
+
+/// When you work best (focus by hour of day and how often you drift then,
+/// last 4 weeks) and, with a Claude key, a weekly letter written from it.
+struct InsightsSection: View {
+    @ObservedObject var watcher: ScreenWatcher
+    let sessions: [WorkSession]
+    @AppStorage("weeklyLetter") private var letterData = ""
+    @State private var writing = false
+    @State private var error = ""
+
+    private let cal = Calendar.current
+
+    private struct Hour { let hour: Int; let focus: Double; let drift: Double }
+
+    private var hours: [Hour] {
+        let from = cal.date(byAdding: .day, value: -28, to: cal.startOfDay(for: Date()))!
+        var focus = [Double](repeating: 0, count: 24), drift = [Double](repeating: 0, count: 24)
+        for s in sessions where s.isFocus && s.startTime >= from {
+            var t = s.startTime
+            let end = s.startTime.addingTimeInterval(s.durationMinutes * 60)
+            while t < end {
+                let h = cal.component(.hour, from: t)
+                let next = min(end, cal.date(bySettingHour: h, minute: 0, second: 0, of: t)!.addingTimeInterval(3600))
+                focus[h] += next.timeIntervalSince(t) / 60
+                t = next
+            }
+        }
+        for d in watcher.drifts(sessions: sessions, from: from, to: Date()) {
+            drift[cal.component(.hour, from: d.start)] += d.minutes
+        }
+        return (0..<24).map { Hour(hour: $0, focus: focus[$0], drift: drift[$0]) }
+    }
+
+    /// The 3-hour window with the most focus, among those that drift less
+    /// than your average.
+    private func bestWindow(_ list: [Hour]) -> (start: Int, focus: Double, rate: Double)? {
+        let total = list.reduce(0) { $0 + $1.focus }, drifts = list.reduce(0) { $0 + $1.drift }
+        guard total >= 300 else { return nil }
+        let average = drifts / (total / 60)
+        let windows = (0..<22).map { h -> (Int, Double, Double) in
+            let f = list[h..<h + 3].reduce(0) { $0 + $1.focus }, d = list[h..<h + 3].reduce(0) { $0 + $1.drift }
+            return (h, f, f > 0 ? d / (f / 60) : 0)
+        }
+        return windows.filter { $0.1 > 60 && $0.2 <= average }.max { $0.1 < $1.1 }.map { ($0.0, $0.1, $0.2) }
+    }
+
+    private func clock(_ h: Int) -> String {
+        cal.date(bySettingHour: h % 24, minute: 0, second: 0, of: Date())!.formatted(.dateTime.hour())
+    }
+
+    var body: some View {
+        let list = hours
+        let peak = max(list.map(\.focus).max() ?? 1, 1)
+        let best = bestWindow(list)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("When you focus best").font(.system(size: 15, weight: .semibold))
+            if let best {
+                Text("\(clock(best.start))–\(clock(best.start + 3)): the most focus with the fewest drifts over the last 4 weeks (\(String(format: "%.1f", best.rate)) min off-task per focus hour). Put the hardest work there.")
+                    .font(.system(size: 13)).foregroundStyle(Color.secondaryText).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(list, id: \.hour) { h in
+                    let inBest = best.map { h.hour >= $0.start && h.hour < $0.start + 3 } ?? false
+                    VStack(spacing: 2) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(inBest ? Color.good : Color.primary.opacity(0.25))
+                            .frame(height: max(2, 70 * h.focus / peak))
+                        RoundedRectangle(cornerRadius: 1.5)
+                            .fill(Color.orange.opacity(h.drift > 0 ? 0.8 : 0))
+                            .frame(height: min(10, h.drift / 3))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .help("\(clock(h.hour)): \(durationText(minutes: h.focus)) focus, \(durationText(minutes: h.drift)) off-task (4 weeks)")
+                }
+            }
+            .frame(height: 84, alignment: .bottom)
+            HStack {
+                Text(clock(0)); Spacer(); Text(clock(6)); Spacer(); Text(clock(12)); Spacer(); Text(clock(18)); Spacer(); Text(clock(23))
+            }
+            .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+            Divider()
+            letter
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
+    }
+
+    private var weekKey: String {
+        let start = cal.dateInterval(of: .weekOfYear, for: Date())?.start ?? Date()
+        return start.formatted(.iso8601.year().month().day())
+    }
+
+    @ViewBuilder
+    private var letter: some View {
+        let parts = letterData.split(separator: "\u{1F}", maxSplits: 1).map(String.init)
+        if parts.count == 2, parts[0] == weekKey {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("This week's letter").font(.system(size: 13, weight: .semibold))
+                Text(parts[1]).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+            }
+        } else if RecallCoach.isConfigured {
+            HStack {
+                Button(writing ? "Writing…" : "Write this week's letter") { Task { await write() } }
+                    .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.indigo)
+                    .disabled(writing)
+                if !error.isEmpty { Text(error).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1) }
+            }
+        } else {
+            Text("Add a Claude key in Settings → Recall for a weekly letter written from these numbers.")
+                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+        }
+    }
+
+    private func write() async {
+        writing = true
+        defer { writing = false }
+        let weekAgo = Date().addingTimeInterval(-7 * 86400)
+        var byCat: [String: Double] = [:]
+        for s in sessions where s.startTime >= weekAgo && s.isFocus { byCat[s.label ?? "Focus", default: 0] += s.durationMinutes }
+        let drifts = watcher.drifts(sessions: sessions, from: weekAgo, to: Date())
+        let topics = watcher.activities(from: weekAgo, to: Date()).filter { $0.minutes >= 20 && $0.category != nil }
+            .map { watcher.name(for: $0) }
+        var seen = Set<String>()
+        let uniqueTopics = topics.filter { seen.insert($0).inserted }.prefix(15)
+        let best = bestWindow(hours)
+        let facts = """
+        Focus this week by category: \(byCat.sorted { $0.value > $1.value }.map { "\($0.key) \(durationText(minutes: $0.value))" }.joined(separator: ", "))
+        Off-task during focus: \(drifts.count) drifts, \(durationText(minutes: drifts.reduce(0) { $0 + $1.minutes }))
+        Best hours (4 weeks): \(best.map { "\(clock($0.start))–\(clock($0.start + 3))" } ?? "not enough data")
+        What the screen saw them work on: \(uniqueTopics.joined(separator: "; "))
+        """
+        do {
+            let text = try await RecallCoach.weeklyLetter(facts)
+            letterData = weekKey + "\u{1F}" + text
+            error = ""
+        } catch {
+            self.error = "Couldn't write it: \(error.localizedDescription)"
         }
     }
 }

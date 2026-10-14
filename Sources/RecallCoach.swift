@@ -123,6 +123,25 @@ enum RecallCoach {
         return parseCards(json)
     }
 
+    /// A short Sunday letter about the week, from the numbers and topics.
+    static func weeklyLetter(_ facts: String) async throws -> String {
+        let user = """
+        Write a short weekly letter (150–250 words) to a Yale CS student preparing for quant and SWE interviews, \
+        from their own tracking data below. Plain, warm, specific; no headings, no bullet lists, no flattery. \
+        Say what went well with numbers, the one pattern most worth changing (when they drift, which hours work), \
+        and one concrete plan for next week. Address them as "you".
+
+        <week>
+        \(facts)
+        </week>
+        """
+        let schema: [String: Any] = [
+            "type": "object", "additionalProperties": false,
+            "properties": ["letter": ["type": "string"]], "required": ["letter"],
+        ]
+        return try await call(user: user, schema: schema)["letter"] as? String ?? ""
+    }
+
     /// Suggested grade + what was missing or wrong.
     static func grade(prompt: String, reference: String, response: String) async throws -> Grade {
         let user = """
