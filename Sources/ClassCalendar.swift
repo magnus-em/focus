@@ -11,6 +11,16 @@ final class ClassCalendar: ObservableObject {
     static let shared = ClassCalendar()
 
     @Published private(set) var status = "Not connected"
+
+    struct Exam: Identifiable {
+        let title: String
+        let date: Date
+        /// From the course code: MATH → Math, CPSC/CS → SWE; nil = unknown.
+        let category: String?
+        var id: String { "\(title)|\(date.timeIntervalSince1970)" }
+    }
+    /// Exams, midterms and finals in the next 30 days.
+    @Published private(set) var exams: [Exam] = []
     private let store = EKEventStore()
     private var today: [EKEvent] = []
     private var loadedAt = Date.distantPast
@@ -44,8 +54,24 @@ final class ClassCalendar: ObservableObject {
         let events = store.events(matching: store.predicateForEvents(
             withStart: start, end: cal.date(byAdding: .day, value: 1, to: start)!, calendars: nil))
         today = events.filter(Self.isClass).sorted { $0.startDate < $1.startDate }
+        let ahead = store.events(matching: store.predicateForEvents(
+            withStart: Date(), end: cal.date(byAdding: .day, value: 30, to: start)!, calendars: nil))
+        exams = ahead.compactMap { e in
+            let title = e.title ?? ""
+            guard title.range(of: #"(?i)\b(exam|midterm|final)\b"#, options: .regularExpression) != nil,
+                  title.range(of: #"(?i)\b(review session|office hours)\b"#, options: .regularExpression) == nil else { return nil }
+            return Exam(title: title, date: e.startDate, category: Self.category(for: title))
+        }
+        .sorted { $0.date < $1.date }
         status = today.isEmpty ? "No classes on your calendar today"
             : "\(today.count) class\(today.count == 1 ? "" : "es") today: " + today.map { $0.title ?? "" }.joined(separator: ", ")
+    }
+
+    nonisolated static func category(for title: String) -> String? {
+        let t = title.uppercased()
+        if t.range(of: #"\bMATH ?\d"#, options: .regularExpression) != nil { return "Math" }
+        if t.range(of: #"\b(CPSC|CS) ?\d"#, options: .regularExpression) != nil { return "SWE" }
+        return nil
     }
 
     nonisolated static func isClass(_ e: EKEvent) -> Bool {

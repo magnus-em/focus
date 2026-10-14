@@ -31,7 +31,8 @@ while read -r id udid; do
     xcodebuild -project FocusPad.xcodeproj -scheme FocusPad -configuration Debug \
         -destination "id=$udid" -derivedDataPath "$DD" \
         -allowProvisioningUpdates -allowProvisioningDeviceRegistration build | grep -E "error:|BUILD" \
-        || { echo "Build failed"; exit 1; }
+        || { echo "Build failed for $id (locked? unlock it and rerun)"; failed=1; continue; }
     echo "Installing on $id…"
-    xcrun devicectl device install app --device "$id" "$APP"
+    xcrun devicectl device install app --device "$id" "$APP" || failed=1
 done <<< "$DEVICES"
+exit ${failed:-0}

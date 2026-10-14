@@ -365,6 +365,7 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: 12) {
                 DayRingSection(store: sessionStore, watcher: screenWatcher, settings: settings,
                                day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions)
+                ExamRadarSection(sessions: liveSessions)
                 ScreenTimelineSection(watcher: screenWatcher, day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions)
                 ScreenReviewSection(
                     watcher: screenWatcher, day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions,
@@ -2442,5 +2443,63 @@ struct DayRingSection: View {
 
     private func fmt(_ m: Double) -> String {
         durationText(minutes: m)
+    }
+}
+
+
+// MARK: - Exams
+
+/// Exams from your calendar with a countdown and the focus hours you've put
+/// into that subject over the two weeks before (CLAUDE.md roadmap: exam radar).
+struct ExamRadarSection: View {
+    @ObservedObject var calendar = ClassCalendar.shared
+    let sessions: [WorkSession]
+
+    private func hours(_ category: String?, from: Date, to: Date) -> Double {
+        sessions.filter { $0.isFocus && (category == nil || $0.label == category) }.reduce(0) { sum, s in
+            let e = s.startTime.addingTimeInterval(s.durationMinutes * 60)
+            return sum + max(0, min(e, to).timeIntervalSince(max(s.startTime, from))) / 3600
+        }
+    }
+
+    var body: some View {
+        if !calendar.exams.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Exams").font(.system(size: 15, weight: .semibold))
+                ForEach(calendar.exams.prefix(4)) { exam in
+                    let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()),
+                                                               to: Calendar.current.startOfDay(for: exam.date)).day ?? 0
+                    let twoWeeks = hours(exam.category, from: exam.date.addingTimeInterval(-14 * 86400), to: min(Date(), exam.date))
+                    let week = hours(exam.category, from: Date().addingTimeInterval(-7 * 86400), to: Date())
+                    HStack(alignment: .center, spacing: 14) {
+                        VStack(spacing: 0) {
+                            Text(days <= 0 ? "Today" : "\(days)")
+                                .font(.system(size: days <= 0 ? 15 : 22, weight: .semibold, design: .rounded).monospacedDigit())
+                            if days > 0 { Text(days == 1 ? "day" : "days").font(.system(size: 11)).foregroundStyle(Color.secondaryText) }
+                        }
+                        .frame(width: 52)
+                        .foregroundStyle(days <= 3 ? Color.orange : .primary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                if let c = exam.category { Circle().fill(categoryColor(c)).frame(width: 8, height: 8) }
+                                Text(exam.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                            }
+                            Text(exam.date.formatted(.dateTime.weekday(.abbreviated).month().day().hour().minute()))
+                                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                        }
+                        Spacer()
+                        if let c = exam.category {
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text(String(format: "%.1fh", week)).font(.system(size: 15, weight: .semibold).monospacedDigit())
+                                Text("\(c) this week").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                            }
+                            .help("\(String(format: "%.1f", twoWeeks))h of \(c) in the two weeks before")
+                        }
+                    }
+                }
+            }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
+        }
     }
 }
