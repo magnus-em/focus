@@ -20,6 +20,10 @@ public enum ScreenClassificationPolicy {
             return Decision(category: "Admin", reason: "Your rule: work on the Focus project is Admin", uncertain: false)
         }
         if source == .model {
+            // 10/14: the model called Threads and Instagram feeds Admin and Reading.
+            if isSocialFeed(title: title), category != nil, category != "Leisure" {
+                return Decision(category: "Leisure", reason: "A social media feed", uncertain: false)
+            }
             if category == "Math", showsMaterialCuriosity(title: title, text: text) {
                 return Decision(category: "Reading", reason: "Exploring sauna materials, without mathematics or coursework", uncertain: false)
             }
@@ -66,6 +70,12 @@ public enum ScreenClassificationPolicy {
         let development = ["improve", "build", "implement", "redesign", "refactor", "debug", "develop", "review the codebase",
                            "install", "settings", "configure", "roadmap", "category", "work on", "working on"]
         return development.contains { body.contains($0) || title.contains($0) }
+    }
+
+    public static func isSocialFeed(title: String) -> Bool {
+        let title = normalized(String(title.prefix(240)))
+        return ["• threads", "• instagram", "instagram photos", "tiktok", "facebook"].contains { title.contains($0) }
+            || title.hasSuffix("instagram") || title.hasSuffix(" / x")
     }
 
     private static func showsMaterialCuriosity(title: String, text: String) -> Bool {

@@ -18,7 +18,7 @@ public enum ScreenLabeler {
         "Quant": "quant interview prep: probability puzzles, brainteasers, mental math, QuantGuide",
         "AI": "deliberately studying, self-teaching or researching machine learning/deep learning: deriving backpropagation, learning neural network architectures, reading ML research, or experimenting with model training. Using ChatGPT, Claude or Codex, integrating a model into an app, discussing AI tools, or discussing activity category definitions does not mean AI",
         "Reading": "reading books or articles, or exploring ideas with an AI chat, for personal curiosity, not for a class",
-        "Leisure": "entertainment: YouTube, streaming, games, social feeds",
+        "Leisure": "entertainment: YouTube, streaming, games, social media (Instagram, Threads, X, TikTok) feeds and profiles",
         "Admin": "email, forms, calendars, system settings, errands online, and all work on the student's Focus tracker project: code, design, settings, installation, docs, roadmap and model integration in Claude, ChatGPT or Codex; this personal-tool work is not homework",
     ]
 

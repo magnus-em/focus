@@ -178,3 +178,20 @@ final class LocalTaskContextTests: XCTestCase {
         try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]])
     }
 }
+
+final class SocialFeedPolicyTests: XCTestCase {
+    func testSocialFeedsAreLeisure() {
+        for title in ["(9+) Lindsey (@lindsey.lucid.dreams) • Threads, Say more", "Home • Threads",
+                      "Lindsey (@lindsey.lucid.dreams) • Instagram photos and videos", "(3) Instagram"] {
+            let result = ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome", title: title, text: "")
+            XCTAssertEqual(result.category, "Leisure", title)
+        }
+    }
+
+    func testThreadsInCodeAndLearnedLabelsAreKept() {
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Google Chrome",
+            title: "POSIX threads tutorial", text: "pthread_create").category, "SWE")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome",
+            title: "Home • Threads", text: "", source: .learned).category, "Reading")
+    }
+}

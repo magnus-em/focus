@@ -1170,6 +1170,11 @@ final class ScreenCoach {
             timer.switchTo("Admin", at: run.start)
             return
         }
+        // Browsing in bed with Sleep running isn't a switch (10/14: four
+        // Reading/Admin cards after midnight, none taken). Work still asks.
+        if let running, ScreenWatcher.offScreenCategories.contains(running), FocusCategories.isLife(run.category) {
+            return say("During \(running), only focus work gets a card")
+        }
         // Focus → focus on windows you've labeled yourself: just switch, with
         // Undo. Anything involving a life category stays a question.
         if settings.screenAutoSwitch, run.trusted, let from = running, from != "Break",
@@ -1266,8 +1271,23 @@ final class ScreenCoach {
         }
     }
 
-    private var classPrompted: Set<String> = []
-    private var classDeclined: Set<String> = []
+    /// Persisted: a relaunch mid-class asked about the same lecture twice (10/13).
+    private var classPrompted = loadClassKeys("screenClassPrompted") {
+        didSet { Self.saveClassKeys(classPrompted, "screenClassPrompted") }
+    }
+    private var classDeclined = loadClassKeys("screenClassDeclined") {
+        didSet { Self.saveClassKeys(classDeclined, "screenClassDeclined") }
+    }
+
+    private static func loadClassKeys(_ key: String) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+    }
+
+    private static func saveClassKeys(_ keys: Set<String>, _ key: String) {
+        let dayAgo = Date().timeIntervalSince1970 - 86400
+        let recent = keys.filter { k in (k.split(separator: "@").last.flatMap { Double($0) } ?? 0) > dayAgo }
+        UserDefaults.standard.set(Array(recent), forKey: key)
+    }
 
     /// Title + start, not the event id: the same class on two calendars
     /// (Google + Yale) showed the card twice.
