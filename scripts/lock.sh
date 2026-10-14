@@ -1,24 +1,19 @@
-# Sourced by deploy.sh and install_ios.sh: one install at a time, across
-# checkouts, worktrees and agents. A lock whose process is gone is taken over.
-focus_lock() {
-    local name="$1" dir="$HOME/Library/Application Support/Focus/$1.lock" waited=0 pid
-    mkdir -p "$(dirname "$dir")"
-    until mkdir "$dir" 2>/dev/null; do
-        pid=$(cat "$dir/pid" 2>/dev/null)
-        if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
-            echo "Taking over a stale $name lock (pid $pid is gone)"
-            rm -rf "$dir"
-            continue
-        fi
-        [ $waited -eq 0 ] && echo "Waiting for $(cat "$dir/owner" 2>/dev/null || echo "another $name") to finish…"
-        sleep 5
-        waited=$((waited + 5))
-        if [ $waited -ge 900 ]; then
-            echo "Gave up after 15 min waiting for the $name lock ($dir)"
-            exit 1
-        fi
-    done
-    echo $$ > "$dir/pid"
-    echo "$name by ${AGENT_NAME:-someone} from $PWD, started $(date '+%-I:%M %p')" > "$dir/owner"
-    trap "rm -rf \"$dir\"" EXIT
+# Sourced by deploy.sh and install_ios.sh: one install at a time (Mac or iOS),
+# across checkouts, worktrees and agents. The script re-runs itself under
+# lockf(1), so the kernel holds the lock and drops it when the process exits,
+# even on a crash; there's no lock file to take over.
+# Usage, before anything else: focus_install_lock "$script_path" "$@"
+FOCUS_INSTALL_LOCK="$HOME/Library/Application Support/Focus/install.lock"
+focus_install_lock() {
+    if [ -n "$FOCUS_INSTALL_LOCKED" ]; then
+        echo "$(basename "$1") by ${AGENT_NAME:-someone} from $PWD, started $(date '+%-I:%M %p')" > "$FOCUS_INSTALL_LOCK.owner"
+        trap 'rm -f "$FOCUS_INSTALL_LOCK.owner"' EXIT
+        return 0
+    fi
+    mkdir -p "$(dirname "$FOCUS_INSTALL_LOCK")"
+    if ! /usr/bin/lockf -k -s -t 0 "$FOCUS_INSTALL_LOCK" true; then
+        echo "Waiting for $(cat "$FOCUS_INSTALL_LOCK.owner" 2>/dev/null || echo 'another install') to finish…"
+    fi
+    export FOCUS_INSTALL_LOCKED=1
+    exec /usr/bin/lockf -k -t 1800 "$FOCUS_INSTALL_LOCK" /bin/bash "$@"
 }

@@ -8,7 +8,7 @@ if [ -d /Applications/Xcode.app ]; then
     export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 fi
 source "$(dirname "$0")/scripts/lock.sh"
-focus_lock ios-install
+focus_install_lock "$(cd "$(dirname "$0")" && pwd)/$(basename "$0")" "$@"
 cd "$(dirname "$0")/FocusPad"
 DD=/tmp/focuspad-dd
 APP="$DD/Build/Products/Debug-iphoneos/FocusPad.app"

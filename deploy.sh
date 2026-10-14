@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 source scripts/lock.sh
-focus_lock deploy
+focus_install_lock "$PWD/$(basename "$0")" "$@"
 
 # Claude Code and Codex deploy from different checkouts. Only install committed
 # code that contains whatever is installed now, so one agent's deploy can't
