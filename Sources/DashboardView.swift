@@ -366,6 +366,11 @@ struct DashboardView: View {
                 DayRingSection(store: sessionStore, watcher: screenWatcher, settings: settings,
                                day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions)
                 ScreenTimelineSection(watcher: screenWatcher, day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions)
+                ScreenReviewSection(
+                    watcher: screenWatcher, day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions,
+                    runningStart: timerManager.isActive ? timerManager.sessionStartTime : nil,
+                    paint: { a, b, label in sessionStore.paint(start: a, end: b, label: label == "Break" ? nil : label) }
+                )
                 ScreenActivitySection(
                     watcher: screenWatcher, day: selectedDay,
                     sessions: liveSessions.filter { Calendar.current.isDate($0.startTime, inSameDayAs: selectedDay)

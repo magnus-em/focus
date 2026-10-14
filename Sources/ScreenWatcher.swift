@@ -18,6 +18,9 @@ struct ScreenSpan: Codable, Equatable, Identifiable {
     var category: String?
     /// Keyboard/mouse in use at some snapshot in this span (nil in old data).
     var active: Bool?
+    /// Where the label came from: "you" (your earlier answer), "model",
+    /// "held" (kept by window stickiness), "focus" (time in Focus). nil in old data.
+    var source: String?
     var id: Date { start }
 }
 
@@ -321,7 +324,7 @@ final class ScreenWatcher: ObservableObject {
             lastSampled = "\(bundle)|\(window)"
             record(ScreenSample(date: now, app: "Focus", bundleID: bundle, title: window.isEmpty ? "Focus" : window,
                                 summary: "Checking Focus", category: runningCategory().flatMap { $0 == "Break" ? nil : $0 },
-                                active: idle < 90))
+                                active: idle < 90, source: "focus"))
             return
         }
 
@@ -375,9 +378,12 @@ final class ScreenWatcher: ObservableObject {
                                 text: text, others: otherTexts,
                                 category: category, summary: summary, source: labelSource,
                                 active: PresenceMonitor.idleSeconds < 90, seconds: Date().timeIntervalSince(now))
+        let source: String? = labelSource.hasPrefix("your earlier answer") ? "you"
+            : labelSource.hasPrefix("kept") ? "held"
+            : labelSource.contains("model") ? "model" : nil
         record(ScreenSample(date: now, app: appName, bundleID: bundle, title: title,
                             summary: summary, category: category, active: PresenceMonitor.idleSeconds < 90,
-                            learned: learned))
+                            learned: learned, source: source))
     }
 
     private func record(_ s: ScreenSample) {
@@ -390,11 +396,13 @@ final class ScreenWatcher: ObservableObject {
             last.end = end
             last.summary = s.summary
             last.active = (last.active ?? false) || s.active
+            last.source = s.source ?? last.source
             spans[spans.count - 1] = last
         } else {
             if let last = spans.last, last.end > s.date { spans[spans.count - 1].end = s.date }
             spans.append(ScreenSpan(start: s.date, end: end, app: s.app, bundleID: s.bundleID,
-                                    title: s.title, summary: s.summary, category: s.category, active: s.active))
+                                    title: s.title, summary: s.summary, category: s.category, active: s.active,
+                                    source: s.source))
         }
         unsavedSamples += 1
         if unsavedSamples >= 4 { save() }
@@ -841,6 +849,7 @@ struct ScreenSample {
     var active = true
     /// Label came from your own earlier answer, not the model.
     var learned = false
+    var source: String? = nil
     var memoryKey: String { ScreenWatcher.memoryKey(bundle: bundleID, title: title) }
 }
 
@@ -1196,6 +1205,21 @@ enum PromptLog {
             pages: pages.suffix(12).map { Page(at: $0.date, window: $0.window, text: String($0.text.prefix(1500))) }
         ))
         return id
+    }
+
+    /// Cards since `date`, newest first, each with its answer (nil = ignored).
+    static func cards(since date: Date) -> [(at: Date, card: String, subtitle: String, reason: String, answer: String?)] {
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        var cards: [UUID: Line] = [:], answers: [UUID: String] = [:]
+        for row in raw.split(separator: "\n") {
+            guard let l = try? dec.decode(Line.self, from: Data(row.utf8)), l.at >= date else { continue }
+            if let a = l.answer { answers[l.id] = a } else if l.card != nil { cards[l.id] = l }
+        }
+        return cards.values.sorted { $0.at > $1.at }.map {
+            ($0.at, $0.card ?? "", $0.subtitle ?? "", $0.reason ?? "", answers[$0.id])
+        }
     }
 
     static func answer(_ id: UUID, _ answer: String) {

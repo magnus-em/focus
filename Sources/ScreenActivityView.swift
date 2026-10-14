@@ -993,3 +993,353 @@ struct ScreenTimelineSection: View {
         durationText(minutes: m)
     }
 }
+
+/// Screen Review (CLAUDE.md roadmap #2): fix where the auto-log and your
+/// tracking disagree, see which categories it confuses, the windows it gets
+/// wrong most, and every card it showed.
+struct ScreenReviewSection: View {
+    @ObservedObject var watcher: ScreenWatcher
+    let day: Date
+    let sessions: [WorkSession]
+    /// Start of whatever is running now: stretches after it can't be repainted.
+    let runningStart: Date?
+    let paint: (Date, Date, String) -> Void
+
+    enum Tab: String, CaseIterable, Identifiable {
+        case triage = "Triage", confusion = "Confusions", windows = "Worst windows", cards = "Cards"
+        var id: String { rawValue }
+    }
+
+    @State private var tab: Tab = .triage
+    @State private var done: Set<Date> = []
+    @State private var index = 0
+    @FocusState private var focused: Bool
+
+    private let cal = Calendar.current
+    private var dayEnd: Date { cal.date(byAdding: .day, value: 1, to: day)! }
+
+    private struct Tracked { let start: Date, end: Date, label: String }
+
+    private func tracked(from a: Date, to b: Date) -> [Tracked] {
+        sessions.map {
+            Tracked(start: $0.startTime, end: $0.startTime.addingTimeInterval($0.durationMinutes * 60),
+                    label: $0.type != .work ? "Break" : ($0.label ?? "Focus"))
+        }
+        .filter { $0.end > a && $0.start < b }
+    }
+
+    private func label(at t: Date, in list: [Tracked]) -> String? {
+        list.last { $0.start <= t && $0.end > t }?.label
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Review").font(.system(size: 15, weight: .semibold))
+                    Text("Fix what the auto-log got wrong; your answers teach it.")
+                        .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                }
+                Spacer()
+                Picker("View", selection: $tab) {
+                    ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize().controlSize(.small)
+            }
+            switch tab {
+            case .triage: triage
+            case .confusion: confusion
+            case .windows: worstWindows
+            case .cards: cardLedger
+            }
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
+    }
+
+    // MARK: - Triage
+
+    private struct Stretch: Identifiable {
+        var start: Date, end: Date
+        let screen: String, yours: String
+        var spans: [ScreenSpan]
+        var id: Date { start }
+        var minutes: Double { end.timeIntervalSince(start) / 60 }
+        var titles: [String] {
+            var seen: [String] = []
+            for s in spans where !s.title.isEmpty && !seen.contains(s.title) { seen.append(s.title) }
+            return seen
+        }
+    }
+
+    /// Runs where the screen and your tracking disagree, a minute or longer.
+    private func stretches(from a: Date, to b: Date) -> [Stretch] {
+        let track = tracked(from: a, to: b)
+        var out: [Stretch] = []
+        for s in watcher.spans(from: a, to: b).sorted(by: { $0.start < $1.start })
+        where s.active != false && s.source != "focus" && s.end.timeIntervalSince(s.start) >= 10 {
+            guard let c = s.category, let t = label(at: s.start.addingTimeInterval(s.end.timeIntervalSince(s.start) / 2), in: track),
+                  t != c else { continue }
+            if let l = out.last, l.screen == c, l.yours == t, s.start.timeIntervalSince(l.end) < 60 {
+                out[out.count - 1].end = s.end
+                out[out.count - 1].spans.append(s)
+            } else {
+                out.append(Stretch(start: s.start, end: s.end, screen: c, yours: t, spans: [s]))
+            }
+        }
+        return out.filter { $0.minutes >= 1 }
+    }
+
+    private var openStretches: [Stretch] {
+        stretches(from: day, to: dayEnd).filter { st in
+            !done.contains(st.start) && watcher.check(for: activity(st)) == nil
+        }
+    }
+
+    private func activity(_ st: Stretch) -> ScreenActivity {
+        ScreenActivity(start: st.start, end: st.end, category: st.screen, spans: st.spans)
+    }
+
+    @ViewBuilder
+    private var triage: some View {
+        let list = openStretches
+        if list.isEmpty {
+            Label("Nothing left to review for this day.", systemImage: "checkmark.circle")
+                .font(.system(size: 13)).foregroundStyle(Color.good)
+        } else {
+            let st = list[min(index, list.count - 1)]
+            let canPaint = runningStart.map { st.end <= $0 } ?? true
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("\(min(index, list.count - 1) + 1) of \(list.count)")
+                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
+                    Spacer()
+                    Text("\(st.start.formatted(date: .omitted, time: .shortened))–\(st.end.formatted(date: .omitted, time: .shortened)) · \(durationText(minutes: st.minutes))")
+                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
+                }
+                HStack(spacing: 16) {
+                    side("Screen said", st.screen)
+                    side("You tracked", st.yours)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(st.titles.prefix(3), id: \.self) { t in
+                        Text(t).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                    }
+                    if let s = st.spans.last?.summary, !s.isEmpty {
+                        Text(s).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(2)
+                    }
+                    let sources = Set(st.spans.compactMap(\.source))
+                    if !sources.isEmpty {
+                        Text("Labeled by " + sources.sorted().map { $0 == "you" ? "your earlier answer" : $0 == "held" ? "window stickiness" : "the on-device model" }.joined(separator: ", "))
+                            .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                    }
+                }
+                HStack(spacing: 8) {
+                    triageButton("Screen was right", key: "Y", color: categoryColor(st.screen), enabled: canPaint) {
+                        paint(st.start, st.end, st.screen)
+                        watcher.setCheck(activity(st), right: true)
+                        resolve(st)
+                    }
+                    .help(canPaint ? "Relabels \(durationText(minutes: st.minutes)) as \(st.screen) and teaches these windows"
+                                   : "This overlaps what's running; switch from the popover instead")
+                    triageButton("I was right", key: "N", color: st.yours == "Break" ? TimerView.breakBlue : categoryColor(st.yours), enabled: true) {
+                        watcher.setCheck(activity(st), right: false, actual: st.yours)
+                        resolve(st)
+                    }
+                    .help("Keeps your tracking and teaches these windows \(st.yours)")
+                    triageButton("Skip", key: "S", color: .gray, enabled: true) {
+                        index = (index + 1) % max(list.count, 1)
+                    }
+                }
+            }
+            .focusable()
+            .focused($focused)
+            .focusEffectDisabled()
+            .onAppear { focused = true }
+            .onKeyPress(characters: .init(charactersIn: "ynsYNS")) { press in
+                switch press.characters.lowercased() {
+                case "y" where canPaint:
+                    paint(st.start, st.end, st.screen); watcher.setCheck(activity(st), right: true); resolve(st)
+                case "n":
+                    watcher.setCheck(activity(st), right: false, actual: st.yours); resolve(st)
+                case "s":
+                    index = (index + 1) % max(list.count, 1)
+                default: return .ignored
+                }
+                return .handled
+            }
+        }
+    }
+
+    private func resolve(_ st: Stretch) {
+        done.insert(st.start)
+    }
+
+    private func side(_ caption: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(caption).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+            HStack(spacing: 6) {
+                Circle().fill(label == "Break" ? TimerView.breakBlue : categoryColor(label)).frame(width: 9, height: 9)
+                Text(label).font(.system(size: 17, weight: .semibold))
+            }
+        }
+    }
+
+    private func triageButton(_ title: String, key: String, color: Color, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                Text(key).font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.primary.opacity(0.08)))
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .background(Capsule().fill(color.opacity(enabled ? 0.2 : 0.06)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.5)
+    }
+
+    // MARK: - Confusions
+
+    /// Minutes the screen said X while you tracked Y, over the 7 days ending
+    /// on this day. Your ✓/✗ answers aren't mixed in: tracking is the truth here.
+    private var confusion: some View {
+        let from = cal.date(byAdding: .day, value: -6, to: day)!
+        let track = tracked(from: from, to: dayEnd)
+        var grid: [String: [String: Double]] = [:]
+        for s in watcher.spans(from: from, to: dayEnd) where s.active != false && s.source != "focus" {
+            guard let c = s.category, let t = label(at: s.start.addingTimeInterval(s.end.timeIntervalSince(s.start) / 2), in: track) else { continue }
+            grid[c, default: [:]][t, default: 0] += s.end.timeIntervalSince(s.start) / 60
+        }
+        let rows = grid.map { ($0.key, $0.value.values.reduce(0, +)) }.sorted { $0.1 > $1.1 }.prefix(6).map(\.0)
+        var colTotals: [String: Double] = [:]
+        for (_, r) in grid { for (k, v) in r { colTotals[k, default: 0] += v } }
+        let cols = colTotals.sorted { $0.value > $1.value }.prefix(6).map(\.key)
+        return VStack(alignment: .leading, spacing: 6) {
+            if rows.isEmpty {
+                Text("Not enough overlap between snapshots and tracking yet.").font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+            } else {
+                Text("Rows: what the screen said. Columns: what you tracked. Last 7 days, minutes.")
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                Grid(alignment: .trailing, horizontalSpacing: 4, verticalSpacing: 4) {
+                    GridRow {
+                        Text("")
+                        ForEach(cols, id: \.self) { c in
+                            Text(c).font(.system(size: 11, weight: .medium)).foregroundStyle(Color.secondaryText).lineLimit(1)
+                        }
+                    }
+                    ForEach(rows, id: \.self) { r in
+                        let total = max(grid[r]?.values.reduce(0, +) ?? 1, 1)
+                        GridRow {
+                            HStack(spacing: 5) {
+                                Circle().fill(categoryColor(r)).frame(width: 7, height: 7)
+                                Text(r).font(.system(size: 12, weight: .medium))
+                            }
+                            .gridColumnAlignment(.leading)
+                            ForEach(cols, id: \.self) { c in
+                                let m = grid[r]?[c] ?? 0
+                                Text(m >= 1 ? "\(Int(m.rounded()))" : "·")
+                                    .font(.system(size: 12).monospacedDigit())
+                                    .frame(minWidth: 44, minHeight: 26)
+                                    .background(RoundedRectangle(cornerRadius: 6)
+                                        .fill((r == c ? Color.good : Color.orange).opacity(m >= 1 ? 0.12 + 0.5 * m / total : 0.03)))
+                                    .help("Screen said \(r), you tracked \(c): \(durationText(minutes: m))")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Worst windows
+
+    private struct WindowMiss: Identifiable {
+        let key: String, app: String, bundle: String, title: String
+        var minutes: Double
+        var yours: [String: Double]
+        var id: String { key }
+        var mostlyYours: String { yours.max { $0.value < $1.value }?.key ?? "" }
+    }
+
+    private var worstWindows: some View {
+        let from = cal.date(byAdding: .day, value: -6, to: day)!
+        let track = tracked(from: from, to: dayEnd)
+        var misses: [String: WindowMiss] = [:]
+        for s in watcher.spans(from: from, to: dayEnd) where s.active != false && s.source != "focus" {
+            guard let c = s.category, let t = label(at: s.start.addingTimeInterval(s.end.timeIntervalSince(s.start) / 2), in: track),
+                  t != c, t != "Break" else { continue }
+            let key = ScreenWatcher.memoryKey(bundle: s.bundleID, title: s.title)
+            var w = misses[key] ?? WindowMiss(key: key, app: s.app, bundle: s.bundleID, title: s.title, minutes: 0, yours: [:])
+            let m = s.end.timeIntervalSince(s.start) / 60
+            w.minutes += m
+            w.yours[t, default: 0] += m
+            misses[key] = w
+        }
+        let list = misses.values.filter { $0.minutes >= 2 }.sorted { $0.minutes > $1.minutes }.prefix(8)
+        return VStack(alignment: .leading, spacing: 0) {
+            if list.isEmpty {
+                Text("No window was mislabeled for 2 minutes or more this week.").font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+            }
+            ForEach(Array(list)) { w in
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(w.title.isEmpty ? w.app : w.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                        Text("\(w.app) · \(durationText(minutes: w.minutes)) disagreed, you had \(w.mostlyYours)")
+                            .font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    if !ScreenWatcher.isGeneric(title: w.title, app: w.app), !FocusCategories.notFromScreen.contains(w.mostlyYours) {
+                        Button("Always \(w.mostlyYours)") { ScreenWatcher.learn([w.key], as: w.mostlyYours) }
+                            .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 10).frame(height: 26)
+                            .background(Capsule().fill(categoryColor(w.mostlyYours).opacity(0.2)))
+                            .help("From now on this window is \(w.mostlyYours)")
+                    }
+                    Button("Ignore app") { watcher.setIgnored(w.bundle, name: w.app, true) }
+                        .buttonStyle(.plain).font(.system(size: 12))
+                        .foregroundStyle(Color.secondaryText)
+                        .help("Never watch \(w.app)")
+                }
+                .frame(minHeight: 40)
+                Divider()
+            }
+        }
+    }
+
+    // MARK: - Cards
+
+    private var cardLedger: some View {
+        let cards = PromptLog.cards(since: cal.date(byAdding: .day, value: -6, to: day)!).filter { $0.at < dayEnd }
+        let answered = cards.filter { $0.answer != nil }
+        let right = answered.filter { $0.answer?.hasPrefix("switched") == true }.count
+        return VStack(alignment: .leading, spacing: 0) {
+            if cards.isEmpty {
+                Text("No cards in the last 7 days.").font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+            } else {
+                Text("\(right) of \(answered.count) answered cards were right (you switched). \(cards.count - answered.count) ignored.")
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText).padding(.bottom, 6)
+            }
+            ForEach(Array(cards.prefix(12).enumerated()), id: \.offset) { _, c in
+                HStack(spacing: 10) {
+                    Text(c.at.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
+                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
+                        .frame(width: 92, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(c.card).font(.system(size: 13, weight: .medium))
+                        Text(c.subtitle).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Text(c.answer ?? "ignored")
+                        .font(.system(size: 12))
+                        .foregroundStyle(c.answer?.hasPrefix("switched") == true ? Color.good : Color.secondaryText)
+                }
+                .frame(minHeight: 38)
+            }
+        }
+    }
+}
