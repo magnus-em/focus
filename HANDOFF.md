@@ -1,18 +1,21 @@
 # Handoff — in-flight work
 
-Short-lived notes between sessions. Durable architecture lives in `CLAUDE.md`. Trim aggressively as items land.
+Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-09-27.
+Last touched: 2026-10-13 night (Claude Code, handing off to Codex).
 
-## In flight
+## State
 
-- **Phase 3 widgets on device.** Installed on iPhone + iPad 2026-10-11. To verify on device: Control Center controls switch the Mac timer; Live Activity appears and follows Mac-side switches (relies on CloudKit push).
+- `main` is clean and deployed (`/Applications/Focus.app` matches `fda75e3`+docs).
+- **Screen test mode is ON** (`screenEverySwitch`): a switch card ~25s after every change the screen sees. The user was switching SWE↔Math every ~5 min to test. Ask before turning it off.
+- **iOS not installed**: the last `./install_ios.sh` failed on iPhone and iPad ("may need to be unlocked to recover from previously reported preparation errors"). Needs both unlocked and ready in Xcode → Devices and Simulators, then rerun. HealthKit entitlement is back (Xcode is signed in now).
+- Focus modes: life categories (Admin, Leisure, Meals…) now map to Off, not Personal. The macOS Focus only changes on the next category switch.
 
-## Future / nice-to-have
+## Next up
 
+In order: CLAUDE.md → Ranked roadmap. Short version: iOS install + check Health import, finish screen tuning and turn test mode off, a design review round, the rest of Screen Review, Screen Time.
 
-## Done in last session — already reflected in CLAUDE.md
-- Hours-based goal, day tracking, single break model, manual breaks, breaks-as-sessions, commitment-on-by-default, gutted CompletionPanel, removed flow decision, dashboard breaks in log, consistency + best-week metrics, sessions count demoted everywhere.
-- Active in-progress focus session shown in DashboardView's today log (synthetic event with pulsing dot via `TimerManager.currentInProgressSession`).
-- TimerView goal redesign: removed redundant outer goal ring + goal stat tile; goal now shown as a single slim progress bar above the stat trio. Streak tile is always present.
-- Liquid Glass-flavored material pass: `Sources/GlassEffects.swift` (`glassCard` / `glassChrome`) applied to menu bar popover, dashboard window chrome, and all stat-card surfaces across DashboardView + StatsView.
+## Open questions for the user
+
+- Lecture transcription / all-day voice capture: consent and retention rules before building.
+- Optional stricter iOS Focus mode for exam-prep blocks (e.g. "Deep Focus") mapped per category in Settings → Focus modes.
