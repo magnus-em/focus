@@ -11,6 +11,21 @@ packages:
     path: FocusCore
 
 targets:
+  # Only here so xcodebuild can compile the app when build.sh regenerates the
+  # provisioning profile; the shipped binary comes from `swift build`.
+  VirtualDisplay:
+    type: framework
+    platform: macOS
+    sources:
+      - path: VirtualDisplay
+        headerVisibility: public
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.magnus.focus.VirtualDisplay
+        GENERATE_INFOPLIST_FILE: YES
+        DEFINES_MODULE: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: MUR9TJXP6S
   Focus:
     type: application
     platform: macOS
@@ -19,6 +34,7 @@ targets:
     dependencies:
       - package: FocusCore
         product: FocusCore
+      - target: VirtualDisplay
     info:
       path: Sources/Info.plist
       properties:

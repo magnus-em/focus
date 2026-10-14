@@ -487,6 +487,7 @@ class TimerManager: ObservableObject {
         currentLabel = label
         saveCheckpoint()
         pushSharedState()
+        updateBlocking()
     }
 
     func switchTo(_ label: String, at requested: Date = Date()) {
@@ -503,7 +504,7 @@ class TimerManager: ObservableObject {
                     totalTime += FocusCategories.openEndedSeconds
                     timeRemaining += FocusCategories.openEndedSeconds
                 }
-                if isRunning { saveCheckpoint(); pushSharedState() } else { start() }
+                if isRunning { saveCheckpoint(); pushSharedState(); updateBlocking() } else { start() }
                 return
             }
         }
@@ -871,7 +872,7 @@ class TimerManager: ObservableObject {
     /// Shared by the /etc/hosts blocker and the Chrome extension (`BrowserBridge`).
     var shouldBlockSites: Bool {
         guard let settings, settings.siteBlockingEnabled, !settings.blockedSites.isEmpty else { return false }
-        return isOnBreak ? (settings.blockDuringBreaks && isActive) : isActive
+        return isOnBreak ? (settings.blockDuringBreaks && isActive) : isFocusRunning
     }
 
     var isFocusRunning: Bool { isActive && !isOnBreak && !FocusCategories.isLife(currentLabel) }

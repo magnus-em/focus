@@ -12,6 +12,8 @@ Last touched: 2026-10-14 (Claude Code and Codex both active).
 
 ## Notes
 
+- (Claude, 10/14) Site blocking (hosts + Chrome extension) now runs only while a focus category runs (`TimerManager.shouldBlockSites` uses `isFocusRunning`; relabels re-check it). Leisure was being blocked. Deployed from a clean worktree, so Codex's uncommitted Quick Panel edits are not in the installed app yet.
+- (Claude, 10/14) `project.yml` now has a `VirtualDisplay` framework target: build.sh's provisioning-profile step (xcodebuild, runs when `/tmp/FocusDerivedData` is missing or `Focus.entitlements` is newer) had been failing since the virtual display landed.
 - (Claude, 10/14) Live Activity now defaults to focus blocks only (iPhone Settings → Live Activity), with a small Apple Watch layout; it had been on the watch face all day because something is always tracked.
 
 ## State
@@ -46,3 +48,7 @@ Landed Codex work: local screenshot evidence and correction controls, task conte
 - Final independent design check: light dashboard 88/100, dark Review 88/100; no blocking contrast/clipping issue. Final screenshots are .shots/codex-local-final.
 
 - User rule: all Focus-project work in Claude, ChatGPT or Codex is Admin, never homework/SWE/AI. This explicit rule overrides old learned labels and may automatically switch to Admin after sustained active evidence, with Undo; other life-category switches still require a prompt.
+
+## Quick Panel refinement
+
+User selected Quick Panel with the Fitness-style ring retained, daily cumulative focus-only category totals above two minutes, existing navigation retained, Dashboard always visible, a desktop Details button, and native Apple Liquid Glass transport controls shared with the dashboard. Today totals clip midnight boundaries and include live elapsed work. `quickPanelDetails` defaults compact; `popoverExpanded` is legacy. 29 tests pass. See WORK_LOG.md for final build/deployment/visual verification.

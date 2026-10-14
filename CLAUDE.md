@@ -74,7 +74,7 @@ Tests: `cd FocusCore && swift test` (recall scheduler, timer display, duration t
 
 | File | Role |
 |------|------|
-| `Sources/TimerView.swift` | Popover **Now** page (direction A+B, rebuilt 10/13 after "way too crowded"). Context-first: hero (small goal ring in the category color with a check when met · category title as a switch menu · 40pt timer · one plain line like "Until 9:10 PM · Sites blocked"), at most **one attention line** (screen shows another category for ≥ 1 min → Switch; iCloud failing; yesterday's holes, mornings only), then a floating control bar (Stop · Pause/Resume/Start X/"Back to X" on a break · Break · More). The grabber (click/drag) expands to the day strip, "On screen" card (Switch pill when it disagrees) and the last 4 merged log rows; size in `popoverExpanded`. Chips only when nothing runs (focus categories; life ones in the title menu). A bottom tab bar (`PageBar` in `LockInApp.swift`, added 10/13 because the user found the small "…" menu too hard to reach): Now · Stats · Problems · Notes · Health · More; More holds Settings · LeetCode, Practice, Recall, Math Sprint, Dashboard · End Day, Quit. Also `NowPlayingBar` (glass capsule at the bottom of the Dashboard) and `CategoryWash` (the running category tints the popover and Dashboard). |
+| `Sources/TimerView.swift` | Quick Panel: Fitness-style goal ring beside category + timer, cached daily focus-category totals above two minutes including live work, one attention line, shared native-glass transport controls, labeled Details disclosure. Dashboard is always visible in the header. Now / Stats / Problems / Notes / Health / More stay at the bottom. Details contains day strip, screen context and recent log; no drag handle. `FocusTransportControls` is reused by dashboard `NowPlayingBar`; `.glass` / `.glassProminent`, `GlassEffectContainer`, stable `glassEffectID`, Reduce Motion. |
 | `Sources/CommitmentView.swift` | Daily commitment overlay (written text + optional voice oath). Triggered by Start Day. |
 | `Sources/StatsView.swift` | Popover stats tab. Today card, 7-day card, focus split, 18-week heatmap, lifetime row. |
 | `Sources/ProblemsView.swift` / `ProblemDetailView.swift` | Problem logging + review queue. SWE log sheet searches/browses `FocusCore/Grind75Catalog.swift` (8-week schedule) and prefills title/URL/difficulty/categories; progress matched by LeetCode URL slug, then title. |
@@ -165,12 +165,12 @@ Tests: `cd FocusCore && swift test` (recall scheduler, timer display, duration t
 - **By-tag splits**: 7-day and lifetime breakdowns.
 
 ### Site blocking
-Requires admin password on first setup. Sets up sudoers entry + helper script. Modifies `/etc/hosts` + `pf` firewall while a focus session is active. Cleanup runs on quit and on next launch after a crash via `SiteBlocker.cleanupIfNeeded()`.
+Requires admin password on first setup. Sets up sudoers entry + helper script. Modifies `/etc/hosts` + `pf` firewall only while a focus category runs (and on breaks with "Block during breaks too"); life categories (Leisure, Admin, Meals…) never block (user, 10/14: "why is this blocked im on leisure mode"). Cleanup runs on quit and on next launch after a crash via `SiteBlocker.cleanupIfNeeded()`.
 
 ### Chrome extension (`ChromeExtension/`)
 - Load unpacked from `~/Code/focus/ChromeExtension`; ID `dljnfclilnaccokglnomfjlbbanapflo` is pinned by `key` in the manifest. After editing it, hit reload on chrome://extensions (deploy.sh doesn't touch it).
 - Blocks the same domains at the same times as the hosts blocker (Settings → Site blocking), via a `declarativeNetRequest` redirect to `blocked.html`. Each load of the block page is one attempt; tabs swept when blocking starts aren't counted.
-- No unlocking while a focus category runs. During breaks/life categories: 30s wait + typed reason → 5 min unlock, logged as `bypassed`.
+- No unlocking while a focus category runs. During breaks with blocking on: 30s wait + typed reason → 5 min unlock, logged as `bypassed`.
 - Events queue in `chrome.storage.local` while the app is down. Last known state is kept for 3 min of unreachability, then blocking stops.
 - Dashboard → Browser card: blocked count, during focus, per focus hour, bypassed, by category/site, time by site, sites during focus.
 
