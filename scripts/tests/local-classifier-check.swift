@@ -13,7 +13,7 @@ import Darwin
             ("Personal curiosity", "ChatGPT", "Why do sauna hats help?", "What is the purpose of a sauna hat? Explain how wool insulation reduces heating of the head in hot air. I am curious about the material science.", nil),
             ("Ambiguous generic chat", "ChatGPT", "ChatGPT", "New chat. What should we work on? Type a message.", "Math")
         ]
-        let expectations: [String: (String?, Bool)] = ["Focus model integration": ("SWE", false), "ML study": ("AI", false),
+        let expectations: [String: (String?, Bool)] = ["Focus model integration": ("Admin", false), "ML study": ("AI", false),
                                                        "Math proof": ("Math", false), "C pointers": ("SWE", false),
                                                        "Personal curiosity": ("Reading", false), "Ambiguous generic chat": (nil, true)]
         var failures = 0

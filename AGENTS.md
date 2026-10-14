@@ -18,7 +18,8 @@ Read these before changing anything:
 - No code comments unless the why is non-obvious. Match the surrounding code.
 - No duration estimates when proposing work. No recap summaries at the end of replies.
 - The user is a Yale CS student prepping for quant + SWE interviews. For non-trivial architectural moves, name the pattern and the trade-off briefly.
-- Screen tracking must never switch the user's category on its own except the existing trusted auto-switch with Undo; prompts change nothing unless the user picks.
+- Screen tracking must never switch the user's category on its own except the trusted auto-switch with Undo and the user-requested Focus-project → Admin rule, also with Undo; prompts change nothing unless the user picks.
+- All work on the Focus project in Claude, ChatGPT or Codex is Admin, never homework/SWE/AI. This explicit preference overrides older learned labels.
 - When the screen labels go wrong, read `~/Library/Application Support/Focus/prompt-log.jsonl` and `focus://screen-debug` (writes `Focus/screen-debug.json`), find the cause, fix the rule, and note the lesson in `CLAUDE.md`.
 
 Keep `CLAUDE.md` and `HANDOFF.md` current when you land something, so the next agent (Claude Code or Codex) starts from the truth.

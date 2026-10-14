@@ -14,12 +14,12 @@ public enum ScreenLabeler {
     public static let hints: [String: String] = [
         "Math": "mathematics work, right now mostly discrete math: logic, sets, functions, relations, proofs by induction or contradiction, counting, combinatorics, graphs, math problem sets and lectures (math notation only; never programming, C, assembly, memory or operating systems)",
         "HW": "homework for non-math classes: essays, assigned readings, econ or history problem sets",
-        "SWE": "programming: LeetCode, NeetCode, algorithm practice, and writing, reading or compiling code in any language (C, assembly, Python), Compiler Explorer, debugging, asking an AI chat about code, building their own apps (like the Focus app) with Claude, Claude Code or Codex, including its docs, design and roadmap, and studying CS systems courses (C, assembly, memory layout, processes, compilers), midterms included",
+        "SWE": "programming: LeetCode, NeetCode, algorithm practice, writing, reading or compiling code, debugging, and CS systems courses (C, assembly, memory layout, processes, compilers), midterms included. Work on the student's Focus tracker app is Admin, even when it involves coding or model integration",
         "Quant": "quant interview prep: probability puzzles, brainteasers, mental math, QuantGuide",
         "AI": "deliberately studying, self-teaching or researching machine learning/deep learning: deriving backpropagation, learning neural network architectures, reading ML research, or experimenting with model training. Using ChatGPT, Claude or Codex, integrating a model into an app, discussing AI tools, or discussing activity category definitions does not mean AI",
         "Reading": "reading books or articles, or exploring ideas with an AI chat, for personal curiosity, not for a class",
         "Leisure": "entertainment: YouTube, streaming, games, social feeds",
-        "Admin": "email, forms, calendars, system settings, errands online (not a software project's docs or settings)",
+        "Admin": "email, forms, calendars, system settings, errands online, and all work on the student's Focus tracker project: code, design, settings, installation, docs, roadmap and model integration in Claude, ChatGPT or Codex; this personal-tool work is not homework",
     ]
 
     /// Plain-text output: with a schema the 3B model lists bare terms

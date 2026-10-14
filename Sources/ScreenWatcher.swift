@@ -435,6 +435,7 @@ final class ScreenWatcher: ObservableObject {
                                confirmed: learned, uncertain: labelUncertain, at: now)
         }
         let source: String? = labelSource.hasPrefix("your earlier answer") ? "you"
+            : labelSource == "your Focus project rule" ? "rule"
             : labelSource.hasPrefix("kept") ? "held"
             : labelSource.contains("model") ? "model" : nil
         record(ScreenSample(date: now, app: appName, bundleID: bundle, title: title,
@@ -864,6 +865,11 @@ final class ScreenWatcher: ObservableObject {
         let generic = Self.isGeneric(title: title, app: app)
         labelReason = ""
         labelUncertain = false
+        if candidates.contains("Admin"), ScreenClassificationPolicy.isFocusProjectWork(title: title, text: text) {
+            labelSource = "your Focus project rule"
+            labelReason = "Your rule: work on the Focus project is Admin"
+            return ("Admin", fallbackSummary)
+        }
         if !generic, let known = Self.memory[Self.memoryKey(bundle: bundle, title: title)], candidates.contains(known) {
             let decision = ScreenClassificationPolicy.evaluate(category: known, app: app, title: title, text: text, source: .learned)
             if decision.category == known {
@@ -1067,6 +1073,7 @@ final class ScreenCoach {
         let summary: String
         /// Every snapshot's label came from your own answers.
         let trusted: Bool
+        let projectAdmin: Bool
     }
 
     /// The model labeled the window, or you did earlier: your own label needs
@@ -1083,6 +1090,7 @@ final class ScreenCoach {
         var start = last.date, hits = 0, total = 0, missStreak = 0
         var keyCounts: [String: Int] = [:]
         var allLearned = true
+        var allProjectAdmin = c == "Admin"
         var newer = last.date
         for s in samples.reversed() {
             if newer.timeIntervalSince(s.date) > 60 { break }
@@ -1094,19 +1102,22 @@ final class ScreenCoach {
                 hits += 1; missStreak = 0; start = s.date
                 if !ScreenWatcher.isGeneric(title: s.title, app: s.app) { keyCounts[s.memoryKey, default: 0] += 1 }
                 allLearned = allLearned && s.learned
+                allProjectAdmin = allProjectAdmin && s.source == "rule"
             } else {
                 missStreak += 1
                 if missStreak >= 2 { total -= 2; break }
             }
         }
-        let needed = settings.screenEverySwitch ? 25 : allLearned ? Self.learnedRunSeconds : Double(settings.screenSuggestMinutes) * 60
-        guard hits >= (settings.screenEverySwitch ? 2 : allLearned ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
+        let followsYourRule = allLearned || allProjectAdmin
+        let needed = settings.screenEverySwitch ? 25 : followsYourRule ? Self.learnedRunSeconds : Double(settings.screenSuggestMinutes) * 60
+        guard hits >= (settings.screenEverySwitch ? 2 : followsYourRule ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
               last.date.timeIntervalSince(start) >= needed else { return nil }
         // Your answer teaches the windows the run was made of, not one stray
         // snapshot of another window the model happened to call the same
         // (10/13: accepting Math taught this Claude chat "Math").
         let keys = Set(keyCounts.filter { $0.value >= 2 && Double($0.value) >= Double(hits) * 0.25 }.keys)
-        return Run(category: c, start: start, keys: keys, summary: last.summary, trusted: allLearned)
+        return Run(category: c, start: start, keys: keys, summary: last.summary,
+                   trusted: allLearned, projectAdmin: allProjectAdmin)
     }
 
     /// Plain-language reason no card fired, from the recent snapshots.
@@ -1152,6 +1163,12 @@ final class ScreenCoach {
         guard running != run.category else { return say("Screen agrees with \(run.category)") }
         if let until = snoozed[run.category], until > Date() {
             return say("\(run.category) snoozed until \(until.formatted(date: .omitted, time: .shortened)) (you said Still)")
+        }
+        if run.projectAdmin {
+            say("Switched to Admin: your Focus project rule")
+            if let from = running { return autoSwitch(from: from, to: run) }
+            timer.switchTo("Admin", at: run.start)
+            return
         }
         // Focus → focus on windows you've labeled yourself: just switch, with
         // Undo. Anything involving a life category stays a question.
@@ -1213,7 +1230,7 @@ final class ScreenCoach {
         let m = AwayPromptModel(
             icon: "arrow.triangle.swap",
             title: "Switched to \(run.category)",
-            subtitle: "since \(run.start.formatted(date: .omitted, time: .shortened)) · windows you've labeled \(run.category)",
+            subtitle: "since \(run.start.formatted(date: .omitted, time: .shortened)) · \(run.projectAdmin ? "your Focus project rule" : "windows you've labeled \(run.category)")",
             question: run.summary,
             keep: "Undo, still \(from)",
             options: [], tags: settings.tags

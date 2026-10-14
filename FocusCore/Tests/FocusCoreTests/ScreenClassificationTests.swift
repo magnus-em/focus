@@ -15,14 +15,14 @@ final class ScreenClassificationPolicyTests: XCTestCase {
         let result = ScreenClassificationPolicy.evaluate(category: "AI", app: "ChatGPT",
             title: "Install project on iPhone and iPad",
             text: "Improve the Focus app dashboard. AI means studying machine learning and neural networks. Learn from corrections in screen tracking.")
-        XCTAssertEqual(result.category, "SWE")
+        XCTAssertEqual(result.category, "Admin")
         XCTAssertFalse(result.uncertain)
     }
 
     func testModelIntegrationIsNotMLStudy() {
         let result = ScreenClassificationPolicy.evaluate(category: "AI", app: "Code",
             title: "ScreenWatcher.swift — focus", text: "Implement neural network classification in the Focus app using machine learning APIs.")
-        XCTAssertEqual(result.category, "SWE")
+        XCTAssertEqual(result.category, "Admin")
     }
 
     func testIncidentalDatasetOrTrainingWordsDoNotEstablishMLStudy() {
@@ -96,11 +96,17 @@ final class ScreenClassificationPolicyTests: XCTestCase {
         XCTAssertFalse(result.uncertain)
     }
 
-    func testFocusDevelopmentOverridesModelButPreservesUserConfirmedLabel() {
+    func testFocusProjectRuleOverridesOldModelAndLearnedLabels() {
         let text = "Improve the Focus app dashboard using an on-device classifier."
-        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "ChatGPT", title: "App planning", text: text).category, "SWE")
+        for app in ["Claude", "ChatGPT", "Codex"] {
+            for source in [ScreenClassificationPolicy.Source.model, .learned, .held] {
+                XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: app,
+                    title: "Focus project", text: text, source: source).category, "Admin")
+            }
+        }
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "ChatGPT", title: "App planning", text: text).category, "Admin")
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "ChatGPT", title: "App planning", text: text, source: .learned).category, "Admin")
-        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "AI", app: "ChatGPT", title: "App planning", text: text, source: .learned).category)
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "AI", app: "ChatGPT", title: "App planning", text: text, source: .learned).category, "Admin")
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "ChatGPT", title: "Install project", text: "Install the Focus app on my phone.").category, "Admin")
     }
 

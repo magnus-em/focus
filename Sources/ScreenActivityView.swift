@@ -1208,7 +1208,7 @@ struct ScreenReviewSection: View {
                     }
                     let sources = Set(st.spans.compactMap(\.source))
                     if !sources.isEmpty {
-                        Text("Labeled by " + sources.sorted().map { $0 == "you" ? "your earlier answer" : $0 == "held" ? "window stickiness" : "the on-device model" }.joined(separator: ", "))
+                        Text("Labeled by " + sources.sorted().map { $0 == "rule" ? "your Focus project rule" : $0 == "you" ? "your earlier answer" : $0 == "held" ? "window stickiness" : "the on-device model" }.joined(separator: ", "))
                             .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                     }
                 }

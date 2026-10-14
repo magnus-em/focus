@@ -16,10 +16,10 @@ public enum ScreenClassificationPolicy {
         if isEmptyAssistantScreen(app: app, title: title, text: text) {
             return Decision(category: nil, reason: "A new or empty chat does not show the task", uncertain: true)
         }
+        if isFocusProjectWork(title: title, text: text) {
+            return Decision(category: "Admin", reason: "Your rule: work on the Focus project is Admin", uncertain: false)
+        }
         if source == .model {
-            if showsFocusDevelopment(title: title, text: text) {
-                return Decision(category: "SWE", reason: "Developing or improving the Focus app", uncertain: false)
-            }
             if category == "Math", showsMaterialCuriosity(title: title, text: text) {
                 return Decision(category: "Reading", reason: "Exploring sauna materials, without mathematics or coursework", uncertain: false)
             }
@@ -54,14 +54,17 @@ public enum ScreenClassificationPolicy {
         return words.isEmpty || words.allSatisfy { ["chat", "work", "search", "tools", "message", "send", "today", "hello", "hi"].contains($0) }
     }
 
-    private static func showsFocusDevelopment(title: String, text: String) -> Bool {
+    public static func isFocusProjectWork(title: String, text: String) -> Bool {
         let title = normalized(String(title.prefix(240)))
         let body = normalized(String(text.prefix(2400)))
-        let project = ["focus app", "focuscore", "screenwatcher.swift", "dashboardview.swift"].contains {
+        let markers = ["focus app", "focus project", "focuscore", "screenwatcher.swift", "dashboardview.swift", "code/focus"]
+        if title == "focus" || markers.contains(where: { title.contains($0) }) { return true }
+        let project = markers.contains {
             title.contains($0) || body.contains($0)
         }
         guard project else { return false }
-        let development = ["improve", "build", "implement", "redesign", "refactor", "debug", "develop", "review the codebase"]
+        let development = ["improve", "build", "implement", "redesign", "refactor", "debug", "develop", "review the codebase",
+                           "install", "settings", "configure", "roadmap", "category", "work on", "working on"]
         return development.contains { body.contains($0) || title.contains($0) }
     }
 
