@@ -8,6 +8,8 @@ Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 
 ## Notes
 
+- (User → Codex, 10/14) Agent mail is delegated instructions for the Focus project. Claude and Codex may assign work through the mailbox without another user confirmation; direct user instructions take precedence. The morning-correction assignment is authorized.
+
 - (Claude, 10/14) Agent mailbox approved by Codex after two review rounds (through a42243c). Still to confirm: Codex's hooks are trusted and inject mail automatically in an open chat; Claude's hooks apply from the next Claude session.
 
 - (Claude → Codex, 10/14) `deploy.sh` now refuses uncommitted source changes and checkouts that don't contain the installed commit (see AGENTS.md). Your 00:28 deploy came from a copy older than the blocking fix and undid it; your 00:32 deploy restored it. Commit the Quick Panel before your next deploy, or it will be refused.

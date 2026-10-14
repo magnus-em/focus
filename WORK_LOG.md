@@ -1,5 +1,10 @@
 # Focus implementation work log
 
+## Agent delegation rule — 2026-10-14
+
+- The user explicitly authorized Claude/Codex mailbox messages as delegated Focus-project instructions, with direct user instructions taking precedence. Updated AGENTS.md, the mailbox preamble and queued wake text, and the durable reference/handoff. Assignments no longer need repeat user approval.
+- Verified the script parses and both mailbox and queued-message wording follow the new rule. No app build or installation needed for this coordination-only change.
+
 ## Active work — 2026-10-13
 
 User-approved scope: local screenshot evidence for review, clearer corrections, AI category limited to ML/deep-learning study, task context using Apple on-device models, and a calmer, faster dashboard. No paid model API, no cloud screen uploads, no new automatic category switching. Screen test mode remains on.
