@@ -74,22 +74,22 @@ struct SettingsView: View {
                     Divider()
                 }
 
-                SectionLabel("INTERVALS")
+                SectionLabel("Intervals")
                 IntervalRow(label: "Focus", value: $settings.workMinutes, range: 5...90, step: 5, unit: "min")
 
                 Divider()
 
-                SectionLabel("DAILY GOAL")
-                IntRow(label: "Daily Target", value: $settings.dailyGoal, range: 0...12, suffix: "h", zeroLabel: "Off")
+                SectionLabel("Daily goal")
+                IntRow(label: "Daily target", value: $settings.dailyGoal, range: 0...12, suffix: "h", zeroLabel: "Off")
 
                 Divider()
 
-                SectionLabel("CATEGORIES")
+                SectionLabel("Categories")
                 CategoriesEditor(settings: settings, store: store)
 
                 Divider()
 
-                SectionLabel("ICLOUD SYNC")
+                SectionLabel("iCloud sync")
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
                         Circle().fill(cloudStatusColor).frame(width: 8, height: 8)
@@ -123,7 +123,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("COMMITMENT")
+                SectionLabel("Commitment")
                 ToggleRow(label: "Daily commitment prompt", isOn: $settings.commitmentEnabled)
                 if settings.commitmentEnabled {
                     Text("You'll be prompted each morning to write your commitment for the day.")
@@ -150,17 +150,17 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("SCREEN")
+                SectionLabel("Screen")
                 ScreenSettings(settings: settings)
 
                 Divider()
 
-                SectionLabel("FOCUS MODES")
+                SectionLabel("Focus modes")
                 FocusModeSettings(tags: settings.tags)
 
                 Divider()
 
-                SectionLabel("AWAY & GAPS")
+                SectionLabel("Away & gaps")
                 ToggleRow(label: "Ask when I come back", isOn: $settings.awayPrompts)
                 if settings.awayPrompts {
                     IntRow(label: "After being away", value: $settings.awayPromptMinutes, range: 5...120, suffix: "min")
@@ -173,7 +173,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("RECALL")
+                SectionLabel("Recall")
                 ToggleRow(label: "Recall prompt after focus", isOn: $settings.recallAfterSession)
                 if settings.recallAfterSession {
                     IntRow(label: "For blocks of at least", value: $settings.recallMinMinutes, range: 5...120, suffix: "min")
@@ -213,7 +213,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("LEETCODE")
+                SectionLabel("LeetCode")
                 ToggleRow(label: "Evening nudge if under goal", isOn: $settings.leetCodeNudge)
                 if settings.leetCodeNudge {
                     HStack {
@@ -233,7 +233,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("BEHAVIOR")
+                SectionLabel("Behavior")
                 ToggleRow(label: "Auto-break after session", isOn: $settings.autoBreakEnabled)
                 ToggleRow(label: "Auto-start focus", isOn: $settings.autoStartWork)
                 ToggleRow(label: "Sound effects", isOn: $settings.soundEnabled)
@@ -277,7 +277,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("SITE BLOCKING")
+                SectionLabel("Site blocking")
                 ToggleRow(label: "Block distracting sites", isOn: $settings.siteBlockingEnabled)
 
                 if settings.siteBlockingEnabled {
@@ -313,7 +313,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("INTERVIEW")
+                SectionLabel("Interview")
 
                 if let date = settings.interviewDate {
                     HStack {
@@ -355,12 +355,12 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("PRACTICE MODE")
+                SectionLabel("Practice mode")
                 PracticeNewCapRow()
 
                 Divider()
 
-                SectionLabel("PROBLEM GOALS")
+                SectionLabel("Problem goals")
                 HStack {
                     Spacer()
                     Text("Daily").font(.system(size: 10, weight: .medium)).foregroundStyle(.tertiary).frame(width: 72, alignment: .trailing)
@@ -377,7 +377,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("PROBLEM SOURCES")
+                SectionLabel("Problem sources")
 
                 VStack(spacing: 5) {
                     ForEach(settings.problemSources, id: \.self) { source in
@@ -416,7 +416,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("LOG MANUAL SESSION")
+                SectionLabel("Log manual session")
 
                 VStack(spacing: 10) {
                     IntRow(label: "Duration", value: $manualMinutes, range: 1...480, suffix: "min")
@@ -501,7 +501,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                SectionLabel("DATA")
+                SectionLabel("Data")
                 Button {
                     DataExport.showSavePanel(container: modelContext.container)
                 } label: {
@@ -756,9 +756,8 @@ private struct SectionLabel: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 10, weight: .bold, design: .rounded))
-            .tracking(1.5)
-            .foregroundStyle(.secondary)
+            .font(.system(size: 15, weight: .semibold))
+            .padding(.top, 4)
     }
 }
 
