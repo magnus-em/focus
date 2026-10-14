@@ -673,13 +673,13 @@ final class EveningReviewWindowController: NSObject, NSWindowDelegate {
     static let shared = EveningReviewWindowController()
     private var window: NSWindow?
 
-    func open(store: SessionStore, days: DayStore, settings: AppSettings, timer: TimerManager) {
+    func open(store: SessionStore, days: DayStore, settings: AppSettings, timer: TimerManager, recall: RecallStore? = nil) {
         if let w = window {
             w.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let view = EveningReviewView(store: store, days: days, settings: settings, timer: timer) { [weak self] in
+        let view = EveningReviewView(store: store, days: days, settings: settings, timer: timer, recall: recall) { [weak self] in
             self?.window?.close()
         }
         let w = NSWindow(contentViewController: NSHostingController(rootView: view))
@@ -702,9 +702,16 @@ struct EveningReviewView: View {
     @ObservedObject var days: DayStore
     @ObservedObject var settings: AppSettings
     @ObservedObject var timer: TimerManager
+    var recall: RecallStore? = nil
     let onClose: () -> Void
 
     @ObservedObject private var screen = ScreenWatcher.shared
+    @State private var questions: [RecallCardDraft] = []
+    @State private var questionCourse = ""
+    @State private var answers: [UUID: String] = [:]
+    @State private var revealed: Set<UUID> = []
+    @State private var keptCards: Set<UUID> = []
+    @State private var drafting = false
     @State private var entry = EveningEntry()
     @State private var saved = false
 
@@ -775,6 +782,8 @@ struct EveningReviewView: View {
                 }
 
                 workedOn
+
+                tonightsQuestions
 
                 if !life.isEmpty {
                     section("The rest of the day") {
@@ -889,6 +898,92 @@ struct EveningReviewView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Tonight's 3 questions
+
+    /// Retrieval tonight beats rereading tomorrow: three questions from what
+    /// the screen saw you study, answered from memory, kept as cards if useful.
+    /// Claude drafts them when a key is set; otherwise each is "explain X"
+    /// with that topic's notes as the reference.
+    @ViewBuilder
+    private var tonightsQuestions: some View {
+        let list = Array(topics.filter { !$0.bullets.isEmpty }.prefix(5))
+        if recall != nil, !list.isEmpty {
+            section("Tonight's 3 questions") {
+                if questions.isEmpty {
+                    Text(drafting ? "Writing questions from today's notes…" : "Answer from memory before looking anything up.")
+                        .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+                }
+                ForEach(questions) { q in question(q) }
+                if !questions.isEmpty, recall != nil {
+                    let unsaved = questions.filter { !keptCards.contains($0.id) }
+                    if !unsaved.isEmpty {
+                        Button("Keep all \(unsaved.count) as recall cards") {
+                            for q in unsaved { keep(q) }
+                        }
+                        .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.indigo)
+                    }
+                }
+            }
+            .task(id: list.map(\.name).joined()) { await draftQuestions(from: list) }
+        }
+    }
+
+    private func question(_ q: RecallCardDraft) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(q.prompt).font(.system(size: 14, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+            TextField("Your answer, from memory", text: Binding(get: { answers[q.id] ?? "" }, set: { answers[q.id] = $0 }), axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 13))
+                .lineLimit(2...6)
+            HStack(spacing: 12) {
+                Button(revealed.contains(q.id) ? "Hide answer" : "Show answer") {
+                    if revealed.contains(q.id) { revealed.remove(q.id) } else { revealed.insert(q.id) }
+                }
+                .buttonStyle(.plain).font(.system(size: 13, weight: .medium)).foregroundStyle(Color.secondaryText)
+                Spacer()
+                if keptCards.contains(q.id) {
+                    Label("Kept", systemImage: "checkmark").font(.system(size: 13)).foregroundStyle(Color.good)
+                } else {
+                    Button("Keep as card") { keep(q) }
+                        .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.indigo)
+                }
+            }
+            if revealed.contains(q.id) {
+                Text(q.answer).font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.05)))
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func keep(_ q: RecallCardDraft) {
+        guard let recall, !keptCards.contains(q.id) else { return }
+        recall.addItem(course: q.topic.isEmpty ? questionCourse : q.topic, prompt: q.prompt, answer: q.answer,
+                       kind: q.kind, source: "Tonight's questions", byAI: RecallCoach.isConfigured)
+        keptCards.insert(q.id)
+    }
+
+    private func draftQuestions(from list: [Topic]) async {
+        guard questions.isEmpty, !drafting else { return }
+        questionCourse = list.first?.category ?? ""
+        let material = list.map { t in "## \(t.name)\n" + t.bullets.map { "- \($0)" }.joined(separator: "\n") }.joined(separator: "\n\n")
+        if RecallCoach.isConfigured {
+            drafting = true
+            defer { drafting = false }
+            if let cards = try? await RecallCoach.draftCards(from: material, course: questionCourse, max: 3), !cards.isEmpty {
+                questions = Array(cards.prefix(3))
+                return
+            }
+        }
+        questions = list.prefix(3).map { t in
+            RecallCardDraft(prompt: "From memory: what did you work out about \(Self.sentenceCase(t.name))?",
+                            answer: t.bullets.prefix(4).map { "• \($0)" }.joined(separator: "\n"),
+                            topic: t.category ?? "")
         }
     }
 

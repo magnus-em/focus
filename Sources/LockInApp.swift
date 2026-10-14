@@ -173,7 +173,7 @@ struct FocusApp: App {
         BrowserBridge.shared.start()
 
         CommitmentReminder.shared.install(dayStore: days, settings: appSettings) {
-            EveningReviewWindowController.shared.open(store: store, days: days, settings: appSettings, timer: timer)
+            EveningReviewWindowController.shared.open(store: store, days: days, settings: appSettings, timer: timer, recall: recall)
         }
         CommitmentReminder.shared.onOtherTap = { id in
             if id == LeetCodeStore.nudgeID { leetCodeCtrl.open(store: leetCode, settings: appSettings) }
@@ -229,7 +229,7 @@ struct FocusApp: App {
                                         keep: "Still SWE", options: ["Math"], tags: appSettings.tags)
                 DesignGallery.show(AwayPromptView(model: m).padding(20), name: name, dark: dark, size: NSSize(width: 380, height: 220))
             case "review":
-                DesignGallery.show(EveningReviewView(store: store, days: days, settings: appSettings, timer: timer) {},
+                DesignGallery.show(EveningReviewView(store: store, days: days, settings: appSettings, timer: timer, recall: recall) {},
                                    name: name, dark: dark, size: NSSize(width: 620, height: 900))
             default:
                 var spec = name.replacingOccurrences(of: "popover-", with: "")
@@ -253,7 +253,7 @@ struct FocusApp: App {
             }
         }
         QuickSwitch.shared?.openReview = {
-            EveningReviewWindowController.shared.open(store: store, days: days, settings: appSettings, timer: timer)
+            EveningReviewWindowController.shared.open(store: store, days: days, settings: appSettings, timer: timer, recall: recall)
         }
         QuickSwitch.shared?.openRecall = {
             recallCtrl.open(store: recall, settings: appSettings, sessionStore: store)
