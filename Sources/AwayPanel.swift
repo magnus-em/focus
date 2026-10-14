@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Carbon
 import FocusCore
 
 /// Decides when to ask about time away from the Mac and when to nudge
@@ -196,6 +197,18 @@ final class AwayPromptModel: ObservableObject {
     var onResize: (() -> Void)?
     var touched = false
 
+    /// The first suggestion, as the ↩ shortcut takes it.
+    var acceptTitle: String? { options.first.map { $0 ?? "Break" } }
+
+    func accept() {
+        guard let first = options.first else { return }
+        onPick?(first)
+    }
+
+    func dismissCard() {
+        if let onKeep { onKeep() } else { onClose?() }
+    }
+
     init(icon: String, title: String, subtitle: String, question: String, keep: String?, options: [String?], tags: [String]) {
         self.icon = icon
         self.title = title
@@ -212,7 +225,12 @@ private final class AwayKeyablePanel: NSPanel {
 }
 
 /// Corner card, same footprint as the recall prompt. Never takes focus.
+/// While one shows, ⌃⌥⌘↩ takes its first suggestion and ⌃⌥⌘⌫ dismisses it
+/// (same as ✕), from any app; registered only while a card is up. Once you
+/// click the card, plain ↩ and Esc do the same.
 final class AwayPanel {
+    private static weak var visible: AwayPanel?
+    private static var keys: [GlobalHotKey] = []
     private var panel: NSPanel?
     private var host: NSHostingController<AwayPromptView>?
     private var model: AwayPromptModel?
@@ -234,6 +252,7 @@ final class AwayPanel {
             backing: .buffered, defer: false
         )
         p.contentViewController = h
+        h.view.focusRingType = .none
         p.backgroundColor = .clear
         p.isOpaque = false
         p.hasShadow = true
@@ -245,6 +264,8 @@ final class AwayPanel {
         panel = p
         layout()
         p.orderFrontRegardless()
+        Self.visible = self
+        Self.registerKeys()
 
         let work = DispatchWorkItem { [weak self] in
             guard let self, let m = self.model, !m.touched else { return }
@@ -262,7 +283,19 @@ final class AwayPanel {
                           width: Self.width, height: height), display: true)
     }
 
+    private static func registerKeys() {
+        guard keys.isEmpty else { return }
+        let mods = GlobalHotKey.controlModifier | GlobalHotKey.optionModifier | GlobalHotKey.commandModifier
+        let accept = GlobalHotKey(keyCode: UInt32(kVK_Return), modifiers: mods) { AwayPanel.visible?.model?.accept() }
+        let close = GlobalHotKey(keyCode: UInt32(kVK_Delete), modifiers: mods) { AwayPanel.visible?.model?.dismissCard() }
+        keys = [accept, close].compactMap { $0 }
+    }
+
     func dismiss() {
+        if Self.visible === self {
+            Self.visible = nil
+            Self.keys = []
+        }
         expire?.cancel()
         expire = nil
         panel?.close()
@@ -291,13 +324,14 @@ struct AwayPromptView: View {
                         .foregroundStyle(Color.secondaryText)
                 }
                 Spacer()
-                Button { if let keep = model.onKeep { keep() } else { model.onClose?() } } label: {
+                Button { model.dismissCard() } label: {
                     Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Color.secondaryText)
                         .frame(width: 24, height: 24)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help(model.keep.map { "\($0) — change nothing" } ?? "Dismiss")
+                .keyboardShortcut(.cancelAction)
+                .help((model.keep.map { "\($0) — change nothing" } ?? "Dismiss") + " (⌃⌥⌘⌫)")
                 .accessibilityLabel("Dismiss")
             }
 
@@ -312,8 +346,8 @@ struct AwayPromptView: View {
                 if let keep = model.keep {
                     chip(keep, color: .secondary, primary: true) { model.onKeep?() }
                 }
-                ForEach(Array(model.options.enumerated()), id: \.offset) { _, o in
-                    chip(o ?? "Break", color: o.map(categoryColor) ?? breakColor, primary: false) { model.onPick?(o) }
+                ForEach(Array(model.options.enumerated()), id: \.offset) { i, o in
+                    chip(o ?? "Break", color: o.map(categoryColor) ?? breakColor, primary: false, isDefault: i == 0) { model.onPick?(o) }
                 }
                 if model.showAll {
                     ForEach(model.tags.filter { t in !model.options.contains { $0 == t } && model.keep != "Still \(t)" }, id: \.self) { t in
@@ -339,10 +373,17 @@ struct AwayPromptView: View {
                     .foregroundStyle(Color.secondaryText)
                     .buttonStyle(.plain)
             }
+
+            if let accept = model.acceptTitle {
+                Text("⌃⌥⌘↩ \(accept)  ·  ⌃⌥⌘⌫ \(model.keep ?? "Dismiss")")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(14)
         .frame(width: 340, alignment: .topLeading)
         .modifier(CornerGlass())
+        .focusEffectDisabled()
     }
 
     /// The suggested category's color, else orange for "needs you".
@@ -351,7 +392,8 @@ struct AwayPromptView: View {
         return .orange
     }
 
-    private func chip(_ title: String, color: Color, primary: Bool, action: @escaping () -> Void) -> some View {
+    private func chip(_ title: String, color: Color, primary: Bool, isDefault: Bool = false,
+                      action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if !primary { Circle().fill(color).frame(width: 7, height: 7) }
@@ -365,6 +407,7 @@ struct AwayPromptView: View {
         .font(.system(size: 13, weight: primary ? .semibold : .medium))
         .foregroundStyle(Color.primary)
         .buttonStyle(.plain)
+        .keyboardShortcut(isDefault ? .defaultAction : nil)
     }
 }
 
