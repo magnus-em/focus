@@ -218,10 +218,11 @@ struct FocusApp: App {
         FocusModes.shared.start(timer: timer)
         QuickSwitch.shared?.openGallery = { name, dark in
             switch name {
-            case "dashboard":
+            case "dashboard", "dashboard-review", "dashboard-trends":
                 DesignGallery.show(
                     DashboardView(sessionStore: store, problemStore: problems, homeworkStore: homework, settings: appSettings,
-                                  dayStore: days, timerManager: timer, browserStore: browser),
+                                  dayStore: days, timerManager: timer, browserStore: browser,
+                                  initialDestination: name == "dashboard-review" ? "Review" : name == "dashboard-trends" ? "Trends" : "Today"),
                     name: name, dark: dark, size: NSSize(width: 1100, height: 900))
             case "card":
                 let m = AwayPromptModel(icon: "eye", title: "Looks like Math", subtitle: "since 8:41 PM · 1m on screen",

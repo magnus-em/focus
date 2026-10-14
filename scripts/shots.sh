@@ -9,6 +9,7 @@ set -e
 idle() { ioreg -c IOHIDSystem | awk '/HIDIdleTime/ {print int($NF/1000000000); exit}'; }
 virtual=${SHOTS_VIRTUAL:-1}
 need=${SHOTS_IDLE:-120}
+waitForView=${SHOTS_WAIT:-3}
 if (( ! virtual )) && (( $(idle) < need )); then echo "Mac in use (idle $(idle)s < ${need}s); not taking screenshots." >&2; exit 2; fi
 locked=$(swift -e 'import CoreGraphics
 print((CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Int ?? 0)' 2>/dev/null)
@@ -28,7 +29,7 @@ for v in $views; do
   for mode in light dark; do
     if (( ! virtual )) && (( $(idle) < 3 )); then echo "You're back; stopped." >&2; exit 3; fi
     open -g "focus://gallery?view=$v&dark=$([[ $mode == dark ]] && echo 1 || echo 0)&virtual=$virtual"
-    sleep 3
+    sleep "$waitForView"
     id=$(winid "Gallery $v $mode")
     if [[ -n $id ]]; then screencapture -x -o -l "$id" "$out/$v-$mode.png"; echo "$out/$v-$mode.png"
     else echo "missing: $v $mode" >&2; fi

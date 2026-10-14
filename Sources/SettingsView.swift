@@ -1006,9 +1006,24 @@ private struct ScreenSettings: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject private var watcher = ScreenWatcher.shared
     @ObservedObject private var calendar = ClassCalendar.shared
+    @ObservedObject private var evidence = ScreenEvidenceStore.shared
 
     var body: some View {
         ToggleRow(label: "Watch what's on screen", isOn: $settings.screenWatch)
+        ToggleRow(label: "Keep screenshots for review on this Mac", isOn: $evidence.enabled)
+        HStack {
+            Text("Seven days · up to 256 MB · \(ByteCountFormatter.string(fromByteCount: Int64(evidence.storedBytes), countStyle: .file)) stored")
+                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+            Spacer()
+            Button("Delete screenshots", role: .destructive) { evidence.deleteAll() }
+                .controlSize(.small).disabled(evidence.count == 0)
+        }
+        Text(evidence.enabled ? "New screenshots continue while watching is on. Private and ignored apps are excluded."
+             : "Screenshot saving is off. Existing review images stay until they expire or you delete them.")
+            .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+        if let error = evidence.lastError {
+            Text(error).font(.system(size: 11)).foregroundStyle(.orange)
+        }
         if settings.screenWatch {
             ToggleRow(label: "Suggest switching categories", isOn: $settings.screenSuggest)
             if settings.screenSuggest {
@@ -1060,7 +1075,7 @@ private struct ScreenSettings: View {
                 }.controlSize(.small)
             }
         }
-        Text("Every 15s and on each app switch, the front window is read on-device with Apple Vision and labeled by Apple Intelligence. Screenshots and text are never sent anywhere; only the window title and a one-line summary are kept on this Mac for 30 days, plus the page text behind each switch card in the prompt log (14 days). Passwords, Messages, Mail, WhatsApp, Telegram and FaceTime are never captured. Picking \"Still X\" teaches it.")
+        Text("Every 15s and on each app switch, the front window is read on-device with Apple Vision and labeled by Apple Intelligence. Review screenshots stay on this Mac for up to seven days when enabled; titles and summaries stay for 30 days. The prompt log keeps the page text behind switch cards for 14 days. Passwords, Messages, Mail, WhatsApp, Telegram and FaceTime are never captured. Picking \"Still X\" teaches it.")
             .font(.system(size: 11))
             .foregroundStyle(Color.secondaryText)
             .fixedSize(horizontal: false, vertical: true)

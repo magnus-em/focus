@@ -1,6 +1,7 @@
 import AppKit
 import NaturalLanguage
 import CloudKit
+import Combine
 import EventKit
 import FoundationModels
 import FocusCore
@@ -8,7 +9,7 @@ import ScreenCaptureKit
 import Vision
 
 /// What the frontmost window showed over a stretch of time. Device-local;
-/// screenshots and recognized text are never stored, only title + summary.
+/// Review images are retained separately in the bounded local evidence store.
 struct ScreenSpan: Codable, Equatable, Identifiable {
     var start: Date
     var end: Date
@@ -22,6 +23,8 @@ struct ScreenSpan: Codable, Equatable, Identifiable {
     /// Where the label came from: "you" (your earlier answer), "model",
     /// "held" (kept by window stickiness), "focus" (time in Focus). nil in old data.
     var source: String?
+    var reason: String?
+    var uncertain: Bool?
     var id: Date { start }
 }
 
@@ -61,6 +64,10 @@ final class ScreenWatcher: ObservableObject {
         var m = Self.userIgnored
         m[bundle] = on ? name : nil
         UserDefaults.standard.set(m, forKey: Self.userIgnoredKey)
+        if on {
+            resetEvidence()
+            ScreenEvidenceStore.shared.delete(bundle: bundle)
+        }
         objectWillChange.send()
     }
 
@@ -77,11 +84,16 @@ final class ScreenWatcher: ObservableObject {
         var source: String
         var active: Bool
         var seconds: Double
+        var reason: String = ""
+        var uncertain = false
     }
     @Published private(set) var lastSnapshot: Snapshot?
     /// Why the coach did or didn't show a card after the last snapshot.
     @Published var coachStatus = ""
     private var labelSource = ""
+    private var labelReason = ""
+    private var labelUncertain = false
+    private var taskContext = LocalTaskContext()
 
     /// Life categories done away from the Mac: while one runs the screen says
     /// nothing about what you're doing, so watching pauses.
@@ -94,6 +106,8 @@ final class ScreenWatcher: ObservableObject {
     private var settings: AppSettings?
     private var tick: Timer?
     private var busy = false
+    private var sampleGeneration = 0
+    private var watchSetting: AnyCancellable?
     /// OCR sometimes drops a space in a chat's title ("Activitycategory
     /// naming"), splitting one chat into two windows; the spaced spelling wins.
     private var chatTitles: [String: String] = [:]
@@ -109,7 +123,13 @@ final class ScreenWatcher: ObservableObject {
     /// What the watcher is doing right now, for the live line on the Dashboard.
     @Published private(set) var stage = ""
     var nextSnapshotAt: Date? { tick?.fireDate }
-    private var cache: [String: (category: String?, summary: String)] = [:]
+    private struct CachedLabel {
+        var category: String?
+        var summary: String
+        var reason: String
+        var uncertain: Bool
+    }
+    private var cache: [String: CachedLabel] = [:]
     /// The small model flips between neighbors (Math/Reading) on the same
     /// window; a window's label only changes after 3 disagreements in a row.
     private var windowLabel: [String: (category: String, against: Int)] = [:]
@@ -177,6 +197,9 @@ final class ScreenWatcher: ObservableObject {
     func start(settings: AppSettings) {
         self.settings = settings
         guard tick == nil else { return }
+        watchSetting = settings.$screenWatch.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] enabled in
+            if !enabled { self?.resetEvidence() }
+        }
         if settings.screenWatch, !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
         tick = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.sample() }
@@ -219,6 +242,7 @@ final class ScreenWatcher: ObservableObject {
         var right: Bool
         var actual: String?
         var at: Date
+        var disposition: String? = nil
     }
     @Published private(set) var checks: [BlockCheck] = {
         let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -228,6 +252,7 @@ final class ScreenWatcher: ObservableObject {
     private var checksURL: URL { fileURL.deletingLastPathComponent().appendingPathComponent("screen-checks.json") }
 
     var checkChoices: [String] { (settings?.tags ?? []).filter { !FocusCategories.notFromScreen.contains($0) } }
+    var reviewChoices: [String] { settings?.tags ?? [] }
 
     func check(for a: ScreenActivity) -> BlockCheck? {
         checks.last { min($0.end, a.end) > max($0.start, a.start) }
@@ -246,9 +271,18 @@ final class ScreenWatcher: ObservableObject {
         }
     }
 
+    func setReviewDisposition(_ a: ScreenActivity, disposition: String) {
+        guard ["unsure", "mixed"].contains(disposition) else { return }
+        checks.removeAll { min($0.end, a.end) > max($0.start, a.start) }
+        checks.append(BlockCheck(start: a.start, end: a.end, said: a.category, right: false,
+                                 actual: nil, at: Date(), disposition: disposition))
+        checks.removeAll { $0.end < Date().addingTimeInterval(-60 * 86400) }
+        if let data = try? JSONEncoder().encode(checks) { try? data.write(to: checksURL, options: .atomic) }
+    }
+
     func checkScore(days: Int = 7) -> (right: Int, total: Int) {
         let cutoff = Date().addingTimeInterval(-Double(days) * 86400)
-        let recent = checks.filter { $0.end > cutoff }
+        let recent = checks.filter { $0.end > cutoff && $0.disposition == nil }
         return (recent.filter(\.right).count, recent.count)
     }
 
@@ -262,13 +296,16 @@ final class ScreenWatcher: ObservableObject {
             d["snapshot"] = ["at": iso.string(from: x.date), "app": x.app, "bundle": x.bundle, "title": x.title,
                              "category": x.category ?? "none", "summary": x.summary, "source": x.source,
                              "active": x.active, "seconds": x.seconds, "text": x.text,
+                             "reason": x.reason, "uncertain": x.uncertain,
                              "otherScreens": x.others.map { ["window": $0.window, "text": $0.text] }]
         }
         d["samples"] = samples.suffix(40).map {
             ["at": iso.string(from: $0.date), "app": $0.app, "title": $0.title, "category": $0.category ?? "none",
-             "summary": $0.summary, "active": $0.active, "learned": $0.learned] as [String: Any]
+             "summary": $0.summary, "active": $0.active, "learned": $0.learned,
+             "reason": $0.reason ?? "", "uncertain": $0.uncertain] as [String: Any]
         }
         d["memory"] = Self.memory
+        d["recentTasks"] = taskContext.promptContext()
         if let data = try? JSONSerialization.data(withJSONObject: d, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: fileURL.deletingLastPathComponent().appendingPathComponent("screen-debug.json"))
         }
@@ -299,11 +336,11 @@ final class ScreenWatcher: ObservableObject {
     // MARK: - Sampling
 
     private func sample() async {
-        guard let settings, settings.screenWatch else { status = "Off"; return }
+        guard let settings, settings.screenWatch else { status = "Off"; taskContext.clear(); return }
         guard !busy else { return }
-        guard !PresenceMonitor.shared.isAway else { status = "Paused while you're away"; return }
+        guard !PresenceMonitor.shared.isAway else { status = "Paused while you're away"; taskContext.clear(); return }
         let idle = PresenceMonitor.idleSeconds
-        guard idle < 300 else { status = "Paused, no keyboard or mouse for 5 min"; return }
+        guard idle < 300 else { status = "Paused, no keyboard or mouse for 5 min"; taskContext.clear(); return }
         // During Chores etc. a lit screen says nothing, but hands on the
         // keyboard/mouse mean you're back, so watch (and suggest) again.
         if let c = runningCategory(), Self.offScreenCategories.contains(c), idle > 30 {
@@ -314,11 +351,13 @@ final class ScreenWatcher: ObservableObject {
         guard let app = NSWorkspace.shared.frontmostApplication, let bundle = app.bundleIdentifier,
               !Self.ignoredApps.contains(bundle) else { return }
         if Self.userIgnored[bundle] != nil {
+            taskContext.clear()
             status = "Skipping \(app.localizedName ?? bundle) (ignored)"
             return
         }
         let appName = app.localizedName ?? bundle
         let now = Date()
+        let generation = sampleGeneration
 
         if bundle == Self.ownBundle {
             let window = Self.frontTitle(pid: app.processIdentifier) ?? ""
@@ -331,6 +370,7 @@ final class ScreenWatcher: ObservableObject {
         }
 
         if Self.privateApps.contains(bundle) {
+            taskContext.clear()
             record(ScreenSample(date: now, app: appName, bundleID: bundle, title: "", summary: "Private", category: nil,
                                 active: idle < 90))
             return
@@ -344,16 +384,22 @@ final class ScreenWatcher: ObservableObject {
         otherScreensReadAt = otherScreensReadAt.filter { now.timeIntervalSince($0.value) < 3600 }
         let recentOthers = Set(otherScreensReadAt.filter { now.timeIntervalSince($0.value) < 60 }.keys)
         guard let capture = await Self.captureWindows(pid: app.processIdentifier, skipOthers: recentOthers) else { return }
+        guard canRecordSample(generation: generation, bundle: bundle) else { return }
         let shot = capture.front
         let skip = Self.chromeFraction(shot, bundle: bundle)
         stage = "Reading text in \(appName)"
-        let read = await Task.detached(priority: .utility) { Self.recognize(shot.image, skipTop: skip) }.value
+        let includeSidebar = !Self.chatApps.contains(bundle)
+        let read = await Task.detached(priority: .utility) {
+            Self.recognize(shot.image, skipTop: skip, includeSidebar: includeSidebar)
+        }.value
         let text = read.text
+        guard canRecordSample(generation: generation, bundle: bundle) else { return }
         var title = shot.title
         if Self.chatApps.contains(bundle), Self.isGeneric(title: title, app: appName), let h = read.header,
            !Self.isGeneric(title: h, app: appName) {
             title = canonicalChatTitle(h, bundle: bundle)
         }
+        ScreenEvidenceStore.shared.record(image: shot.image, at: now, bundle: bundle, title: title)
         // The Chrome extension knows the tab's address; the picture doesn't.
         var url: String?
         if Self.browsers.contains(bundle), let tab = BrowserBridge.shared.activeTab,
@@ -370,22 +416,35 @@ final class ScreenWatcher: ObservableObject {
             keepPageText(otherText, window: "\(key) (other screen)", at: now)
             otherTexts.append((key, otherText))
         }
+        guard canRecordSample(generation: generation, bundle: bundle) else { return }
         stage = "Labeling \(title.isEmpty ? appName : title)"
         let (category, summary) = await classify(app: appName, bundle: bundle, title: title, text: text, url: url)
+        guard canRecordSample(generation: generation, bundle: bundle) else { return }
         status = Self.modelAvailable ? "Watching" : "Watching · Apple Intelligence off, learning from your choices only"
         lastSampled = "\(bundle)|\(shot.title)"
         let learned = category != nil && !Self.isGeneric(title: title, app: appName)
             && Self.memory[Self.memoryKey(bundle: bundle, title: title)] == category
+            && !labelUncertain
         lastSnapshot = Snapshot(date: now, app: appName, bundle: bundle, title: url.map { "\(title) · \($0)" } ?? title,
                                 text: text, others: otherTexts,
                                 category: category, summary: summary, source: labelSource,
-                                active: PresenceMonitor.idleSeconds < 90, seconds: Date().timeIntervalSince(now))
+                                active: PresenceMonitor.idleSeconds < 90, seconds: Date().timeIntervalSince(now),
+                                reason: labelReason, uncertain: labelUncertain)
+        if PresenceMonitor.idleSeconds < 90 {
+            taskContext.record(app: appName, title: title, category: category, summary: summary, text: text,
+                               confirmed: learned, uncertain: labelUncertain, at: now)
+        }
         let source: String? = labelSource.hasPrefix("your earlier answer") ? "you"
             : labelSource.hasPrefix("kept") ? "held"
             : labelSource.contains("model") ? "model" : nil
         record(ScreenSample(date: now, app: appName, bundleID: bundle, title: title,
                             summary: summary, category: category, active: PresenceMonitor.idleSeconds < 90,
-                            learned: learned, source: source))
+                            learned: learned, source: source, reason: labelReason, uncertain: labelUncertain))
+    }
+
+    private func canRecordSample(generation: Int, bundle: String) -> Bool {
+        generation == sampleGeneration && settings?.screenWatch == true && !PresenceMonitor.shared.isAway
+            && PresenceMonitor.idleSeconds < 300 && !Self.privateApps.contains(bundle) && Self.userIgnored[bundle] == nil
     }
 
     private func record(_ s: ScreenSample) {
@@ -394,17 +453,20 @@ final class ScreenWatcher: ObservableObject {
 
         let end = s.date.addingTimeInterval(Self.interval)
         if var last = spans.last, last.bundleID == s.bundleID, last.title == s.title, last.category == s.category,
+           (last.uncertain ?? false) == s.uncertain,
            s.date.timeIntervalSince(last.end) < Self.interval {
             last.end = end
             last.summary = s.summary
             last.active = (last.active ?? false) || s.active
             last.source = s.source ?? last.source
+            last.reason = s.reason
+            last.uncertain = s.uncertain
             spans[spans.count - 1] = last
         } else {
             if let last = spans.last, last.end > s.date { spans[spans.count - 1].end = s.date }
             spans.append(ScreenSpan(start: s.date, end: end, app: s.app, bundleID: s.bundleID,
                                     title: s.title, summary: s.summary, category: s.category, active: s.active,
-                                    source: s.source))
+                                    source: s.source, reason: s.reason, uncertain: s.uncertain))
         }
         unsavedSamples += 1
         if unsavedSamples >= 4 { save() }
@@ -414,7 +476,10 @@ final class ScreenWatcher: ObservableObject {
 
     /// After sleep, lid close, lock or display off the old evidence is stale.
     func resetEvidence() {
+        sampleGeneration &+= 1
         samples.removeAll()
+        taskContext.clear()
+        cache.removeAll()
     }
 
     func save() {
@@ -450,7 +515,10 @@ final class ScreenWatcher: ObservableObject {
 
     private func categoryForApp(_ app: String, device: String) async -> String? {
         let candidates = candidateCategories()
-        if let known = Self.memory[Self.memoryKey(bundle: "ios", title: app)], candidates.contains(known) { return known }
+        if let known = Self.memory[Self.memoryKey(bundle: "ios", title: app)], candidates.contains(known) {
+            let decision = ScreenClassificationPolicy.evaluate(category: known, app: app, title: "", text: "", source: .learned)
+            if !decision.uncertain { return known }
+        }
         guard #available(macOS 26.0, *), Self.modelAvailable else { return nil }
         return await ScreenLabeler.classify(app: app, title: "\(app) app on an \(device)", text: "", categories: candidates)?.0
     }
@@ -697,7 +765,8 @@ final class ScreenWatcher: ObservableObject {
     static let chatApps: Set<String> = ["com.openai.chat", "com.openai.codex", "com.anthropic.claudefordesktop"]
 
     /// Text plus the longest main-column line in the title bar (a chat's title).
-    nonisolated private static func recognize(_ image: CGImage, skipTop: CGFloat = 0) -> (text: String, header: String?) {
+    nonisolated private static func recognize(_ image: CGImage, skipTop: CGFloat = 0,
+                                            includeSidebar: Bool = true) -> (text: String, header: String?) {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
@@ -707,7 +776,7 @@ final class ScreenWatcher: ObservableObject {
         let boxes = (request.results ?? []).filter { $0.boundingBox.maxY <= 1 - skipTop }
         let isSidebar = { (o: VNRecognizedTextObservation) in o.boundingBox.maxX < 0.24 }
         let ordered = boxes.filter { !isSidebar($0) }.sorted { $0.boundingBox.minY > $1.boundingBox.minY }
-            + boxes.filter(isSidebar).sorted { $0.boundingBox.minY > $1.boundingBox.minY }
+            + (includeSidebar ? boxes.filter(isSidebar).sorted { $0.boundingBox.minY > $1.boundingBox.minY } : [])
         let lines = ordered.compactMap { $0.topCandidates(1).first?.string }
         // Title bar only (ChatGPT's sits at 0.97): content scrolls up to ~0.94.
         let header = boxes.filter { !isSidebar($0) && $0.boundingBox.minY > 0.955 }
@@ -732,6 +801,7 @@ final class ScreenWatcher: ObservableObject {
     nonisolated static func isGeneric(title: String, app: String) -> Bool {
         let t = title.trimmingCharacters(in: .whitespaces).lowercased()
         return t.isEmpty || t == app.lowercased() || app.lowercased().hasPrefix(t)
+            || ["new chat", "new conversation", "untitled", "untitled chat"].contains(t)
     }
 
     nonisolated static func memoryKey(bundle: String, title: String) -> String {
@@ -788,17 +858,33 @@ final class ScreenWatcher: ObservableObject {
     }
 
     private func classify(app: String, bundle: String, title: String, text: String, url: String? = nil) async -> (String?, String) {
+        let generation = sampleGeneration
         let fallbackSummary = title.isEmpty ? app : "\(app): \(title)"
         let candidates = candidateCategories()
         let generic = Self.isGeneric(title: title, app: app)
+        labelReason = ""
+        labelUncertain = false
         if !generic, let known = Self.memory[Self.memoryKey(bundle: bundle, title: title)], candidates.contains(known) {
-            labelSource = "your earlier answer for this window"
-            return (known, cache[cacheKey(bundle, title, text)]?.summary ?? fallbackSummary)
+            let decision = ScreenClassificationPolicy.evaluate(category: known, app: app, title: title, text: text, source: .learned)
+            if decision.category == known {
+                labelSource = "your earlier answer for this window"
+                labelReason = decision.reason.isEmpty ? "You labeled this conversation or window \(known)" : decision.reason
+                return (known, cache[cacheKey(bundle, title, text)]?.summary ?? fallbackSummary)
+            }
         }
         let key = cacheKey(bundle, title, text)
-        if let hit = cache[key] { labelSource = "model (same page as before)"; return hit }
+        if let hit = cache[key], !hit.uncertain {
+            let decision = ScreenClassificationPolicy.evaluate(category: hit.category, app: app, title: title, text: text)
+            if !decision.uncertain, decision.category == hit.category {
+                labelSource = "model (same page as before)"
+                labelReason = hit.reason
+                return (hit.category, hit.summary)
+            }
+        }
         guard #available(macOS 26.0, *), Self.modelAvailable, !text.isEmpty || !title.isEmpty else {
             labelSource = "nothing to go on"
+            labelReason = "No available local model or visible text for this task"
+            labelUncertain = true
             return (nil, fallbackSummary)
         }
         labelSource = "on-device model"
@@ -810,26 +896,45 @@ final class ScreenWatcher: ObservableObject {
         nearMatch = nil
         let shots = generic ? [] : examples(like: title, among: candidates)
         if let near = nearMatch {
-            labelSource = "your earlier answer for a similar window (\"\(near.title)\", \(Int(near.sim * 100))% alike)"
-            return (near.category, cache[key]?.summary ?? fallbackSummary)
+            let decision = ScreenClassificationPolicy.evaluate(category: near.category, app: app, title: title, text: text, source: .learned)
+            if !decision.uncertain {
+                labelSource = "your earlier answer for a similar window (\"\(near.title)\", \(Int(near.sim * 100))% alike)"
+                labelReason = decision.reason.isEmpty ? "Similar to your \(near.category) label for \(near.title)" : decision.reason
+                return (near.category, cache[key]?.summary ?? fallbackSummary)
+            }
         }
         if !shots.isEmpty { labelSource = "on-device model, with \(shots.count) of your labels as examples" }
-        guard var result = await ScreenLabeler.classify(app: app, title: shownTitle, text: text, categories: candidates,
-                                                        current: generic ? runningCategory() : nil, examples: shots) else {
+        guard let classification = await ScreenLabeler.classifyDetailed(app: app, title: shownTitle, text: text, categories: candidates,
+                                                        current: runningCategory(), examples: shots,
+                                                        taskContext: taskContext.promptContext()) else {
             // The model threw (often its rate limit for background apps): keep
             // this window's last label instead of leaving a hole in the log.
             let held = generic ? samples.last { $0.bundleID == bundle }?.category : windowLabel[window]?.category
             labelSource = "kept \(held ?? "nothing"): the model failed (\(ScreenLabeler.lastError ?? "unknown"))"
-            return (held, fallbackSummary)
+            let decision = ScreenClassificationPolicy.evaluate(category: held, app: app, title: title, text: text, source: .held)
+            labelReason = "Local model unavailable; previous label is unverified for this screen"
+            labelUncertain = true
+            return (decision.category, fallbackSummary)
         }
-        if let c = result.0, !generic {
-            if let held = windowLabel[window], held.category != c, candidates.contains(held.category) {
+        guard generation == sampleGeneration else {
+            labelReason = "This observation expired while the local model was working"
+            labelUncertain = true
+            return (nil, fallbackSummary)
+        }
+        var result = (classification.category, classification.summary)
+        labelReason = classification.reason
+        labelUncertain = classification.uncertain
+        if let c = result.0, !generic, !labelUncertain {
+            if let held = windowLabel[window], held.category != c, candidates.contains(held.category),
+               !ScreenClassificationPolicy.evaluate(category: held.category, app: app, title: title, text: text, source: .held).uncertain {
                 if held.against + 1 >= (settings?.screenEverySwitch == true ? 2 : 3) {
                     windowLabel[window] = (c, 0)
                 } else {
                     windowLabel[window] = (held.category, held.against + 1)
                     labelSource = "kept \(held.category): model said \(c), \(held.against + 1) of \(settings?.screenEverySwitch == true ? 2 : 3) disagreements to switch"
                     result.0 = held.category
+                    labelReason = "Waiting for consistent evidence of \(c). \(classification.reason)"
+                    labelUncertain = true
                 }
             } else {
                 windowLabel[window] = (c, 0)
@@ -837,7 +942,9 @@ final class ScreenWatcher: ObservableObject {
             if windowLabel.count > 300 { windowLabel.removeAll() }
         }
         if cache.count > 400 { cache.removeAll() }
-        cache[key] = result
+        if !labelUncertain {
+            cache[key] = CachedLabel(category: result.0, summary: result.1, reason: labelReason, uncertain: false)
+        }
         return result
     }
 
@@ -899,6 +1006,8 @@ struct ScreenSample {
     /// Label came from your own earlier answer, not the model.
     var learned = false
     var source: String? = nil
+    var reason: String? = nil
+    var uncertain = false
     var memoryKey: String { ScreenWatcher.memoryKey(bundle: bundleID, title: title) }
 }
 
@@ -970,7 +1079,7 @@ final class ScreenCoach {
     /// own choice isn't evidence against it.
     private func trailingRun(notBefore floor: Date?) -> Run? {
         let samples = watcher.samples.filter { $0.bundleID != ScreenWatcher.ownBundle && $0.summary != "Private" }
-        guard let last = samples.last, last.active, let c = last.category else { return nil }
+        guard let last = samples.last, last.active, !last.uncertain, let c = last.category else { return nil }
         var start = last.date, hits = 0, total = 0, missStreak = 0
         var keyCounts: [String: Int] = [:]
         var allLearned = true
@@ -981,7 +1090,7 @@ final class ScreenCoach {
             newer = s.date
             guard s.active else { continue }
             total += 1
-            if s.category == c {
+            if s.category == c && !s.uncertain {
                 hits += 1; missStreak = 0; start = s.date
                 if !ScreenWatcher.isGeneric(title: s.title, app: s.app) { keyCounts[s.memoryKey, default: 0] += 1 }
                 allLearned = allLearned && s.learned
@@ -1008,6 +1117,7 @@ final class ScreenCoach {
                 && s.bundleID != ScreenWatcher.ownBundle && s.summary != "Private"
         }
         guard let last = recent.last else { return "No snapshots since you picked \(running ?? "this")" }
+        guard !last.uncertain else { return last.reason ?? "Not enough evidence to suggest a switch" }
         guard last.active else { return "You've been idle, so snapshots don't count" }
         guard let c = last.category else { return "Last snapshot had no label" }
         if c == running { return "Screen agrees with \(c)" }
@@ -1209,6 +1319,8 @@ enum PromptLog {
         let summary: String
         let category: String?
         let active: Bool
+        var reason: String? = nil
+        var uncertain: Bool? = nil
     }
 
     struct Page: Codable {
@@ -1250,7 +1362,8 @@ enum PromptLog {
             id: id, at: Date(), card: m.title, subtitle: m.subtitle, shownText: m.question,
             running: running, suggested: suggested, since: since, reason: reason,
             snapshots: samples.filter { $0.date >= context }.map {
-                Snapshot(at: $0.date, app: $0.app, title: $0.title, summary: $0.summary, category: $0.category, active: $0.active)
+                Snapshot(at: $0.date, app: $0.app, title: $0.title, summary: $0.summary, category: $0.category,
+                         active: $0.active, reason: $0.reason, uncertain: $0.uncertain)
             },
             pages: pages.suffix(12).map { Page(at: $0.date, window: $0.window, text: String($0.text.prefix(1500))) }
         ))

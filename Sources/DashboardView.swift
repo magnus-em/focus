@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import FocusCore
 import SwiftUI
 
@@ -17,8 +18,8 @@ class DashboardWindowController: ObservableObject {
         let vc = NSHostingController(rootView: view)
         let w = NSWindow(contentViewController: vc)
         w.title = "Focus"
-        w.setContentSize(NSSize(width: 740, height: 560))
-        w.minSize = NSSize(width: 640, height: 440)
+        w.setContentSize(NSSize(width: 1020, height: 740))
+        w.minSize = NSSize(width: 740, height: 520)
         w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         w.isReleasedWhenClosed = false
         w.center()
@@ -53,6 +54,111 @@ private func fmtHours(_ h: Double) -> String {
     h >= 1 ? String(format: "%.1fh", h) : "\(Int(h * 60))m"
 }
 
+private enum DashboardDestination: String, CaseIterable, Identifiable {
+    case today = "Today"
+    case review = "Review"
+    case trends = "Trends"
+
+    var id: String { rawValue }
+    var symbol: String {
+        switch self {
+        case .today: return "list.bullet.rectangle"
+        case .review: return "checkmark.bubble"
+        case .trends: return "chart.xyaxis.line"
+        }
+    }
+}
+
+private final class DashboardLiveState: ObservableObject {
+    struct Snapshot {
+        var work: WorkSession?
+        var rest: WorkSession?
+        var label = ""
+        var isActive = false
+        var isOnBreak = false
+        var runningStart: Date?
+    }
+
+    private struct Identity: Equatable {
+        let isActive: Bool
+        let isRunning: Bool
+        let isOnBreak: Bool
+        let label: String
+        let start: Date?
+        let pause: Date?
+        let breakKinds: [BreakKind]
+    }
+
+    @Published private(set) var snapshot = Snapshot()
+    private var identity: Identity?
+    private var lastRefresh = Date.distantPast
+    private var subscription: AnyCancellable?
+
+    init(timer: TimerManager) {
+        refresh(timer)
+        // Timer publishes before mutation; receive on the next main-loop turn.
+        subscription = timer.objectWillChange.receive(on: DispatchQueue.main).sink { [weak self, weak timer] _ in
+            guard let timer else { return }
+            self?.refresh(timer)
+        }
+    }
+
+    private func refresh(_ timer: TimerManager) {
+        let next = Identity(isActive: timer.isActive, isRunning: timer.isRunning,
+                            isOnBreak: timer.isOnBreak, label: timer.currentLabel,
+                            start: timer.sessionStartTime, pause: timer.pauseStartedAt,
+                            breakKinds: timer.currentBreakKinds)
+        let now = Date()
+        guard identity != next || (next.isActive && now.timeIntervalSince(lastRefresh) >= 30) else { return }
+        identity = next
+        lastRefresh = now
+        snapshot = Snapshot(work: timer.currentInProgressSession, rest: timer.currentInProgressBreak,
+                            label: timer.currentLabel, isActive: timer.isActive,
+                            isOnBreak: timer.isOnBreak, runningStart: timer.sessionStartTime)
+    }
+}
+
+private struct DashboardDayData {
+    var work: [WorkSession] = []
+    var breaks: [WorkSession] = []
+    var overlappingSessions: [WorkSession] = []
+    var reviewSessions: [WorkSession] = []
+    var events: [DayEvent] = []
+    var problemCount = 0
+    var breakMinutes = 0.0
+
+    init() {}
+
+    init(day: Date, sessions: [WorkSession], problems: [ProblemEntry]) {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        let end = calendar.date(byAdding: .day, value: 1, to: start)!
+        let reviewStart = calendar.date(byAdding: .day, value: -13, to: start)!
+        for session in sessions {
+            if session.startTime < end && session.startTime.addingTimeInterval(session.durationMinutes * 60) > reviewStart {
+                reviewSessions.append(session)
+            }
+            if session.startTime < end && session.startTime.addingTimeInterval(session.durationMinutes * 60) > start {
+                overlappingSessions.append(session)
+            }
+            guard session.startTime >= start && session.startTime < end else { continue }
+            if session.type == .work {
+                work.append(session)
+                events.append(DayEvent(id: session.id.uuidString, time: session.startTime, kind: .focus(session)))
+            } else {
+                breaks.append(session)
+                breakMinutes += session.durationMinutes
+                events.append(DayEvent(id: session.id.uuidString + "-b", time: session.startTime, kind: .breakSession(session)))
+            }
+        }
+        for problem in problems where problem.date >= start && problem.date < end {
+            problemCount += 1
+            events.append(DayEvent(id: problem.id.uuidString, time: problem.date, kind: .problem(problem)))
+        }
+        events.sort { $0.time > $1.time }
+    }
+}
+
 // MARK: - Dashboard
 
 struct DashboardView: View {
@@ -61,13 +167,32 @@ struct DashboardView: View {
     @ObservedObject var homeworkStore: HomeworkStore
     @ObservedObject var settings: AppSettings
     @ObservedObject var dayStore: DayStore
-    @ObservedObject var timerManager: TimerManager
-    @ObservedObject private var screenWatcher = ScreenWatcher.shared
+    let timerManager: TimerManager
+    private let screenWatcher = ScreenWatcher.shared
+    @StateObject private var liveState: DashboardLiveState
     @ObservedObject var browserStore: BrowserStore
 
+    @State private var destination: DashboardDestination = .today
+    @State private var showTrackedLog = false
+    @State private var showTimeline = false
+    @State private var dayData = DashboardDayData()
     @State private var editingEvent: DayEvent? = nil
     @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
     @State private var reviewTargetForDashboard: DayRecord? = nil
+
+    init(sessionStore: SessionStore, problemStore: ProblemStore, homeworkStore: HomeworkStore,
+         settings: AppSettings, dayStore: DayStore, timerManager: TimerManager, browserStore: BrowserStore,
+         initialDestination: String = "Today") {
+        self.sessionStore = sessionStore
+        self.problemStore = problemStore
+        self.homeworkStore = homeworkStore
+        self.settings = settings
+        self.dayStore = dayStore
+        self.timerManager = timerManager
+        self.browserStore = browserStore
+        _destination = State(initialValue: DashboardDestination(rawValue: initialDestination) ?? .today)
+        _liveState = StateObject(wrappedValue: DashboardLiveState(timer: timerManager))
+    }
 
     private let red   = Color(red: 0.96, green: 0.36, blue: 0.36)
     private let blue  = Color(red: 0.27, green: 0.62, blue: 0.83)
@@ -108,80 +233,39 @@ struct DashboardView: View {
     }
 
     private func commitmentBadge(label: String, icon: String, color: Color) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon).font(.system(size: 9))
-            Text(label).font(.system(size: 9, weight: .semibold))
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 12))
+            Text(label).font(.system(size: 12, weight: .semibold))
         }
         .foregroundStyle(color)
-        .padding(.horizontal, 6).padding(.vertical, 2)
-        .background(RoundedRectangle(cornerRadius: 4).fill(color.opacity(0.15)))
+        .padding(.horizontal, 12).frame(minHeight: 36)
+        .background(Capsule().fill(color.opacity(0.12)))
     }
 
-    private var selectedDayFocusSessions: [WorkSession] {
-        let cal = Calendar.current
-        return sessionStore.sessions.filter {
-            $0.type == .work && cal.isDate($0.startTime, inSameDayAs: selectedDay)
-        }
-    }
-
-    private var selectedDayBreakSessions: [WorkSession] {
-        let cal = Calendar.current
-        return sessionStore.sessions.filter {
-            $0.type.isBreak && cal.isDate($0.startTime, inSameDayAs: selectedDay)
-        }
-    }
-
-    /// Includes the running block, so it matches the ring and the popover.
-    private var selectedDayFocusMinutes: Double {
-        let live = isSelectedDayToday ? (timerManager.currentInProgressSession.flatMap { $0.isFocus ? $0.durationMinutes : nil } ?? 0) : 0
-        return selectedDayFocusSessions.filter(\.isFocus).reduce(0) { $0 + $1.durationMinutes } + live
-    }
-
-    private var selectedDayBreakMinutes: Double {
-        selectedDayBreakSessions.reduce(0) { $0 + $1.durationMinutes }
-    }
-
-    private var selectedDayProblemCount: Int {
-        let cal = Calendar.current
-        return problemStore.problems.filter { cal.isDate($0.date, inSameDayAs: selectedDay) }.count
-    }
+    private var selectedDayFocusSessions: [WorkSession] { dayData.work }
+    private var selectedDayBreakSessions: [WorkSession] { dayData.breaks }
+    private var selectedDayBreakMinutes: Double { dayData.breakMinutes }
+    private var selectedDayProblemCount: Int { dayData.problemCount }
 
     private var selectedDayEvents: [DayEvent] {
-        let cal = Calendar.current
-        let focus = selectedDayFocusSessions
-            .map { DayEvent(id: $0.id.uuidString, time: $0.startTime, kind: .focus($0)) }
-        let breaks = selectedDayBreakSessions
-            .map { DayEvent(id: $0.id.uuidString + "-b", time: $0.startTime, kind: .breakSession($0)) }
-        let problems = problemStore.problems
-            .filter { cal.isDate($0.date, inSameDayAs: selectedDay) }
-            .map { DayEvent(id: $0.id.uuidString, time: $0.date, kind: .problem($0)) }
-
-        var inProgress: [DayEvent] = []
-        if isSelectedDayToday {
-            if let live = timerManager.currentInProgressSession, cal.isDateInToday(live.startTime) {
-                inProgress.append(DayEvent(
-                    id: "in-progress",
-                    time: live.startTime,
-                    kind: .inProgressFocus(
-                        start: live.startTime,
-                        elapsedMinutes: live.durationMinutes,
-                        label: live.label
-                    )
-                ))
-            }
-            if let liveBreak = timerManager.currentInProgressBreak, cal.isDateInToday(liveBreak.startTime) {
-                inProgress.append(DayEvent(
-                    id: "in-progress-break",
-                    time: liveBreak.startTime,
-                    kind: .inProgressBreak(
-                        start: liveBreak.startTime,
-                        elapsedMinutes: liveBreak.durationMinutes
-                    )
-                ))
-            }
+        let calendar = Calendar.current
+        var events = dayData.events
+        guard isSelectedDayToday else { return events }
+        if let live = liveState.snapshot.work, calendar.isDateInToday(live.startTime) {
+            events.append(DayEvent(id: "in-progress", time: live.startTime,
+                                  kind: .inProgressFocus(start: live.startTime,
+                                                         elapsedMinutes: live.durationMinutes, label: live.label)))
         }
+        if let live = liveState.snapshot.rest, calendar.isDateInToday(live.startTime) {
+            events.append(DayEvent(id: "in-progress-break", time: live.startTime,
+                                  kind: .inProgressBreak(start: live.startTime, elapsedMinutes: live.durationMinutes)))
+        }
+        return events.sorted { $0.time > $1.time }
+    }
 
-        return (inProgress + focus + breaks + problems).sorted { $0.time > $1.time }
+    private func refreshDayData(sessions: [WorkSession]? = nil, problems: [ProblemEntry]? = nil) {
+        dayData = DashboardDayData(day: selectedDay, sessions: sessions ?? sessionStore.sessions,
+                                   problems: problems ?? problemStore.problems)
     }
 
     private func shiftSelectedDay(by days: Int) {
@@ -192,19 +276,40 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            leftPanel.frame(width: 244)
-            Divider()
-            rightPanel
+        VStack(spacing: 0) {
+            dashboardToolbar
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 20)
+            HStack(spacing: 0) {
+                rightPanel
+                if showTrackedLog {
+                    Divider()
+                    leftPanel.frame(width: 280)
+                        .background(Color(nsColor: .controlBackgroundColor).opacity(0.65))
+                }
+            }
         }
         .background {
-            AmbientBackdrop(colors: washColors, intensity: 0.35, speed: 0.06)
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .animation(.easeInOut(duration: 0.8), value: timerManager.currentLabel)
+            Color(nsColor: .windowBackgroundColor)
+                .overlay(alignment: .topLeading) {
+                    LinearGradient(colors: [accent.opacity(0.09), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .frame(height: 360)
+                        .allowsHitTesting(false)
+                }
         }
-        .glassChrome()
-        .frame(minWidth: 640, minHeight: 440)
+        .frame(minWidth: 740, minHeight: 520)
+        .onAppear { refreshDayData() }
+        .onReceive(sessionStore.$sessions) { refreshDayData(sessions: $0) }
+        .onReceive(problemStore.$problems) { refreshDayData(problems: $0) }
+        .onChange(of: selectedDay) { _, day in
+            refreshDayData()
+            let calendar = Calendar.current
+            let weekStart = calendar.date(byAdding: .day, value: -6, to: weekEndDay)!
+            if day < weekStart || day > weekEndDay {
+                weekEndOverride = calendar.isDateInToday(day) ? nil : day
+            }
+        }
         .sheet(item: $editingEvent) { event in
             EventEditSheet(
                 event: event, settings: settings,
@@ -231,29 +336,68 @@ struct DashboardView: View {
         }
     }
 
-    /// The running category tints the window (DESIGN.md idea 3).
-    private var washColors: [Color] {
-        guard timerManager.isActive else { return [red, amber, blue] }
-        let c = timerManager.isOnBreak ? TimerView.breakBlue : categoryColor(timerManager.currentLabel)
-        return [c, c.opacity(0.7), blue.opacity(0.5)]
+    private var accent: Color {
+        let snapshot = liveState.snapshot
+        guard snapshot.isActive else { return .accentColor }
+        return snapshot.isOnBreak ? TimerView.breakBlue : categoryColor(snapshot.label)
+    }
+
+    private var dashboardToolbar: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(isSelectedDayToday ? "Today" : selectedDay.formatted(.dateTime.weekday(.wide)))
+                    .font(.system(size: 26, weight: .semibold))
+                Text(selectedDay.formatted(.dateTime.month(.wide).day()))
+                    .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+            }
+            Spacer(minLength: 16)
+            HStack(spacing: 4) {
+                ForEach(DashboardDestination.allCases) { item in
+                    Button { destination = item } label: {
+                        Label(item.rawValue, systemImage: item.symbol)
+                            .font(.system(size: 13, weight: .medium))
+                            .padding(.horizontal, 12)
+                            .frame(height: 36)
+                            .background {
+                                if item == destination {
+                                    Capsule().fill(accent.opacity(0.15))
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(item == destination ? Color.primary : Color.secondaryText)
+                    .accessibilityAddTraits(item == destination ? .isSelected : [])
+                }
+            }
+            .padding(4)
+            .modifier(FloatingGlass())
+            Spacer(minLength: 16)
+            HStack(spacing: 0) {
+                dayNavButton(systemImage: "chevron.left") { shiftSelectedDay(by: -1) }
+                dayNavButton(systemImage: "chevron.right", disabled: isSelectedDayToday) { shiftSelectedDay(by: 1) }
+                Divider().frame(height: 20).padding(.horizontal, 4)
+                Button { showTrackedLog.toggle() } label: {
+                    Image(systemName: "sidebar.right")
+                        .font(.system(size: 14, weight: .medium)).frame(width: 36, height: 36)
+                        .foregroundStyle(showTrackedLog ? accent : .secondaryText)
+                }
+                .buttonStyle(.plain)
+                .help("Show or hide your tracked log")
+                .accessibilityLabel("Show or hide your tracked log")
+            }
+            .padding(4)
+            .modifier(FloatingGlass())
+        }
     }
 
     // MARK: - Left: Selected day's log
 
     private var leftPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(isSelectedDayToday ? "Today" : selectedDay.formatted(.dateTime.weekday(.wide)))
-                        .font(.system(size: 22, weight: .bold))
-                    Spacer()
-                    dayNavButton(systemImage: "chevron.left") { shiftSelectedDay(by: -1) }
-                    dayNavButton(systemImage: "chevron.right",
-                                 disabled: isSelectedDayToday) { shiftSelectedDay(by: 1) }
-                }
-                Text(selectedDay.formatted(.dateTime.month(.wide).day()))
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Tracked log").font(.system(size: 15, weight: .semibold))
+                Text("Your timer sessions and logged problems")
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 if let rec = selectedDayRecord, let start = rec.dayStart {
                     HStack(spacing: 3) {
                         Text("Started \(start.formatted(date: .omitted, time: .shortened))")
@@ -322,18 +466,17 @@ struct DashboardView: View {
         }
     }
 
-    @ViewBuilder
     private func dayNavButton(systemImage: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        let label = systemImage == "chevron.left" ? "Previous day" : "Next day"
+        return Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(disabled ? Color.secondary.opacity(0.4) : Color.secondary)
-                .frame(width: 22, height: 18)
-                .background(Color.secondary.opacity(disabled ? 0.04 : 0.08))
-                .cornerRadius(4)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 36, height: 36)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
+        .help(label)
+        .accessibilityLabel(label)
     }
 
     private func dayHeaderString(_ d: Date) -> String {
@@ -351,68 +494,120 @@ struct DashboardView: View {
 
     // MARK: - Right: Stats + insights
 
-    /// Saved sessions plus the running ones, which count from their start to
-    /// now: pauses inside a block shouldn't read as "untracked" against the screen.
+    private var liveBlocks: [WorkSession] {
+        [liveState.snapshot.work, liveState.snapshot.rest].compactMap { $0 }
+    }
+
     private var liveSessions: [WorkSession] {
-        sessionStore.sessions + [timerManager.currentInProgressSession, timerManager.currentInProgressBreak]
-            .compactMap { $0 }
-            .map { WorkSession(startTime: $0.startTime, durationMinutes: Date().timeIntervalSince($0.startTime) / 60,
-                               type: $0.type, label: $0.label) }
+        sessionStore.sessions + liveBlocks.map {
+            WorkSession(id: $0.id, startTime: $0.startTime,
+                        durationMinutes: Date().timeIntervalSince($0.startTime) / 60,
+                        type: $0.type, label: $0.label)
+        }
+    }
+
+    private var selectedDayLiveSessions: [WorkSession] {
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: selectedDay)!
+        return liveBlocks.filter {
+            $0.startTime < end && Date() > selectedDay
+        }.map {
+            WorkSession(id: $0.id, startTime: $0.startTime,
+                        durationMinutes: Date().timeIntervalSince($0.startTime) / 60,
+                        type: $0.type, label: $0.label)
+        }
+    }
+
+    private var selectedDaySessions: [WorkSession] {
+        dayData.overlappingSessions + selectedDayLiveSessions
+    }
+
+    private var reviewSessions: [WorkSession] {
+        dayData.reviewSessions + selectedDayLiveSessions
     }
 
     private var rightPanel: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                DayRingSection(store: sessionStore, watcher: screenWatcher, settings: settings,
-                               day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions)
-                ExamRadarSection(sessions: liveSessions)
-                ScreenTimelineSection(watcher: screenWatcher, day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions)
-                ScreenReviewSection(
-                    watcher: screenWatcher, day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions,
-                    runningStart: timerManager.isActive ? timerManager.sessionStartTime : nil,
-                    paint: { a, b, label in sessionStore.paint(start: a, end: b, label: label == "Break" ? nil : label) }
-                )
-                ScreenActivitySection(
-                    watcher: screenWatcher, day: selectedDay,
-                    sessions: liveSessions.filter { Calendar.current.isDate($0.startTime, inSameDayAs: selectedDay)
-                        || Calendar.current.isDate($0.startTime.addingTimeInterval($0.durationMinutes * 60), inSameDayAs: selectedDay) }
-                )
-                DistractionSection(watcher: screenWatcher, day: selectedDay, sessions: liveSessions)
-                InsightsSection(watcher: screenWatcher, sessions: sessionStore.sessions)
-                dayTimelineSection
-                WhereTimeWentSection(
-                    store: sessionStore, settings: settings,
-                    live: [timerManager.currentInProgressSession, timerManager.currentInProgressBreak].compactMap { $0 },
-                    endDay: weekEndDay, selectedDay: selectedDay,
-                    onSelectDay: { selectedDay = $0 }
-                )
-                browserSection
-                problemProgressSection
-                weeklySection
-                focusSplitSection
-                heatmapSection
-                homeworkHeatmapSection
-                narrativeInsightsSection
-                awardsSection
-                commitmentHistorySection
-                HStack(alignment: .top, spacing: 10) {
-                    insightsSection
-                    weakAreasSection
+            LazyVStack(alignment: .leading, spacing: 24) {
+                switch destination {
+                case .today: todayContent
+                case .review: reviewContent
+                case .trends: trendsContent
                 }
-                lifetimeSection
             }
-            .padding(14)
+            .frame(maxWidth: destination == .today ? 1060 : 980)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
         }
-        .contentMargins(.bottom, timerManager.isActive ? 90 : 0, for: .scrollContent)
+        .contentMargins(.bottom, liveState.snapshot.isActive ? 90 : 0, for: .scrollContent)
         .overlay(alignment: .bottom) {
-            if timerManager.isActive { NowPlayingBar(timer: timerManager).padding(.horizontal, 24) }
+            DashboardFloatingTimer(timer: timerManager).padding(.horizontal, 24)
         }
-        .onChange(of: selectedDay) { _, day in
-            let cal = Calendar.current
-            let weekStart = cal.date(byAdding: .day, value: -6, to: weekEndDay)!
-            guard day < weekStart || day > weekEndDay else { return }
-            weekEndOverride = cal.isDateInToday(day) ? nil : day
+    }
+
+    @ViewBuilder
+    private var todayContent: some View {
+        DashboardFocusSummary(day: selectedDay, sessions: dayData.overlappingSessions + liveBlocks, goalHours: settings.dailyGoal,
+                              problemCount: selectedDayProblemCount, accent: accent)
+        if let commitment = selectedDayCommitmentText {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "quote.opening").foregroundStyle(accent)
+                Text(commitment).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 8)
+                selectedDayFulfillmentBadge
+            }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 18).fill(.background.secondary))
         }
+        ScreenActivitySection(watcher: screenWatcher, day: selectedDay, sessions: selectedDaySessions)
+        DisclosureGroup("Your day timeline", isExpanded: $showTimeline) {
+            if showTimeline { dayTimelineSection.padding(.top, 12) }
+        }
+        .font(.system(size: 15, weight: .semibold))
+        ExamRadarSection(sessions: liveSessions)
+    }
+
+    @ViewBuilder
+    private var reviewContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Make the log yours").font(.system(size: 26, weight: .semibold))
+            Text("Check the evidence, correct a category, or leave an uncertain stretch for later.")
+                .font(.system(size: 14)).foregroundStyle(Color.secondaryText)
+        }
+        ScreenReviewSection(
+            watcher: screenWatcher, day: selectedDay, sessions: reviewSessions,
+            runningStart: liveState.snapshot.isActive ? liveState.snapshot.runningStart : nil,
+            paint: { a, b, label in sessionStore.paint(start: a, end: b, label: label == "Break" ? nil : label) }
+        )
+        ScreenTimelineSection(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
+        DistractionSection(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
+        DashboardDeferredSection { dayTimelineSection }
+        DashboardDeferredSection { browserSection }
+    }
+
+    @ViewBuilder
+    private var trendsContent: some View {
+        DayRingSection(store: sessionStore, watcher: screenWatcher, settings: settings,
+                       day: selectedDay, sessions: selectedDaySessions)
+        InsightsSection(watcher: screenWatcher, sessions: sessionStore.sessions)
+        WhereTimeWentSection(store: sessionStore, settings: settings, live: liveBlocks,
+                            endDay: weekEndDay, selectedDay: selectedDay,
+                            onSelectDay: { selectedDay = $0; destination = .today })
+        DashboardDeferredSection { weeklySection }
+        DashboardDeferredSection { focusSplitSection }
+        DashboardDeferredSection { problemProgressSection }
+        DashboardDeferredSection { heatmapSection }
+        DashboardDeferredSection { homeworkHeatmapSection }
+        DashboardDeferredSection { narrativeInsightsSection }
+        DashboardDeferredSection { commitmentHistorySection }
+        DashboardDeferredSection { awardsSection }
+        DashboardDeferredSection {
+            HStack(alignment: .top, spacing: 16) {
+                insightsSection
+                weakAreasSection
+            }
+        }
+        DashboardDeferredSection { lifetimeSection }
     }
 
     // MARK: - 18-week heatmap
@@ -463,7 +658,7 @@ struct DashboardView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     private func heatmapCell(minutes: Double, isFuture: Bool) -> some View {
@@ -542,7 +737,7 @@ struct DashboardView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     private func homeworkCellColor(count: Int, goal: Int, base: Color) -> Color {
@@ -687,7 +882,7 @@ struct DashboardView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     private func insightColor(_ k: NarrativeInsight.Kind) -> Color {
@@ -787,7 +982,7 @@ struct DashboardView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     private func awardTile(_ a: Award) -> some View {
@@ -835,8 +1030,8 @@ struct DashboardView: View {
                 day: selectedDay,
                 focus: focus,
                 breaks: breaks,
-                livefocus: isSelectedDayToday ? timerManager.currentInProgressSession : nil,
-                liveBreak: isSelectedDayToday ? timerManager.currentInProgressBreak : nil,
+                livefocus: isSelectedDayToday ? liveState.snapshot.work : nil,
+                liveBreak: isSelectedDayToday ? liveState.snapshot.rest : nil,
                 red: red, blue: blue,
                 tags: settings.tags,
                 screen: screenWatcher.spans(from: Calendar.current.startOfDay(for: selectedDay),
@@ -850,14 +1045,14 @@ struct DashboardView: View {
             )
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     // MARK: - Browser (Chrome extension)
 
     private var selectedDayFocusIntervals: [DateInterval] {
         var sessions = selectedDayFocusSessions.filter(\.isFocus)
-        if isSelectedDayToday, let live = timerManager.currentInProgressSession, live.isFocus { sessions.append(live) }
+        if isSelectedDayToday, let live = liveState.snapshot.work, live.isFocus { sessions.append(live) }
         return sessions.map { DateInterval(start: $0.startTime, duration: max(0, $0.durationMinutes * 60)) }
     }
 
@@ -918,7 +1113,7 @@ struct DashboardView: View {
                 }
             }
             .padding(12)
-            .glassCard(cornerRadius: 10)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
         }
     }
 
@@ -1089,7 +1284,7 @@ struct DashboardView: View {
             .padding(.top, 4)
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     // MARK: - 14-day chart
@@ -1133,7 +1328,7 @@ struct DashboardView: View {
             .frame(height: 68)
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     // MARK: - Focus split
@@ -1185,7 +1380,7 @@ struct DashboardView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     // MARK: - Insights
@@ -1224,7 +1419,7 @@ struct DashboardView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
         .frame(maxWidth: .infinity)
     }
 
@@ -1287,7 +1482,7 @@ struct DashboardView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     private func commitmentStat(_ label: String, _ value: String, sub: String) -> some View {
@@ -1393,7 +1588,7 @@ struct DashboardView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
         .frame(maxWidth: .infinity)
     }
 
@@ -1408,7 +1603,7 @@ struct DashboardView: View {
                   icon: "trophy.fill", iconColor: Color(red: 1, green: 0.75, blue: 0.2))
         }
         .padding(10)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     // MARK: - Helpers
@@ -1474,6 +1669,87 @@ struct DashboardView: View {
     private func shortMins(_ m: Double) -> String {
         let h = Int(m) / 60
         return h > 0 ? "\(h)h" : "\(Int(m))m"
+    }
+}
+
+private struct DashboardDeferredSection<Content: View>: View {
+    private let content: () -> Content
+
+    init(@ViewBuilder content: @escaping () -> Content) {
+        self.content = content
+    }
+
+    var body: some View { content() }
+}
+
+private struct DashboardFloatingTimer: View {
+    @ObservedObject var timer: TimerManager
+
+    var body: some View {
+        if timer.isActive { NowPlayingBar(timer: timer) }
+    }
+}
+
+private struct DashboardFocusSummary: View {
+    let day: Date
+    let sessions: [WorkSession]
+    let goalHours: Int
+    let problemCount: Int
+    let accent: Color
+
+    var body: some View {
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: day)!
+        let focus = sessions.filter(\.isFocus).map { session in
+            (label: session.label ?? "Focus",
+             minutes: max(0, min(end, session.startTime.addingTimeInterval(session.durationMinutes * 60))
+                .timeIntervalSince(max(day, session.startTime))) / 60)
+        }
+        let minutes = focus.reduce(0) { $0 + $1.minutes }
+        let goal = Double(goalHours) * 60
+        let byCategory = Dictionary(grouping: focus.filter { $0.minutes > 0 }, by: \.label)
+            .map { (label: $0.key, minutes: $0.value.reduce(0) { $0 + $1.minutes }) }
+            .sorted { $0.minutes > $1.minutes }
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(fmtMins(minutes))
+                    .font(.system(size: 46, weight: .semibold, design: .rounded).monospacedDigit())
+                Text("of focus").font(.system(size: 15)).foregroundStyle(Color.secondaryText)
+                Spacer(minLength: 12)
+                if problemCount > 0 {
+                    Label("\(problemCount) \(problemCount == 1 ? "problem" : "problems")", systemImage: "checkmark.circle")
+                        .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+                }
+            }
+            if goal > 0 {
+                HStack(spacing: 12) {
+                    GeometryReader { geometry in
+                        Capsule().fill(accent.opacity(0.12))
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(minutes >= goal ? Color.good : accent)
+                                    .frame(width: geometry.size.width * min(1, minutes / goal))
+                            }
+                    }
+                    .frame(maxWidth: 160).frame(height: 4)
+                    Text(minutes >= goal ? "\(goalHours)h goal met" : "\(fmtMins(goal - minutes)) to your \(goalHours)h goal")
+                        .font(.system(size: 13)).foregroundStyle(minutes >= goal ? Color.good : .secondaryText)
+                }
+            }
+            if !byCategory.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 16) {
+                        ForEach(byCategory, id: \.label) { item in
+                            HStack(spacing: 6) {
+                                Circle().fill(categoryColor(item.label)).frame(width: 6, height: 6)
+                                Text(item.label).font(.system(size: 13, weight: .medium))
+                                Text(fmtMins(item.minutes)).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.bottom, 8)
+        .accessibilityElement(children: .combine)
     }
 }
 

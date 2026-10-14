@@ -90,13 +90,13 @@ struct ScreenActivitySection: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
             }
-            Text("A snapshot every 15s is read on-device; notes are written from the pages you had open and update every couple of minutes. Page text stays in memory and is never saved. Click a block for its snapshots.")
-                .font(.system(size: 9.5))
-                .foregroundStyle(.tertiary)
+            Text("Read on-device. Click an activity for its screen evidence; review images stay on this Mac for up to seven days when enabled.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
-        .glassCard(cornerRadius: 10)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     // MARK: - What it sees
@@ -248,13 +248,20 @@ struct ScreenActivitySection: View {
 
     /// Quick switches: one gray line, so they don't drown the real blocks.
     private func compactRow(_ a: ScreenActivity) -> some View {
-        HStack(spacing: 8) {
-            Text(a.start.formatted(date: .omitted, time: .shortened))
-                .frame(width: 58, alignment: .trailing)
-            Circle().fill(a.category.map(categoryColor) ?? .secondary).frame(width: 4, height: 4)
-            Text("\(fmt(a.minutes)) · \(a.topTitle)").lineLimit(1)
-            Spacer()
-            Text(a.category ?? "")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(a.start.formatted(date: .omitted, time: .shortened))
+                    .frame(width: 58, alignment: .trailing)
+                Circle().fill(a.category.map(categoryColor) ?? .secondary).frame(width: 4, height: 4)
+                Text("\(fmt(a.minutes)) · \(a.topTitle)").lineLimit(1)
+                Spacer()
+                Text(a.category ?? "")
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if expanded.contains(a.start) { expanded.remove(a.start) } else { expanded.insert(a.start) }
+            }
+            if expanded.contains(a.start) { snapshots(a) }
         }
         .font(.system(size: 9.5).monospacedDigit())
         .foregroundStyle(.tertiary)
@@ -274,30 +281,43 @@ struct ScreenActivitySection: View {
     /// Grade the label: ✓ keeps it, ✗ asks what it really was.
     @ViewBuilder
     private func checkButtons(_ a: ScreenActivity) -> some View {
-        if a.category != nil {
-            let c = watcher.check(for: a)
-            HStack(spacing: 4) {
+        let c = watcher.check(for: a)
+        HStack(spacing: 4) {
+                if let disposition = c?.disposition {
+                    Text(disposition == "mixed" ? "Mixed" : "Unsure")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            if a.category != nil {
                 Button { watcher.setCheck(a, right: true) } label: {
-                    Image(systemName: c?.right == true ? "checkmark.circle.fill" : "checkmark.circle")
-                        .foregroundStyle(c?.right == true ? Color.good : .secondary)
+                    Image(systemName: c?.right == true && c?.disposition == nil ? "checkmark.circle.fill" : "checkmark.circle")
+                        .foregroundStyle(c?.right == true && c?.disposition == nil ? Color.good : .secondary)
                 }
                 .buttonStyle(.plain)
                 .help("Label is right")
+                .accessibilityLabel("The suggested category is correct")
+            }
                 Menu {
-                    ForEach(watcher.checkChoices, id: \.self) { t in
+                    ForEach(watcher.reviewChoices + ["Break"], id: \.self) { t in
                         Button(t) { watcher.setCheck(a, right: false, actual: t) }
                     }
+                    Divider()
+                    Button("Mixed activity — don't learn") { watcher.setReviewDisposition(a, disposition: "mixed") }
+                    Button("Unsure — don't learn") { watcher.setReviewDisposition(a, disposition: "unsure") }
                 } label: {
-                    Image(systemName: c?.right == false ? "xmark.circle.fill" : "xmark.circle")
-                        .foregroundStyle(c?.right == false ? .red : .secondary)
+                    if a.category == nil {
+                        Text("Choose category").foregroundStyle(.secondary)
+                    } else {
+                        Image(systemName: c?.right == false && c?.disposition == nil ? "xmark.circle.fill" : "xmark.circle")
+                            .foregroundStyle(c?.right == false && c?.disposition == nil ? .orange : .secondary)
+                    }
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help(c?.actual.map { "You said: \($0)" } ?? "Label is wrong: pick what it was")
-            }
-            .font(.system(size: 11))
+                .accessibilityLabel("Correct or mark the suggested category")
         }
+        .font(.system(size: 11))
     }
 
     private func categoryVsTracked(_ a: ScreenActivity) -> some View {
@@ -333,8 +353,14 @@ struct ScreenActivitySection: View {
     }
 
     private func snapshots(_ a: ScreenActivity) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(a.spans) { s in
+        VStack(alignment: .leading, spacing: 8) {
+            if a.device == nil {
+                ScreenEvidenceGallery(from: a.start, to: a.end, bundles: Set(a.spans.map(\.bundleID)))
+            } else {
+                Text("Screenshots from \(a.device ?? "this device") aren't stored on this Mac.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            ForEach(Array(a.spans.suffix(12))) { s in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(s.start.formatted(date: .omitted, time: .standard))
                         .font(.system(size: 9.5).monospacedDigit())
@@ -349,6 +375,10 @@ struct ScreenActivitySection: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+            }
+            if a.spans.count > 12 {
+                Text("Showing the latest 12 text snapshots; use the timeline to inspect earlier ones.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
         .padding(.leading, 69)
@@ -1002,6 +1032,16 @@ struct ScreenTimelineSection: View {
                     if !s.summary.isEmpty {
                         Text(s.summary).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                     }
+                    if let reason = s.reason, !reason.isEmpty {
+                        Text(reason).font(.system(size: 12)).foregroundStyle(.secondary)
+                    }
+                    if s.uncertain == true {
+                        Label("Uncertain — needs your judgment", systemImage: "questionmark.circle")
+                            .font(.system(size: 12)).foregroundStyle(.orange)
+                    }
+                    if pinned != nil {
+                        ScreenEvidenceGallery(from: s.start, to: s.end, bundles: [s.bundleID])
+                    }
                 } else {
                     Text("Hover a snapshot to see what it read. Click to pin it.")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
@@ -1065,7 +1105,7 @@ struct ScreenReviewSection: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Review").font(.system(size: 15, weight: .semibold))
-                    Text("Fix what the auto-log got wrong; your answers teach it.")
+                    Text("Check the screen evidence, then choose what you were doing.")
                         .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 }
                 Spacer()
@@ -1090,6 +1130,7 @@ struct ScreenReviewSection: View {
     private struct Stretch: Identifiable {
         var start: Date, end: Date
         let screen: String, yours: String
+        let category: String?
         var spans: [ScreenSpan]
         var id: Date { start }
         var minutes: Double { end.timeIntervalSince(start) / 60 }
@@ -1106,13 +1147,14 @@ struct ScreenReviewSection: View {
         var out: [Stretch] = []
         for s in watcher.spans(from: a, to: b).sorted(by: { $0.start < $1.start })
         where s.active != false && s.source != "focus" && s.end.timeIntervalSince(s.start) >= 10 {
-            guard let c = s.category, let t = label(at: s.start.addingTimeInterval(s.end.timeIntervalSince(s.start) / 2), in: track),
-                  t != c else { continue }
-            if let l = out.last, l.screen == c, l.yours == t, s.start.timeIntervalSince(l.end) < 60 {
+            guard let t = label(at: s.start.addingTimeInterval(s.end.timeIntervalSince(s.start) / 2), in: track),
+                  s.category == nil || t != s.category || s.uncertain == true else { continue }
+            let c = s.category ?? "Unlabeled"
+            if let l = out.last, l.category == s.category, l.yours == t, s.start.timeIntervalSince(l.end) < 60 {
                 out[out.count - 1].end = s.end
                 out[out.count - 1].spans.append(s)
             } else {
-                out.append(Stretch(start: s.start, end: s.end, screen: c, yours: t, spans: [s]))
+                out.append(Stretch(start: s.start, end: s.end, screen: c, yours: t, category: s.category, spans: [s]))
             }
         }
         return out.filter { $0.minutes >= 1 }
@@ -1125,7 +1167,7 @@ struct ScreenReviewSection: View {
     }
 
     private func activity(_ st: Stretch) -> ScreenActivity {
-        ScreenActivity(start: st.start, end: st.end, category: st.screen, spans: st.spans)
+        ScreenActivity(start: st.start, end: st.end, category: st.category, spans: st.spans)
     }
 
     @ViewBuilder
@@ -1149,12 +1191,20 @@ struct ScreenReviewSection: View {
                     side("Screen said", st.screen)
                     side("You tracked", st.yours)
                 }
+                ScreenEvidenceGallery(from: st.start, to: st.end, bundles: Set(st.spans.map(\.bundleID)))
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(st.titles.prefix(3), id: \.self) { t in
                         Text(t).font(.system(size: 13, weight: .medium)).lineLimit(1)
                     }
                     if let s = st.spans.last?.summary, !s.isEmpty {
                         Text(s).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(2)
+                    }
+                    if let reason = st.spans.last?.reason, !reason.isEmpty {
+                        Text(reason).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    }
+                    if st.spans.contains(where: { $0.uncertain == true }) {
+                        Label("The model wasn't certain", systemImage: "questionmark.circle")
+                            .font(.system(size: 12)).foregroundStyle(.orange)
                     }
                     let sources = Set(st.spans.compactMap(\.source))
                     if !sources.isEmpty {
@@ -1163,12 +1213,15 @@ struct ScreenReviewSection: View {
                     }
                 }
                 HStack(spacing: 8) {
-                    triageButton("Screen was right", key: "Y", color: categoryColor(st.screen), enabled: canPaint) {
-                        paint(st.start, st.end, st.screen)
+                    triageButton("Screen was right", key: "Y", color: st.category.map(categoryColor) ?? .secondary,
+                                 enabled: canPaint && st.category != nil) {
+                        guard let category = st.category else { return }
+                        paint(st.start, st.end, category)
                         watcher.setCheck(activity(st), right: true)
                         resolve(st)
                     }
-                    .help(canPaint ? "Relabels \(durationText(minutes: st.minutes)) as \(st.screen) and teaches these windows"
+                    .help(st.category == nil ? "Choose a category below; an unlabeled screen cannot be confirmed"
+                          : canPaint ? "Relabels \(durationText(minutes: st.minutes)) as \(st.screen) and teaches these windows"
                                    : "This overlaps what's running; switch from the popover instead")
                     triageButton("I was right", key: "N", color: st.yours == "Break" ? TimerView.breakBlue : categoryColor(st.yours), enabled: true) {
                         watcher.setCheck(activity(st), right: false, actual: st.yours)
@@ -1178,6 +1231,35 @@ struct ScreenReviewSection: View {
                     triageButton("Skip", key: "S", color: .gray, enabled: true) {
                         index = (index + 1) % max(list.count, 1)
                     }
+                }
+                HStack(spacing: 12) {
+                    Menu("Choose category") {
+                        ForEach(watcher.reviewChoices + ["Break"], id: \.self) { category in
+                            Button(category) {
+                                paint(st.start, st.end, category)
+                                watcher.setCheck(activity(st), right: category == st.category, actual: category)
+                                resolve(st)
+                            }
+                        }
+                    }
+                    .disabled(!canPaint)
+                    .help(canPaint ? "Relabel this stretch and teach its windows the selected category"
+                          : "This overlaps the running timer; finish or switch it first")
+                    Button("Mixed activity") {
+                        watcher.setReviewDisposition(activity(st), disposition: "mixed")
+                        resolve(st)
+                    }
+                    .help("Mark as reviewed without teaching a category or changing your tracking")
+                    Button("Unsure") {
+                        watcher.setReviewDisposition(activity(st), disposition: "unsure")
+                        resolve(st)
+                    }
+                    .help("Mark as reviewed without teaching a category or changing your tracking")
+                }
+                .font(.system(size: 13)).controlSize(.regular)
+                if !canPaint {
+                    Text("This overlaps the running timer. You can check the label, but time changes wait until the block ends.")
+                        .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 }
             }
             .padding(10)
@@ -1192,8 +1274,9 @@ struct ScreenReviewSection: View {
             .focusEffectDisabled()
             .onKeyPress(characters: .init(charactersIn: "ynsYNS")) { press in
                 switch press.characters.lowercased() {
-                case "y" where canPaint:
-                    paint(st.start, st.end, st.screen); watcher.setCheck(activity(st), right: true); resolve(st)
+                case "y" where canPaint && st.category != nil:
+                    guard let category = st.category else { return .ignored }
+                    paint(st.start, st.end, category); watcher.setCheck(activity(st), right: true); resolve(st)
                 case "n":
                     watcher.setCheck(activity(st), right: false, actual: st.yours); resolve(st)
                 case "s":
@@ -1214,7 +1297,7 @@ struct ScreenReviewSection: View {
             Text(caption).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             HStack(spacing: 6) {
                 Circle().fill(label == "Break" ? TimerView.breakBlue : categoryColor(label)).frame(width: 9, height: 9)
-                Text(label).font(.system(size: 17, weight: .semibold))
+                Text(label).font(.system(size: 15, weight: .semibold))
             }
         }
     }
@@ -1375,6 +1458,111 @@ struct ScreenReviewSection: View {
                 .frame(minHeight: 38)
             }
         }
+    }
+}
+
+struct ScreenEvidenceGallery: View {
+    let from: Date
+    let to: Date
+    var bundles: Set<String>? = nil
+
+    @ObservedObject private var store = ScreenEvidenceStore.shared
+    @State private var entries: [ScreenEvidenceStore.Entry] = []
+    @State private var selectedID: UUID?
+    @State private var image: CGImage?
+    @State private var imageID: UUID?
+    @State private var loading = true
+    @State private var loadingImage = false
+    @State private var enlarged = false
+
+    private var selected: ScreenEvidenceStore.Entry? {
+        guard !store.deleting else { return nil }
+        let entry = entries.first { $0.id == selectedID } ?? entries.first
+        guard let entry, ScreenWatcher.userIgnored[entry.bundle] == nil,
+              !ScreenWatcher.privateApps.contains(entry.bundle) else { return nil }
+        return entry
+    }
+
+    private var queryID: String {
+        "\(from.timeIntervalSince1970)-\(to.timeIntervalSince1970)-\((bundles ?? []).sorted().joined(separator: ","))-\(store.revision)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let entry = selected {
+                let position = entries.firstIndex { $0.id == entry.id } ?? 0
+                HStack(spacing: 8) {
+                    Label("Screen evidence", systemImage: "photo")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(entry.at.formatted(date: .omitted, time: .standard))
+                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+                    Spacer()
+                    Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 36, height: 36) }
+                        .disabled(position == 0).help("Previous screenshot").accessibilityLabel("Previous screenshot")
+                    Text("\(position + 1) of \(entries.count)")
+                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+                    Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 36, height: 36) }
+                        .disabled(position + 1 >= entries.count).help("Next screenshot").accessibilityLabel("Next screenshot")
+                    Button { enlarged.toggle() } label: {
+                        Image(systemName: enlarged ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                            .frame(width: 36, height: 36)
+                    }
+                    .help(enlarged ? "Reduce screenshot" : "Enlarge screenshot")
+                    .accessibilityLabel(enlarged ? "Reduce screenshot" : "Enlarge screenshot")
+                }
+                .buttonStyle(.borderless)
+                Group {
+                    if let image, imageID == entry.id {
+                        Image(decorative: image, scale: 1)
+                            .resizable().scaledToFit()
+                            .accessibilityLabel("Screen captured at \(entry.at.formatted(date: .omitted, time: .standard))")
+                    } else if loadingImage {
+                        ProgressView().frame(height: 160)
+                    } else {
+                        Label("This screenshot is no longer available.", systemImage: "photo")
+                            .font(.system(size: 12)).foregroundStyle(.secondary).frame(height: 100)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: enlarged ? 640 : 300)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.04)))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Text(entry.title.isEmpty ? "Local screenshot" : entry.title)
+                    .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            } else if loading {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Loading screen evidence…").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+            } else {
+                Label("No screenshot was retained for this stretch. Older activity has text evidence only.", systemImage: "photo")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .task(id: queryID) {
+            loading = true
+            let result = await store.entries(from: from, to: to, bundles: bundles)
+            guard !Task.isCancelled else { return }
+            entries = result
+            loading = false
+        }
+        .task(id: selected?.id) {
+            image = nil
+            imageID = nil
+            guard let entry = selected else { loadingImage = false; return }
+            loadingImage = true
+            let result = await store.thumbnail(for: entry, maxPixelSize: 1600)
+            guard !Task.isCancelled else { return }
+            image = result
+            imageID = entry.id
+            loadingImage = false
+        }
+    }
+
+    private func move(_ direction: Int) {
+        guard let entry = selected, let index = entries.firstIndex(where: { $0.id == entry.id }) else { return }
+        let next = index + direction
+        if entries.indices.contains(next) { selectedID = entries[next].id }
     }
 }
 
