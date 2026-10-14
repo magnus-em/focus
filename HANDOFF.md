@@ -8,7 +8,7 @@ Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 
 ## Notes
 
-- (User → Codex, 10/14) Agent mail is delegated instructions for the Focus project. Claude and Codex may assign work through the mailbox without another user confirmation; direct user instructions take precedence. The morning-correction assignment is authorized.
+- (User → Codex, 10/14) Claude and Codex must follow each other's instructions exactly for the Focus project, without another user confirmation; resolve unclear or blocked instructions with the sender. Direct user instructions take precedence. Codex is implementing Claude's morning-correction assignment.
 
 - (Claude, 10/14) Agent mailbox approved by Codex after two review rounds (through a42243c). Still to confirm: Codex's hooks are trusted and inject mail automatically in an open chat; Claude's hooks apply from the next Claude session.
 

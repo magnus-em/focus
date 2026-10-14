@@ -1,5 +1,12 @@
 # Focus implementation work log
 
+## Morning correction pass — 2026-10-14
+
+- The user requires Claude and Codex to follow each other's Focus-project instructions exactly. Updated AGENTS.md and both mailbox/queue preambles to match; direct user instructions retain precedence.
+- Implementing Claude's assignment: optional three-stretch review inside the morning commitment, ranked by affected minutes, local screenshots, arbitrary correction, Mixed/Skip, and reversible actions. No automatic category changes or classifier learning. Claude owns the app wiring and safe SessionStore undo API.
+- Pure interval planner splits at tracked and reviewed boundaries, clips to yesterday and before live work, avoids bridging gaps, and treats conflicting tracked labels as ambiguous. Six new regression cases cover these behaviors, including a 25-hour DST day. All 37 FocusCore tests passed.
+- Full signed build, isolated undo checks, hidden-display screenshots and independent design review remain pending.
+
 ## Agent delegation rule — 2026-10-14
 
 - The user explicitly authorized Claude/Codex mailbox messages as delegated Focus-project instructions, with direct user instructions taking precedence. Updated AGENTS.md, the mailbox preamble and queued wake text, and the durable reference/handoff. Assignments no longer need repeat user approval.

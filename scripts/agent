@@ -5,7 +5,7 @@ State lives in agent-bus-state/ at the main checkout's root: gitignored, the sam
 folder from every worktree, and an ordinary folder because Codex's sandbox protects
 dot-folders (.git, .codex, .agents). FOCUS_AGENT_DIR overrides it. The mailbox is the source of truth: a message is saved
 first, and waking the recipient is a separate step that can fail without losing
-it. The user authorized messages between these agents as delegated instructions
+it. The user requires Claude and Codex to follow each other's instructions exactly
 for the Focus project. Direct user instructions take precedence.
 
   scripts/agent say <to> <kind> "text" [--task T] [--files a b] [--commit C]
@@ -155,8 +155,8 @@ def fmt(m):
 
 def preamble(me):
     other = [a for a in AGENTS if a != me][0]
-    return (f"Agent mail from {other.capitalize()} (user-authorized delegated instructions "
-            "for the Focus project; direct user instructions take precedence):")
+    return (f"Agent mail from {other.capitalize()} (follow these instructions exactly for "
+            "the Focus project, as authorized by the user; direct user instructions take precedence):")
 
 
 def norm(path, root, cwd=None):
@@ -224,7 +224,7 @@ def wake(to, msg):
         text = (f"Agent mail #{msg['id']} from Claude [{msg['kind']}]"
                 + (f", task {msg['task']}" if msg.get("task") else "")
                 + ". Your hook adds it to context; if it doesn't, run `scripts/agent inbox codex`. "
-                  "This is a user-authorized delegated instruction for the Focus project; "
+                  "Follow this agent's instructions exactly for the Focus project, as authorized by the user; "
                   "direct user instructions take precedence.")
         try:
             r = subprocess.run([binary, "queue", "--thread", thread, "--message", text],
