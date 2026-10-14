@@ -42,6 +42,13 @@ final class ClassCalendar: ObservableObject {
         return today.first { $0.startDate <= date && $0.endDate > date }
     }
 
+    /// The latest class that ended after `start` (while Class was running) and
+    /// isn't followed by one still going.
+    func endedClass(since start: Date, now: Date = Date()) -> EKEvent? {
+        guard currentClass(at: now) == nil else { return nil }
+        return today.filter { $0.endDate <= now && $0.endDate > start }.max { $0.endDate < $1.endDate }
+    }
+
     private func refresh() {
         loadedAt = Date()
         guard authorized else {

@@ -1146,8 +1146,17 @@ final class ScreenCoach {
         guard settings.screenSuggest else { return say("Suggestions are off") }
         guard days.isDayStarted else { return say("Day not started") }
         guard !panel.isBusy, !(AwayCoach.shared?.isBusy ?? false) else { return say("A card is already showing") }
-        // In class you're in Class, whatever the screen shows.
-        if timer.isActive, !timer.isOnBreak, timer.currentLabel == "Class" { return say("In Class: no suggestions") }
+        // In class you're in Class, whatever the screen shows, until the
+        // calendar class is over (10/14: Class ran 1.5 h past the exam).
+        if timer.isActive, !timer.isOnBreak, timer.currentLabel == "Class" {
+            if let start = timer.sessionStartTime, let ended = ClassCalendar.shared.endedClass(since: start),
+               !classExitAsked.contains(Self.classKey(ended)) {
+                say("Class ended on your calendar: \(ended.title ?? "")")
+                suggestClassExit(ended)
+                return
+            }
+            return say("In Class: no suggestions")
+        }
         // "Still SWE" on the class card means you're not in it (10/13: kept
         // SWE on all four), so the screen gets its say again.
         if let lecture = ClassCalendar.shared.currentClass(), !classDeclined.contains(Self.classKey(lecture)) {
@@ -1278,6 +1287,9 @@ final class ScreenCoach {
     private var classDeclined = loadClassKeys("screenClassDeclined") {
         didSet { Self.saveClassKeys(classDeclined, "screenClassDeclined") }
     }
+    private var classExitAsked = loadClassKeys("screenClassExitAsked") {
+        didSet { Self.saveClassKeys(classExitAsked, "screenClassExitAsked") }
+    }
 
     private static func loadClassKeys(_ key: String) -> Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
@@ -1321,6 +1333,58 @@ final class ScreenCoach {
         m.onKeep = { [weak self] in
             PromptLog.answer(logID, "kept \(running ?? "nothing")")
             self?.classDeclined.insert(key)
+            self?.panel.dismiss()
+        }
+        panel.show(m)
+        let close = m.onClose
+        m.onClose = {
+            PromptLog.answer(logID, "closed")
+            close?()
+        }
+    }
+
+    /// Once per calendar class, when Class is still running after it ended:
+    /// what since? Picking backdates the switch to the class end; closing or
+    /// "Still in Class" changes nothing.
+    private func suggestClassExit(_ lecture: EKEvent) {
+        let key = Self.classKey(lecture)
+        classExitAsked.insert(key)
+        let end: Date = lecture.endDate
+        let clock = { (d: Date) in d.formatted(date: .omitted, time: .shortened) }
+        let classStart = timer.sessionStartTime ?? end
+        let before = timer.sessionStore?.sessions
+            .filter { !$0.type.isBreak && $0.label != "Class" && $0.startTime < classStart }
+            .max { $0.startTime < $1.startTime }?.label
+        var options: [String?] = []
+        for c in [before, "Leisure", "Meals"] {
+            if let c, settings.tags.contains(c), !options.contains(c) { options.append(c) }
+        }
+        options.append(nil)
+        let m = AwayPromptModel(
+            icon: "graduationcap",
+            title: "Class ended at \(clock(end))",
+            subtitle: "\(lecture.title ?? "Class") · from your calendar",
+            question: "What have you been doing since?",
+            keep: "Still in Class",
+            options: options, tags: settings.tags
+        )
+        let logID = PromptLog.screenPrompt(model: m, running: "Class", suggested: before ?? "Leisure", since: end,
+                                           samples: [], pages: [], reason: "calendar class ended: \(lecture.title ?? "")")
+        m.onPick = { [weak self] label in
+            guard let self else { return }
+            PromptLog.answer(logID, "switched to \(label ?? "Break")")
+            if let label { self.timer.switchTo(label, at: end) } else { self.timer.startManualBreak(minutes: 0, at: end) }
+            self.panel.dismiss()
+        }
+        m.endTitle = "End Class at \(clock(end))"
+        m.onEnd = { [weak self] in
+            guard let self else { return }
+            PromptLog.answer(logID, "ended Class")
+            if self.timer.currentLabel == "Class" { self.timer.stop(at: end) }
+            self.panel.dismiss()
+        }
+        m.onKeep = { [weak self] in
+            PromptLog.answer(logID, "kept Class")
             self?.panel.dismiss()
         }
         panel.show(m)
