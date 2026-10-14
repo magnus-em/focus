@@ -737,101 +737,178 @@ struct EveningReviewView: View {
         return m.filter { $0.value >= 1 }.sorted { $0.value > $1.value }
     }
 
+    @AppStorage("eveningStory") private var story = false
+    @State private var page = 0
+
     var body: some View {
-        let focus = byLabel(focus: true)
-        let life = byLabel(focus: false)
-        let focusTotal = focus.reduce(0) { $0 + $1.1 }
-        let goal = Double(max(settings.dailyGoal, 1)) * 60
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(day.formatted(.dateTime.weekday(.wide).month().day()))
-                        .font(.system(size: 26, weight: .semibold))
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(fmt(focusTotal))
-                            .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
-                        Text("focus").font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    HStack(spacing: 6) {
-                        Label(focusTotal >= goal ? "\(settings.dailyGoal)h goal met" : "\(fmt(goal - focusTotal)) short of \(settings.dailyGoal)h",
-                              systemImage: focusTotal >= goal ? "checkmark.circle.fill" : "target")
-                            .foregroundStyle(focusTotal >= goal ? Color.good : Color.secondaryText)
-                        if let kept = days.todayRecord?.commitmentFulfilled {
-                            Text("· commitment \(kept ? "kept" : "not kept")").foregroundStyle(Color.secondaryText)
-                        }
-                    }
-                    .font(.system(size: 13, weight: .medium))
-                    split(focus, total: max(focusTotal, goal))
-                    chips(focus)
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Picker("Layout", selection: $story) {
+                    Text("List").tag(false)
+                    Text("Story").tag(true)
                 }
-
-                if let rec = days.todayRecord, let text = rec.commitmentText, !text.isEmpty {
-                    section("This morning you committed to") {
-                        Text("\u{201C}\(text)\u{201D}").font(.system(size: 14).italic())
-                            .fixedSize(horizontal: false, vertical: true)
-                        HStack {
-                            choice("Kept it", on: rec.commitmentFulfilled == true, color: Color.good) {
-                                days.setFulfillment(true, forDayID: rec.id)
-                            }
-                            choice("Didn't", on: rec.commitmentFulfilled == false, color: .orange) {
-                                days.setFulfillment(false, forDayID: rec.id)
-                            }
-                        }
-                    }
-                }
-
-                workedOn
-
-                tonightsQuestions
-
-                if !life.isEmpty {
-                    section("The rest of the day") {
-                        chips(life)
-                        offTaskLine
-                    }
-                } else if !offTaskText.isEmpty {
-                    section("Off-task during focus") { offTaskLine }
-                }
-
-                section("Looking back") {
-                    field("What went well?", text: $entry.wentWell)
-                    field("What got in the way?", text: $entry.inTheWay)
-                    field("Tomorrow, start with…", text: $entry.firstTask)
-                    Text("Tomorrow morning's review shows this before anything else.")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-
-                HStack(spacing: 12) {
-                    if saved { Label("Saved", systemImage: "checkmark").font(.system(size: 13)).foregroundStyle(Color.good) }
-                    Spacer()
-                    if days.isDayStarted {
-                        Button("Save") { save() }
-                            .buttonStyle(.plain).font(.system(size: 15)).foregroundStyle(.secondary)
-                    }
-                    Button {
-                        save()
-                        if days.isDayStarted { days.endDay() }
-                        onClose()
-                    } label: {
-                        Text(days.isDayStarted ? "Save & End Day" : "Done")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 22)
-                            .frame(height: 44)
-                            .background(Capsule().fill(Color.indigo))
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .keyboardShortcut(.defaultAction)
-                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize().controlSize(.small)
+                .help("Story: one page at a time")
             }
-            .padding(24)
+            .padding(.horizontal, 24)
+            .padding(.top, 14)
+            if story { storyPages } else { list }
         }
         .frame(minWidth: 520, minHeight: 500)
         .foregroundStyle(Color.primary)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { if let e = EveningLog.entry(for: day) { entry = e } }
+    }
+
+    private var list: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                hero
+                commitment
+                workedOn
+                tonightsQuestions
+                restOfDay
+                lookingBack
+                footer
+            }
+            .padding(24)
+        }
+    }
+
+    /// Photos-Memories style: the day as five full pages.
+    private var storyPages: some View {
+        let pages: [AnyView] = [
+            AnyView(VStack(alignment: .leading, spacing: 18) { hero; commitment }),
+            AnyView(workedOn),
+            AnyView(restOfDay),
+            AnyView(tonightsQuestions),
+            AnyView(VStack(alignment: .leading, spacing: 18) { lookingBack; footer }),
+        ]
+        let n = min(page, pages.count - 1)
+        return VStack(spacing: 12) {
+            ScrollView {
+                pages[n]
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(24)
+                    .id(n)
+                    .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity),
+                                            removal: .move(edge: .leading).combined(with: .opacity)))
+            }
+            HStack(spacing: 14) {
+                Button { withAnimation(.easeInOut(duration: 0.3)) { page = max(0, n - 1) } } label: {
+                    Image(systemName: "chevron.left").frame(width: 36, height: 36).contentShape(Circle())
+                }
+                .buttonStyle(.plain).disabled(n == 0)
+                .accessibilityLabel("Previous page")
+                HStack(spacing: 6) {
+                    ForEach(0..<pages.count, id: \.self) { k in
+                        Circle().fill(k == n ? Color.primary : Color.primary.opacity(0.2)).frame(width: 7, height: 7)
+                    }
+                }
+                Button { withAnimation(.easeInOut(duration: 0.3)) { page = min(pages.count - 1, n + 1) } } label: {
+                    Image(systemName: "chevron.right").frame(width: 36, height: 36).contentShape(Circle())
+                }
+                .buttonStyle(.plain).disabled(n == pages.count - 1)
+                .accessibilityLabel("Next page")
+            }
+            .font(.system(size: 15, weight: .semibold))
+            .padding(.bottom, 16)
+        }
+    }
+
+    private var hero: some View {
+        let focus = byLabel(focus: true)
+        let focusTotal = focus.reduce(0) { $0 + $1.1 }
+        let goal = Double(max(settings.dailyGoal, 1)) * 60
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(day.formatted(.dateTime.weekday(.wide).month().day()))
+                .font(.system(size: 26, weight: .semibold))
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(fmt(focusTotal))
+                    .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
+                Text("focus").font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
+                Spacer()
+            }
+            HStack(spacing: 6) {
+                Label(focusTotal >= goal ? "\(settings.dailyGoal)h goal met" : "\(fmt(goal - focusTotal)) short of \(settings.dailyGoal)h",
+                      systemImage: focusTotal >= goal ? "checkmark.circle.fill" : "target")
+                    .foregroundStyle(focusTotal >= goal ? Color.good : Color.secondaryText)
+                if let kept = days.todayRecord?.commitmentFulfilled {
+                    Text("· commitment \(kept ? "kept" : "not kept")").foregroundStyle(Color.secondaryText)
+                }
+            }
+            .font(.system(size: 13, weight: .medium))
+            split(focus, total: max(focusTotal, goal))
+            chips(focus)
+        }
+    }
+
+    @ViewBuilder
+    private var commitment: some View {
+        if let rec = days.todayRecord, let text = rec.commitmentText, !text.isEmpty {
+            section("This morning you committed to") {
+                Text("\u{201C}\(text)\u{201D}").font(.system(size: 14).italic())
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    choice("Kept it", on: rec.commitmentFulfilled == true, color: Color.good) {
+                        days.setFulfillment(true, forDayID: rec.id)
+                    }
+                    choice("Didn't", on: rec.commitmentFulfilled == false, color: .orange) {
+                        days.setFulfillment(false, forDayID: rec.id)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var restOfDay: some View {
+        let life = byLabel(focus: false)
+        if !life.isEmpty {
+            section("The rest of the day") {
+                chips(life)
+                offTaskLine
+            }
+        } else if !offTaskText.isEmpty {
+            section("Off-task during focus") { offTaskLine }
+        }
+    }
+
+    private var lookingBack: some View {
+        section("Looking back") {
+            field("What went well?", text: $entry.wentWell)
+            field("What got in the way?", text: $entry.inTheWay)
+            field("Tomorrow, start with…", text: $entry.firstTask)
+            Text("Tomorrow morning's review shows this before anything else.")
+                .font(.system(size: 12)).foregroundStyle(.secondary)
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            if saved { Label("Saved", systemImage: "checkmark").font(.system(size: 13)).foregroundStyle(Color.good) }
+            Spacer()
+            if days.isDayStarted {
+                Button("Save") { save() }
+                    .buttonStyle(.plain).font(.system(size: 15)).foregroundStyle(.secondary)
+            }
+            Button {
+                save()
+                if days.isDayStarted { days.endDay() }
+                onClose()
+            } label: {
+                Text(days.isDayStarted ? "Save & End Day" : "Done")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 22)
+                    .frame(height: 44)
+                    .background(Capsule().fill(Color.indigo))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.defaultAction)
+        }
     }
 
     private struct Topic: Identifiable {
