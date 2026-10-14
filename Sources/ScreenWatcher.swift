@@ -90,6 +90,18 @@ final class ScreenWatcher: ObservableObject {
     private var settings: AppSettings?
     private var tick: Timer?
     private var busy = false
+    /// OCR sometimes drops a space in a chat's title ("Activitycategory
+    /// naming"), splitting one chat into two windows; the spaced spelling wins.
+    private var chatTitles: [String: String] = [:]
+
+    private func canonicalChatTitle(_ t: String, bundle: String) -> String {
+        let key = bundle + "|" + t.lowercased().filter { !$0.isWhitespace }
+        let spaces = { (x: String) in x.filter(\.isWhitespace).count }
+        if let known = chatTitles[key], spaces(known) >= spaces(t) { return known }
+        if chatTitles.count > 300 { chatTitles.removeAll() }
+        chatTitles[key] = t
+        return t
+    }
     /// What the watcher is doing right now, for the live line on the Dashboard.
     @Published private(set) var stage = ""
     var nextSnapshotAt: Date? { tick?.fireDate }
@@ -335,7 +347,7 @@ final class ScreenWatcher: ObservableObject {
         var title = shot.title
         if Self.chatApps.contains(bundle), Self.isGeneric(title: title, app: appName), let h = read.header,
            !Self.isGeneric(title: h, app: appName) {
-            title = h
+            title = canonicalChatTitle(h, bundle: bundle)
         }
         // The Chrome extension knows the tab's address; the picture doesn't.
         var url: String?
