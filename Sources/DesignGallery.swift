@@ -72,7 +72,8 @@ enum VirtualScreen {
     private static func moveAway(_ id: CGDirectDisplayID) {
         var ids = [CGDirectDisplayID](repeating: 0, count: 16)
         var n: UInt32 = 0
-        CGGetActiveDisplayList(16, &ids, &n)
+        // Online, not active: an asleep display still owns its space in the arrangement.
+        CGGetOnlineDisplayList(16, &ids, &n)
         let others = ids.prefix(Int(n)).filter { $0 != id }.map { CGDisplayBounds($0) }
         let maxX = others.map(\.maxX).max() ?? 0, maxY = others.map(\.maxY).max() ?? 0
         var cfg: CGDisplayConfigRef?

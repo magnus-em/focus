@@ -277,30 +277,38 @@ struct AwayPromptView: View {
     private let breakColor = Color(red: 0.27, green: 0.62, blue: 0.83)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
                 Image(systemName: model.icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.orange)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(tint))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(model.title).font(.system(size: 12, weight: .semibold))
+                    Text(model.title).font(.system(size: 14, weight: .semibold))
                     Text(model.subtitle)
-                        .font(.system(size: 10.5).monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(Color.secondaryText)
                 }
                 Spacer()
                 Button { if let keep = model.onKeep { keep() } else { model.onClose?() } } label: {
-                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary)
+                    Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Color.secondaryText)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .help(model.keep.map { "\($0) — change nothing" } ?? "Dismiss")
+                .accessibilityLabel("Dismiss")
             }
 
-            Text(model.question)
-                .font(.system(size: 11.5))
-                .fixedSize(horizontal: false, vertical: true)
+            if !model.question.isEmpty {
+                Text(model.question)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            FlowLayout(spacing: 5) {
+            FlowLayout(spacing: 6) {
                 if let keep = model.keep {
                     chip(keep, color: .secondary, primary: true) { model.onKeep?() }
                 }
@@ -317,34 +325,58 @@ struct AwayPromptView: View {
                         model.showAll = true
                         model.onResize?()
                     }
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 9).padding(.vertical, 4)
-                    .background(Capsule().stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.secondaryText)
+                    .padding(.horizontal, 12).frame(height: 30)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
                     .buttonStyle(.plain)
                 }
             }
 
             if let end = model.endTitle {
                 Button(end) { model.onEnd?() }
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.secondaryText)
                     .buttonStyle(.plain)
             }
         }
-        .padding(13)
+        .padding(14)
         .frame(width: 340, alignment: .topLeading)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+        .modifier(CornerGlass())
+    }
+
+    /// The suggested category's color, else orange for "needs you".
+    private var tint: Color {
+        if let first = model.options.first { return first.map(categoryColor) ?? breakColor }
+        return .orange
     }
 
     private func chip(_ title: String, color: Color, primary: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Text(title) }
-            .font(.system(size: 11, weight: primary ? .semibold : .medium))
-            .padding(.horizontal, 9).padding(.vertical, 4)
-            .background(Capsule().fill(color.opacity(primary ? 0.22 : 0.15)))
-            .foregroundStyle(primary ? Color.primary : color)
-            .buttonStyle(.plain)
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if !primary { Circle().fill(color).frame(width: 7, height: 7) }
+                Text(title)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 30)
+            .background(Capsule().fill(primary ? Color.primary.opacity(0.1) : color.opacity(0.2)))
+            .contentShape(Capsule())
+        }
+        .font(.system(size: 13, weight: primary ? .semibold : .medium))
+        .foregroundStyle(Color.primary)
+        .buttonStyle(.plain)
+    }
+}
+
+/// Corner cards float over your work: one glass layer, Live Activity corners.
+private struct CornerGlass: ViewModifier {
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: shape)
+        } else {
+            content.background(.regularMaterial).clipShape(shape)
+                .overlay(shape.stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+        }
     }
 }

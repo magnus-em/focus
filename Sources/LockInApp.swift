@@ -223,6 +223,11 @@ struct FocusApp: App {
                     DashboardView(sessionStore: store, problemStore: problems, homeworkStore: homework, settings: appSettings,
                                   dayStore: days, timerManager: timer, browserStore: browser),
                     name: name, dark: dark, size: NSSize(width: 1100, height: 900))
+            case "card":
+                let m = AwayPromptModel(icon: "eye", title: "Looks like Math", subtitle: "since 8:41 PM · 1m on screen",
+                                        question: "Reviewing posets and chains for the MATH 244 midterm.",
+                                        keep: "Still SWE", options: ["Math"], tags: appSettings.tags)
+                DesignGallery.show(AwayPromptView(model: m).padding(20), name: name, dark: dark, size: NSSize(width: 380, height: 220))
             case "review":
                 DesignGallery.show(EveningReviewView(store: store, days: days, settings: appSettings, timer: timer) {},
                                    name: name, dark: dark, size: NSSize(width: 620, height: 900))
@@ -314,6 +319,8 @@ struct FocusApp: App {
             .modelContainer(focusContainer)
         } label: {
             if timerManager.isActive {
+                Image(nsImage: MenuBarRing.image(progress: timerManager.progress, color: NSColor(
+                    timerManager.isOnBreak ? TimerView.breakBlue : categoryColor(timerManager.currentLabel))))
                 Text(timerManager.menuBarTimeText)
             } else {
                 Image(systemName: "scope")
@@ -637,5 +644,31 @@ struct PopoverContent: View {
                 }
             }
         }
+    }
+}
+
+/// The menu bar's progress ring, in the running category's color (a
+/// non-template image, so macOS keeps the color).
+enum MenuBarRing {
+    static func image(progress: Double, color: NSColor) -> NSImage {
+        let size = NSSize(width: 14, height: 14)
+        let img = NSImage(size: size, flipped: false) { rect in
+            let r = rect.insetBy(dx: 1.75, dy: 1.75)
+            let track = NSBezierPath(ovalIn: r)
+            track.lineWidth = 2.5
+            color.withAlphaComponent(0.3).setStroke()
+            track.stroke()
+            let arc = NSBezierPath()
+            let c = NSPoint(x: r.midX, y: r.midY)
+            arc.appendArc(withCenter: c, radius: r.width / 2, startAngle: 90,
+                          endAngle: 90 - 360 * CGFloat(min(max(progress, 0), 1)), clockwise: true)
+            arc.lineWidth = 2.5
+            arc.lineCapStyle = .round
+            color.setStroke()
+            arc.stroke()
+            return true
+        }
+        img.isTemplate = false
+        return img
     }
 }

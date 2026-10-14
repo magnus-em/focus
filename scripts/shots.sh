@@ -10,6 +10,9 @@ idle() { ioreg -c IOHIDSystem | awk '/HIDIdleTime/ {print int($NF/1000000000); e
 virtual=${SHOTS_VIRTUAL:-1}
 need=${SHOTS_IDLE:-120}
 if (( ! virtual )) && (( $(idle) < need )); then echo "Mac in use (idle $(idle)s < ${need}s); not taking screenshots." >&2; exit 2; fi
+locked=$(swift -e 'import CoreGraphics
+print((CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Int ?? 0)' 2>/dev/null)
+if [[ $locked == 1 ]]; then echo "Mac is locked; windows can't be captured until it's unlocked." >&2; exit 4; fi
 label=${1:-$(date +%H%M%S)}; shift 2>/dev/null || true
 views=("$@")
 (( ${#views} )) || views=(popover-0 popover-1 popover-2 popover-3 popover-5 popover-4 dashboard review)
