@@ -12,5 +12,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "FocusCore"),
+        .testTarget(name: "FocusCoreTests", dependencies: ["FocusCore"]),
     ]
 )
