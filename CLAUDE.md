@@ -105,6 +105,7 @@ Tests: `cd FocusCore && swift test` (recall scheduler, timer display, duration t
 ### Storage paths
 - `~/Library/Application Support/default.store` — SwiftData (SQLite) store for sessions, day records, problems, scratch, practice/mastery, timer state. Mirrored to CloudKit. Count sessions: `sqlite3 -readonly ~/Library/Application\ Support/default.store 'select count(*) from ZSTOREDWORKSESSION'`
 - `~/Library/Application Support/Focus/backups/default-YYYY-MM-DD.store` — daily single-file snapshots (`FocusCore/StoreBackup.swift`), 14 kept. Restore = quit app, copy over `default.store`, delete its `-wal`/`-shm`.
+- **iCloud account unavailable = empty local store.** On 10/14 (after the disk filled, iCloud wanted terms with nothing to accept) the CloudKit mirror failed setup with Cocoa 134400/134405 and the Mac's store went from 363 sessions to 1; it re-imported everything once the account worked again. Don't restore a backup while `sync.log` still shows `ckMirrorFailed` 134400: it would likely be emptied again on the next launch. Keep a named copy in `backups/` instead.
 - The old `*.json` files were migrated in May 2026 and survive only as `*.pre-swiftdata.bak`. `zetamac.json` and `sync.log` in `~/Library/Application Support/Focus/` are still live.
 - `~/Library/Application Support/Focus/oaths/YYYY-MM-DD.m4a`
 - UserDefaults `com.magnus.focus` (settings, commitment timestamp, timer crash checkpoint)
