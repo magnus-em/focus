@@ -739,31 +739,32 @@ struct EveningReviewView: View {
         let goal = Double(max(settings.dailyGoal, 1)) * 60
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Image(systemName: "moon.stars").font(.system(size: 22, weight: .light)).foregroundStyle(.indigo)
+                VStack(alignment: .leading, spacing: 10) {
                     Text(day.formatted(.dateTime.weekday(.wide).month().day()))
-                        .font(.system(size: 18, weight: .semibold, design: .serif))
-                    HStack {
-                        Text("Focus \(fmt(focusTotal)) of \(fmt(goal))")
-                            .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                        .font(.system(size: 26, weight: .semibold))
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(fmt(focusTotal))
+                            .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
+                        Text("focus").font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
                         Spacer()
-                        Text(focusTotal >= goal ? "Goal met" : "\(fmt(goal - focusTotal)) short")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(focusTotal >= goal ? .green : .orange)
+                        Label(focusTotal >= goal ? "\(settings.dailyGoal)h goal met" : "\(fmt(goal - focusTotal)) short of \(settings.dailyGoal)h",
+                              systemImage: focusTotal >= goal ? "checkmark.circle.fill" : "target")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(focusTotal >= goal ? Color.green : .secondary)
                     }
-                    ProgressView(value: min(focusTotal / goal, 1)).tint(focusTotal >= goal ? .green : .orange)
+                    split(focus, total: max(focusTotal, goal))
                     chips(focus)
                 }
 
                 if let rec = days.todayRecord, let text = rec.commitmentText, !text.isEmpty {
-                    section("THIS MORNING YOU COMMITTED TO") {
-                        Text("\u{201C}\(text)\u{201D}").font(.system(size: 12.5, design: .serif))
+                    section("This morning you committed to") {
+                        Text("\u{201C}\(text)\u{201D}").font(.system(size: 14).italic())
                             .fixedSize(horizontal: false, vertical: true)
                         HStack {
                             choice("Kept it", on: rec.commitmentFulfilled == true, color: .green) {
                                 days.setFulfillment(true, forDayID: rec.id)
                             }
-                            choice("Didn't", on: rec.commitmentFulfilled == false, color: .red) {
+                            choice("Didn't", on: rec.commitmentFulfilled == false, color: .orange) {
                                 days.setFulfillment(false, forDayID: rec.id)
                             }
                         }
@@ -775,29 +776,39 @@ struct EveningReviewView: View {
                 offTask
 
                 if !life.isEmpty {
-                    section("THE REST OF THE DAY") { chips(life) }
+                    section("The rest of the day") { chips(life) }
                 }
 
-                section("LOOKING BACK") {
+                section("Looking back") {
                     field("What went well?", text: $entry.wentWell)
                     field("What got in the way?", text: $entry.inTheWay)
                     field("Tomorrow, start with…", text: $entry.firstTask)
                     Text("Tomorrow morning's review shows this before anything else.")
-                        .font(.system(size: 10)).foregroundStyle(.tertiary)
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
 
-                HStack {
-                    if saved { Label("Saved", systemImage: "checkmark").font(.system(size: 11)).foregroundStyle(.green) }
+                HStack(spacing: 12) {
+                    if saved { Label("Saved", systemImage: "checkmark").font(.system(size: 13)).foregroundStyle(.green) }
                     Spacer()
-                    Button("Save") { save() }
                     if days.isDayStarted {
-                        Button("Save & End Day") {
-                            save()
-                            days.endDay()
-                            onClose()
-                        }
-                        .buttonStyle(.borderedProminent)
+                        Button("Save") { save() }
+                            .buttonStyle(.plain).font(.system(size: 15)).foregroundStyle(.secondary)
                     }
+                    Button {
+                        save()
+                        if days.isDayStarted { days.endDay() }
+                        onClose()
+                    } label: {
+                        Text(days.isDayStarted ? "Save & End Day" : "Done")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 22)
+                            .frame(height: 44)
+                            .background(Capsule().fill(Color.indigo))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.defaultAction)
                 }
             }
             .padding(24)
@@ -822,11 +833,21 @@ struct EveningReviewView: View {
         var byName: [String: Topic] = [:]
         for a in screen.activities(from: day, to: dayEnd) {
             guard let c = a.category, !FocusCategories.isLife(c), a.minutes >= 2 else { continue }
-            let name = screen.name(for: a)
+            // "Chrome: Compiler Explorer" and "Compiler Explorer" are one topic;
+            // a bare app name or a leaked prompt label isn't a topic at all.
+            let full = screen.name(for: a)
+            // OCR tails like "Terminal C×" (a tab's close button) split one topic in two.
+            let name = (full.components(separatedBy: ": ").last ?? full)
+                .replacingOccurrences(of: #"\s+(\S?[^\p{L}\p{N}\s]\S?|\p{Lu})$"#, with: "", options: .regularExpression)
+            let generic: Set<String> = ["claude", "chatgpt", "codex", "private", "focus", "google chrome", "safari", "terminal", "finder"]
+            guard !generic.contains(name.lowercased()), !name.lowercased().contains("notes so far"), name.count >= 4 else { continue }
             var t = byName[name] ?? Topic(name: name, category: c, minutes: 0, first: a.start, bullets: [])
             t.minutes += a.minutes
             t.first = min(t.first, a.start)
-            for b in screen.notes(for: a)?.bullets ?? [] where !t.bullets.contains(b) { t.bullets.append(b) }
+            for raw in screen.notes(for: a)?.bullets ?? [] {
+                let b = raw.trimmingCharacters(in: CharacterSet(charactersIn: "-•*· ").union(.whitespaces))
+                if !b.isEmpty, !t.bullets.contains(b) { t.bullets.append(b) }
+            }
             byName[name] = t
         }
         return byName.values.filter { $0.minutes >= 5 }.sorted { $0.minutes > $1.minutes }
@@ -836,18 +857,18 @@ struct EveningReviewView: View {
         let list = Array(topics.prefix(8))
         return Group {
             if !list.isEmpty {
-                section("WHAT THE SCREEN SAW YOU WORK ON") {
+                section("What the screen saw you work on") {
                     ForEach(list) { t in
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline) {
                                 Circle().fill(t.category.map(categoryColor) ?? .secondary).frame(width: 6, height: 6)
-                                Text(t.name).font(.system(size: 12, weight: .medium)).lineLimit(2)
+                                Text(t.name).font(.system(size: 14, weight: .semibold)).lineLimit(2)
                                 Spacer()
                                 Text("\(fmt(t.minutes)) · from \(t.first.formatted(date: .omitted, time: .shortened))")
-                                    .font(.system(size: 10).monospacedDigit()).foregroundStyle(.secondary)
+                                    .font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
                             }
                             ForEach(Array(t.bullets.prefix(3).enumerated()), id: \.offset) { _, b in
-                                Text("• \(b)").font(.system(size: 11)).foregroundStyle(.secondary)
+                                Text("• \(b)").font(.system(size: 13)).foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .padding(.leading, 12)
                             }
@@ -865,14 +886,20 @@ struct EveningReviewView: View {
             .max { $0.value < $1.value }
         return Group {
             if !drifts.isEmpty {
-                section("OFF-TASK DURING FOCUS") {
+                section("Off-task during focus") {
                     Text("\(drifts.count) drift\(drifts.count == 1 ? "" : "s"), \(fmt(total)) in all"
-                         + (top.map { ". Most of it: \($0.key) (\(fmt($0.value)))" } ?? ""))
-                        .font(.system(size: 12))
+                         + (top.map { ". Most of it: \(Self.dedupe($0.key)) (\(fmt($0.value)))" } ?? ""))
+                        .font(.system(size: 13))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
+    }
+
+    /// "ChatGPT: ChatGPT" → "ChatGPT".
+    private static func dedupe(_ s: String) -> String {
+        let parts = s.components(separatedBy: ": ")
+        return parts.count == 2 && parts[0] == parts[1] ? parts[0] : s
     }
 
     private func save() {
@@ -882,10 +909,29 @@ struct EveningReviewView: View {
     }
 
     private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 9, weight: .semibold)).tracking(1).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.system(size: 15, weight: .semibold))
             content()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .contentCard()
+    }
+
+    /// The goal bar split by category, so the colors double as the legend.
+    private func split(_ items: [(String, Double)], total: Double) -> some View {
+        GeometryReader { g in
+            HStack(spacing: 2) {
+                ForEach(items, id: \.0) { name, m in
+                    Rectangle().fill(categoryColor(name)).frame(width: max(2, g.size.width * m / max(total, 1) - 2))
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.08))
+            .clipShape(Capsule())
+        }
+        .frame(height: 8)
     }
 
     private func chips(_ items: [(String, Double)]) -> some View {
@@ -895,7 +941,7 @@ struct EveningReviewView: View {
     private func choice(_ label: String, on: Bool, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(label, systemImage: on ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 11.5, weight: .medium))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(on ? color : .secondary)
         }
         .buttonStyle(.plain)

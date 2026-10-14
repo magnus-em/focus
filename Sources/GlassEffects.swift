@@ -92,6 +92,11 @@ extension View {
         }
     }
 
+    /// Plain content card for inside a glass panel (DESIGN.md: never glass on glass).
+    func contentCard(cornerRadius: CGFloat = 18) -> some View {
+        modifier(ContentCard(cornerRadius: cornerRadius))
+    }
+
     // Kept for any other callers.
     @ViewBuilder
     func glassChrome() -> some View {
@@ -174,5 +179,15 @@ struct AmbientBackdrop: View {
             [0, 0.5 + w(1.3, 0.25)], [0.5 + w(2.1, 0.22), 0.5 + w(0.7, 0.22)], [1, 0.5 + w(2.9, 0.25)],
             [0, 1], [0.5 + w(3.7, 0.25), 1], [1, 1],
         ]
+    }
+}
+
+struct ContentCard: ViewModifier {
+    let cornerRadius: CGFloat
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        content.background(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(scheme == .dark ? Color.white.opacity(0.07) : Color.white.opacity(0.5)))
     }
 }

@@ -1,23 +1,26 @@
 import SwiftUI
 
+/// Focus categories get vivid, well-separated hues (and lightness, so they
+/// still differ in grayscale); life categories are quieter. Math and SWE
+/// were a shade apart until 10/13.
 public func categoryColor(_ tag: String) -> Color {
     switch tag.lowercased() {
-    case "quant":    return Color(red: 0.27, green: 0.62, blue: 0.83)
-    case "swe":      return Color(red: 0.25, green: 0.72, blue: 0.53)
-    case "ai", "ai/ml": return Color(red: 0.65, green: 0.40, blue: 0.90)
-    case "hw":       return Color(red: 0.98, green: 0.70, blue: 0.18)
-    case "class":    return Color(red: 0.36, green: 0.42, blue: 0.86)
-    case "meals":    return Color(red: 0.95, green: 0.52, blue: 0.25)
+    case "swe":      return Color(red: 0.20, green: 0.74, blue: 0.47)
+    case "math":     return Color(red: 0.12, green: 0.36, blue: 1.00)
+    case "quant":    return Color(red: 0.35, green: 0.78, blue: 0.98)
+    case "ai", "ai/ml": return Color(red: 0.66, green: 0.38, blue: 0.94)
+    case "hw":       return Color(red: 0.98, green: 0.70, blue: 0.16)
+    case "class":    return Color(red: 1.00, green: 0.48, blue: 0.27)
     case "leisure":  return Color(red: 0.93, green: 0.42, blue: 0.62)
-    case "sleep":    return Color(red: 0.33, green: 0.36, blue: 0.52)
+    case "social":   return Color(red: 0.78, green: 0.40, blue: 0.76)
+    case "exercise": return Color(red: 0.58, green: 0.76, blue: 0.32)
+    case "meals":    return Color(red: 0.80, green: 0.60, blue: 0.44)
+    case "reading":  return Color(red: 0.80, green: 0.74, blue: 0.40)
+    case "sleep":    return Color(red: 0.36, green: 0.38, blue: 0.52)
     case "chores":   return Color(red: 0.62, green: 0.58, blue: 0.52)
-    case "exercise": return Color(red: 0.55, green: 0.78, blue: 0.25)
-    case "social":   return Color(red: 0.80, green: 0.35, blue: 0.80)
-    case "commute":  return Color(red: 0.45, green: 0.55, blue: 0.62)
-    case "admin":    return Color(red: 0.62, green: 0.50, blue: 0.40)
-    // Math sat on the default teal, a shade off SWE's green (10/13).
-    case "math":     return Color(red: 0.12, green: 0.45, blue: 0.98)
-    default:         return Color(red: 0.30, green: 0.78, blue: 0.74)
+    case "commute":  return Color(red: 0.48, green: 0.56, blue: 0.62)
+    case "admin":    return Color(red: 0.60, green: 0.50, blue: 0.42)
+    default:         return Color(red: 0.30, green: 0.70, blue: 0.70)
     }
 }
 

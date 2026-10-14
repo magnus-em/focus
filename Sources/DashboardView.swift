@@ -132,8 +132,10 @@ struct DashboardView: View {
         }
     }
 
+    /// Includes the running block, so it matches the ring and the popover.
     private var selectedDayFocusMinutes: Double {
-        selectedDayFocusSessions.filter(\.isFocus).reduce(0) { $0 + $1.durationMinutes }
+        let live = isSelectedDayToday ? (timerManager.currentInProgressSession.flatMap { $0.isFocus ? $0.durationMinutes : nil } ?? 0) : 0
+        return selectedDayFocusSessions.filter(\.isFocus).reduce(0) { $0 + $1.durationMinutes } + live
     }
 
     private var selectedDayBreakMinutes: Double {
@@ -403,6 +405,7 @@ struct DashboardView: View {
             }
             .padding(14)
         }
+        .contentMargins(.bottom, timerManager.isActive ? 80 : 0, for: .scrollContent)
         .onChange(of: selectedDay) { _, day in
             let cal = Calendar.current
             let weekStart = cal.date(byAdding: .day, value: -6, to: weekEndDay)!
@@ -2273,26 +2276,33 @@ struct DayRingSection: View {
         let usual = past.isEmpty ? nil : past.map { focus(on: $0, before: cutoff) }.reduce(0, +) / Double(past.count)
         let weekday = day.formatted(.dateTime.weekday(.wide))
         HStack(alignment: .center, spacing: 28) {
-            ring(arcs, guesses)
-                .frame(width: 210, height: 210)
-            VStack(alignment: .leading, spacing: 18) {
-                bigNumber(fmt(today), "focus",
+            VStack(spacing: 8) {
+                ring(arcs, guesses)
+                    .frame(width: 220, height: 220)
+                HStack(spacing: 12) {
+                    Label("Outer: you", systemImage: "circle")
+                    Label("Inner: screen", systemImage: "circle.dotted")
+                }
+                .labelStyle(.titleOnly)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 16) {
+                heroNumber(fmt(today), "focus",
                           usual.map { u in
                               let d = today - u
                               guard abs(d) >= 5 else { return "about your usual \(weekday)\(isToday ? " by now" : "")" }
                               return "\(fmt(abs(d))) \(d > 0 ? "more" : "less") than your usual \(weekday)\(isToday ? " by now" : "")"
                           } ?? "no other \(weekday)s yet",
-                          tint: settings.dailyGoal > 0 && today / 60 >= Double(settings.dailyGoal) ? .green : .primary)
-                if settings.dailyGoal > 0 {
-                    let goal = Double(settings.dailyGoal) * 60
-                    bigNumber("\(settings.dailyGoal)h", "goal",
-                              today >= goal ? "met, with \(fmt(today - goal)) to spare" : "\(fmt(goal - today)) to go",
-                              tint: today >= goal ? .green : .primary)
-                }
+                          goal: settings.dailyGoal > 0 ? {
+                              let goal = Double(settings.dailyGoal) * 60
+                              return today >= goal ? "\(settings.dailyGoal)h goal met, \(fmt(today - goal)) to spare"
+                                  : "\(fmt(goal - today)) to your \(settings.dailyGoal)h goal"
+                          }() : nil,
+                          met: settings.dailyGoal > 0 && today / 60 >= Double(settings.dailyGoal))
                 let streak = store.currentStreak
                 if isToday, streak > 0 {
-                    bigNumber("\(streak)", streak == 1 ? "day streak" : "day streak",
-                              "\(fmt(store.totalWorkHours * 60)) of focus all-time", tint: .primary)
+                    bigNumber("\(streak)", "day streak", "\(fmt(store.totalWorkHours * 60)) of focus all-time", tint: .primary)
                 }
             }
             Spacer(minLength: 0)
@@ -2301,10 +2311,25 @@ struct DayRingSection: View {
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
+    private func heroNumber(_ value: String, _ unit: String, _ line: String, goal: String?, met: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(value).font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
+                Text(unit).font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
+            }
+            if let goal {
+                Label(goal, systemImage: met ? "checkmark.circle.fill" : "target")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(met ? Color.green : .secondary)
+            }
+            Text(line).font(.system(size: 13)).foregroundStyle(.secondary)
+        }
+    }
+
     private func bigNumber(_ value: String, _ unit: String, _ line: String, tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(value).font(.system(size: 26, weight: .semibold, design: .rounded).monospacedDigit()).foregroundStyle(tint)
+                Text(value).font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit()).foregroundStyle(tint)
                 Text(unit).font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary)
             }
             Text(line).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
@@ -2345,11 +2370,11 @@ struct DayRingSection: View {
                             ctx.stroke(p, with: .color(col.opacity(alpha)), style: StrokeStyle(lineWidth: width, lineCap: .butt))
                         }
                     }
-                    band(arcs, radius: size / 2 - 10, width: 16, alpha: 1)
-                    band(guesses, radius: size / 2 - 30, width: 8, alpha: 0.8)
+                    band(arcs, radius: size / 2 - 26, width: 16, alpha: 1)
+                    band(guesses, radius: size / 2 - 46, width: 8, alpha: 0.8)
                     for h in stride(from: 0, to: 24, by: 3) {
                         let a = Angle.degrees(Double(h) / 24 * 360 - 90).radians
-                        let r1 = size / 2 - 40, r2 = size / 2 - (h % 6 == 0 ? 46 : 43)
+                        let r1 = size / 2 - 15, r2 = size / 2 - (h % 6 == 0 ? 19 : 17)
                         var t = Path()
                         t.move(to: CGPoint(x: c.x + cos(a) * r1, y: c.y + sin(a) * r1))
                         t.addLine(to: CGPoint(x: c.x + cos(a) * r2, y: c.y + sin(a) * r2))
@@ -2358,15 +2383,15 @@ struct DayRingSection: View {
                     if let hand = scrub ?? (isToday ? Date() : nil) {
                         let a = angle(hand).radians
                         var p = Path()
-                        p.move(to: CGPoint(x: c.x + cos(a) * (size / 2 - 38), y: c.y + sin(a) * (size / 2 - 38)))
-                        p.addLine(to: CGPoint(x: c.x + cos(a) * (size / 2), y: c.y + sin(a) * (size / 2)))
+                        p.move(to: CGPoint(x: c.x + cos(a) * (size / 2 - 54), y: c.y + sin(a) * (size / 2 - 54)))
+                        p.addLine(to: CGPoint(x: c.x + cos(a) * (size / 2 - 16), y: c.y + sin(a) * (size / 2 - 16)))
                         ctx.stroke(p, with: .color(.primary), style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     }
                 }
                 ForEach([(0, "12a"), (6, "6a"), (12, "12p"), (18, "6p")], id: \.0) { h, label in
                     let a = Angle.degrees(Double(h) / 24 * 360 - 90).radians
                     Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
-                        .position(x: c.x + cos(a) * (size / 2 - 58), y: c.y + sin(a) * (size / 2 - 58))
+                        .position(x: c.x + cos(a) * (size / 2 - 6), y: c.y + sin(a) * (size / 2 - 6))
                 }
                 center(arcs, guesses)
             }
@@ -2398,8 +2423,6 @@ struct DayRingSection: View {
             } else {
                 Text(isToday ? "Today" : day.formatted(.dateTime.weekday(.abbreviated).month().day()))
                     .font(.system(size: 15, weight: .semibold))
-                Text("You outside").font(.system(size: 11)).foregroundStyle(.secondary)
-                Text("Screen inside").font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
     }

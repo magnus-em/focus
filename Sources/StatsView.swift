@@ -50,58 +50,57 @@ struct StatsView: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                sectionLabel("LAST 7 DAYS")
+                sectionLabel("Last 7 days")
                 Spacer()
                 if prior > 0 {
                     HStack(spacing: 2) {
                         Image(systemName: delta >= 0 ? "arrow.up.right" : "arrow.down.right")
-                            .font(.system(size: 8, weight: .bold))
-                        Text("\(formatMinutes(abs(delta))) vs prior")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 11, weight: .bold))
+                        Text("\(formatMinutes(abs(delta))) \(delta >= 0 ? "more" : "less") than the week before")
+                            .font(.system(size: 12, weight: .medium))
                     }
-                    .foregroundStyle(delta >= 0 ? .green : .red)
+                    .foregroundStyle(delta >= 0 ? Color.green : .secondary)
                 }
             }
 
             Text(formatMinutes(last))
-                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .font(.system(size: 26, weight: .semibold, design: .rounded).monospacedDigit())
 
             Chart {
                 ForEach(days) { d in
                     BarMark(x: .value("Day", d.date, unit: .day), y: .value("Hours", d.hours))
-                        .foregroundStyle(goal > 0 && d.hours >= goal ? Color.green : red)
-                        .cornerRadius(3)
+                        .foregroundStyle(goal > 0 && d.hours >= goal ? Color.green : Color.primary.opacity(0.28))
+                        .cornerRadius(4)
                 }
                 if goal > 0 {
                     RuleMark(y: .value("Goal", goal))
-                        .foregroundStyle(Color.secondary.opacity(0.5))
+                        .foregroundStyle(Color.secondary.opacity(0.6))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .annotation(position: .top, alignment: .trailing) {
+                            Text("\(Int(goal))h goal").font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
                 }
             }
             .chartYScale(domain: 0...max(goal, days.map(\.hours).max() ?? 0, 1))
             .chartYAxis {
-                AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { v in
-                    AxisGridLine()
-                    AxisValueLabel { if let h = v.as(Double.self) { Text("\(Int(h))h") } }
-                        .font(.system(size: 8))
-                }
+                AxisMarks(position: .leading, values: [0]) { _ in AxisGridLine() }
             }
             .chartXAxis {
                 AxisMarks(values: .stride(by: .day)) { _ in
-                    AxisValueLabel(format: .dateTime.weekday(.narrow)).font(.system(size: 9))
+                    AxisValueLabel(format: .dateTime.weekday(.abbreviated)).font(.system(size: 11))
                 }
             }
-            .frame(height: 90)
+            .frame(height: 96)
 
             HStack(spacing: 0) {
-                metric(formatMinutes(last / 7), "avg / day")
-                metric(formatMinutes(store.averageSessionMinutes(last: 20)), "avg session")
-                metric("\(Int(consistency * 100))%", "days active (14d)",
-                       color: consistency >= 0.8 ? .green : consistency >= 0.5 ? .orange : .red)
+                metric(formatMinutes(last / 7), "a day")
+                metric(formatMinutes(store.averageSessionMinutes(last: 20)), "a block")
+                metric("\(Int(consistency * 100))%", "days active, 2 weeks",
+                       color: consistency >= 0.8 ? .green : .primary)
             }
         }
-        .padding(12)
-        .glassCard(cornerRadius: 10)
+        .padding(14)
+        .contentCard()
     }
 
     // MARK: - Split
@@ -113,7 +112,7 @@ struct StatsView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("FOCUS SPLIT")
+                sectionLabel("Focus split")
                 Spacer()
                 Picker("", selection: $splitAllTime) {
                     Text("7 days").tag(false)
@@ -121,14 +120,14 @@ struct StatsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .controlSize(.mini)
+                .controlSize(.small)
                 .fixedSize()
             }
 
             if total == 0 {
                 Text("No focus logged in this range.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
             } else {
                 GeometryReader { geo in
                     HStack(spacing: 1.5) {
@@ -146,21 +145,21 @@ struct StatsView: View {
                     ForEach(split, id: \.tag) { e in
                         HStack(spacing: 6) {
                             Circle().fill(categoryColor(e.tag)).frame(width: 6, height: 6)
-                            Text(e.tag).font(.system(size: 11, weight: .medium))
+                            Text(e.tag).font(.system(size: 13, weight: .medium))
                             Spacer()
                             Text(formatMinutes(e.minutes))
-                                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                                .font(.system(size: 13).monospacedDigit())
                             Text("\(Int((e.minutes / total * 100).rounded()))%")
-                                .font(.system(size: 10).monospacedDigit())
-                                .foregroundStyle(.tertiary)
+                                .font(.system(size: 12).monospacedDigit())
+                                .foregroundStyle(.secondary)
                                 .frame(width: 30, alignment: .trailing)
                         }
                     }
                 }
             }
         }
-        .padding(12)
-        .glassCard(cornerRadius: 10)
+        .padding(14)
+        .contentCard()
     }
 
     // MARK: - Heatmap
@@ -168,22 +167,22 @@ struct StatsView: View {
     private var heatmapCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("LAST 18 WEEKS")
+                sectionLabel("Last 18 weeks")
                 Spacer()
                 HStack(spacing: 2) {
-                    Text("less").font(.system(size: 8)).foregroundStyle(.tertiary)
+                    Text("less").font(.system(size: 11)).foregroundStyle(.secondary)
                     ForEach([0.0, 30, 60, 120], id: \.self) { m in
                         RoundedRectangle(cornerRadius: 1.5)
                             .fill(HeatmapView.color(for: m))
                             .frame(width: 7, height: 7)
                     }
-                    Text("more").font(.system(size: 8)).foregroundStyle(.tertiary)
+                    Text("more").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
             HeatmapView(data: store.heatmapData(weeks: 18))
         }
-        .padding(12)
-        .glassCard(cornerRadius: 10)
+        .padding(14)
+        .contentCard()
     }
 
     // MARK: - Records
@@ -197,23 +196,20 @@ struct StatsView: View {
             MiniStat(value: "\(store.bestStreak)d", label: "Best streak",
                      icon: "flame.fill", iconColor: .orange)
         }
-        .padding(.vertical, 10)
-        .glassCard(cornerRadius: 10)
+        .padding(.vertical, 12)
+        .contentCard()
     }
 
     // MARK: - Helpers
 
     private func sectionLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .bold))
-            .tracking(1.2)
-            .foregroundStyle(.secondary)
+        Text(text).font(.system(size: 15, weight: .semibold))
     }
 
     private func metric(_ value: String, _ label: String, color: Color = .primary) -> some View {
         VStack(spacing: 1) {
-            Text(value).font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(color)
-            Text(label).font(.system(size: 9)).foregroundStyle(.tertiary)
+            Text(value).font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit()).foregroundStyle(color)
+            Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -241,7 +237,7 @@ struct HeatmapView: View {
         guard minutes >= 0 else { return .clear }
         guard minutes > 0 else { return Color.secondary.opacity(0.12) }
         let t = min(1.0, minutes / 120.0)
-        return Color(red: 0.96, green: 0.36, blue: 0.36).opacity(0.2 + t * 0.8)
+        return Color.green.opacity(0.2 + t * 0.8)
     }
 
     private func monthLabel(weekIndex: Int) -> String? {
@@ -260,14 +256,14 @@ struct HeatmapView: View {
                     ForEach(0..<weeks, id: \.self) { wi in
                         if let m = monthLabel(weekIndex: wi) {
                             Text(m)
-                                .font(.system(size: 8, weight: .medium))
+                                .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                                 .fixedSize()
                                 .offset(x: CGFloat(wi) * (cell + gap))
                         }
                     }
                 }
-                .frame(height: 10, alignment: .topLeading)
+                .frame(height: 14, alignment: .topLeading)
                 HStack(alignment: .top, spacing: gap) {
                     ForEach(0..<weeks, id: \.self) { wi in
                         VStack(spacing: gap) {
@@ -298,9 +294,9 @@ struct MiniStat: View {
         VStack(spacing: 1) {
             HStack(spacing: 2) {
                 if let icon { Image(systemName: icon).font(.system(size: 9)).foregroundStyle(iconColor) }
-                Text(value).font(.system(size: 12, weight: .semibold, design: .rounded))
+                Text(value).font(.system(size: 14, weight: .semibold, design: .rounded))
             }
-            Text(label).font(.system(size: 9, weight: .medium)).foregroundStyle(.secondary)
+            Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }

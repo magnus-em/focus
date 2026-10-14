@@ -92,29 +92,34 @@ struct TimerView: View {
         }
     }
 
+    /// Secondary to the timer: small, in the category's color, with a
+    /// check once the day's goal is met.
     private var goalRing: some View {
         let goal = Double(max(settings.dailyGoal, 1))
         let hours = todayFocusMinutes / 60
         let met = settings.dailyGoal > 0 && hours >= goal
         return ZStack {
-            Circle().stroke(Color.primary.opacity(0.08), lineWidth: 9)
+            Circle().stroke(Color.primary.opacity(0.08), lineWidth: 7)
             Circle()
                 .trim(from: 0, to: min(1, hours / goal))
-                .stroke(met ? Color.green : accent, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                .stroke(accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.spring(response: 0.6), value: hours)
-            VStack(spacing: 0) {
+            VStack(spacing: 1) {
                 Text(hm(todayFocusMinutes))
-                    .font(.system(size: 14, weight: .semibold).monospacedDigit())
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
                     .contentTransition(.numericText())
-                Text(settings.dailyGoal == 0 ? "focus" : met ? "goal met" : "of \(settings.dailyGoal)h")
-                    .font(.system(size: 11, weight: met ? .semibold : .regular))
-                    .foregroundStyle(met ? Color.green : .secondary)
+                if met {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(.green)
+                } else if settings.dailyGoal > 0 {
+                    Text("of \(settings.dailyGoal)h").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
             }
         }
-        .frame(width: 88, height: 88)
+        .frame(width: 72, height: 72)
+        .help(met ? "Today's \(settings.dailyGoal)h goal is met" : "Focus today toward your \(settings.dailyGoal)h goal")
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(hm(todayFocusMinutes)) focus today, goal \(settings.dailyGoal) hours")
+        .accessibilityLabel("\(hm(todayFocusMinutes)) focus today\(met ? ", goal met" : ", goal \(settings.dailyGoal) hours")")
     }
 
     private var categoryMenu: some View {
@@ -173,9 +178,9 @@ struct TimerView: View {
             let target = Int(FocusCategories.countdown(total: timer.totalTime) / 60)
             parts.append("\(Int(over) / 60) min past your \(target == 60 ? "hour" : "\(target) min")")
         } else {
-            parts.append("\(max(1, Int(timer.timeRemaining / 60))) min left")
+            parts.append("Until \(clock(Date().addingTimeInterval(timer.timeRemaining)))")
         }
-        if timer.isBlockingActive { parts.append("sites blocked") }
+        if timer.isBlockingActive { parts.append("Sites blocked") }
         return parts.joined(separator: " · ")
     }
 
@@ -308,6 +313,18 @@ struct TimerView: View {
         .sorted { $0.start < $1.start }
     }
 
+    /// Back-to-back blocks of one category (a switch away and back, a
+    /// relaunch) read as one row.
+    private func merged(_ list: [Block]) -> [Block] {
+        var out: [Block] = []
+        for b in list {
+            if let l = out.last, l.label == b.label, b.start.timeIntervalSince(l.end) < 120 {
+                out[out.count - 1] = Block(start: l.start, end: max(l.end, b.end), label: l.label)
+            } else { out.append(b) }
+        }
+        return out
+    }
+
     private var dayStrip: some View {
         let day = Calendar.current.startOfDay(for: Date())
         let frac = { (d: Date) in CGFloat(d.timeIntervalSince(day) / 86400) }
@@ -319,6 +336,7 @@ struct TimerView: View {
                         Rectangle()
                             .fill(b.label == "Break" ? Self.breakBlue.opacity(0.5) : categoryColor(b.label))
                             .frame(width: max(1, (frac(b.end) - frac(b.start)) * g.size.width))
+                            .help("\(b.label) · \(clock(b.start))–\(clock(b.end))")
                             .offset(x: frac(b.start) * g.size.width)
                     }
                     Capsule().fill(Color.primary).frame(width: 2, height: 14).offset(x: frac(Date()) * g.size.width - 1)
@@ -346,10 +364,20 @@ struct TimerView: View {
                .last(where: { $0.device == nil && now.timeIntervalSince($0.end) < 120 }) {
             let notes = watcher.notes(for: block)
             let heading = notes?.title ?? block.spans.last?.title ?? block.category ?? ""
+            let differs = block.category != nil && running != nil && running != "Break" && block.category != running
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Circle().fill(block.category.map(categoryColor) ?? .gray).frame(width: 7, height: 7)
-                    Text("On screen · \(block.category ?? "no label")")
+                    Text(differs ? "Screen looks like \(block.category!)" : "On screen")
+                    Spacer(minLength: 4)
+                    if differs, let c = block.category {
+                        Button("Switch") { timer.switchTo(c, at: block.start) }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 10)
+                            .frame(height: 24)
+                            .background(Capsule().fill(categoryColor(c).opacity(0.2)))
+                    }
                 }
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -363,13 +391,17 @@ struct TimerView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.05)))
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(cardFill))
         }
     }
 
+    @Environment(\.colorScheme) private var scheme
+    /// Content cards are lighter than the control well, so the two don't read as one.
+    private var cardFill: Color { scheme == .dark ? .white.opacity(0.07) : .white.opacity(0.5) }
+
     private var todayLog: some View {
         VStack(alignment: .leading, spacing: 0) {
-            let blocks = Array(todayBlocks.reversed().prefix(5))
+            let blocks = Array(merged(todayBlocks).reversed().prefix(4))
             ForEach(blocks, id: \.start) { b in
                 HStack(spacing: 10) {
                     Text(clock(b.start)).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
@@ -444,8 +476,8 @@ struct TimerView: View {
     private func roundButton(_ icon: String, help: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.primary.opacity(0.8))
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(.secondary)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
@@ -559,7 +591,7 @@ struct NowPlayingBar: View {
 struct FloatingGlass: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            content.glassEffect(.regular, in: Capsule())
+            content.glassEffect(.regular, in: Capsule()).shadow(color: .black.opacity(0.18), radius: 14, y: 6)
         } else {
             content.background(Capsule().fill(.regularMaterial)).shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         }
