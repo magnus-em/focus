@@ -1010,8 +1010,11 @@ final class ScreenCoach {
             // Only focus-vs-focus answers say what a window is (Compiler
             // Explorer is SWE, not Math). "Still SWE" over Shortcuts or YouTube
             // means a side trip, which the distraction log counts instead.
+            // Except chat windows: "Still Math" while asking Claude about
+            // something else is a side trip, and taught that chat "Math" (10/13).
             if let running, running != "Break", !FocusCategories.isLife(running), !FocusCategories.isLife(run.category) {
-                ScreenWatcher.learn(run.keys, as: running)
+                let keys = run.keys.filter { k in !ScreenWatcher.chatApps.contains { k.hasPrefix($0 + "|") } }
+                ScreenWatcher.learn(keys, as: running)
             }
             self.decline(run.category)
         }
