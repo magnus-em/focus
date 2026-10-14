@@ -543,6 +543,7 @@ struct ScreenTimelineSection: View {
     @State private var pinch: CGFloat = 1
     @State private var jump: Date?
     @State private var follow = 0
+    @State private var agreementTrend: [Double?] = []
     @State private var showAllSwitches = false
 
     private let cal = Calendar.current
@@ -693,8 +694,14 @@ struct ScreenTimelineSection: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 24) {
                 if labeled >= 300 {
-                    metric("\(Int(((labeled - disagree) / labeled * 100).rounded()))%", "agrees with you",
-                           (labeled - disagree) / labeled >= 0.85 ? Color.good : .orange)
+                    VStack(alignment: .leading, spacing: 4) {
+                        metric("\(Int(((labeled - disagree) / labeled * 100).rounded()))%", "agrees with you",
+                               (labeled - disagree) / labeled >= 0.85 ? Color.good : .orange)
+                        Sparkline(values: agreementTrend)
+                            .frame(width: 84, height: 18)
+                            .task(id: "\(day.timeIntervalSince1970)-\(watcher.spans.count / 20)") { agreementTrend = dailyAgreement() }
+                            .help("Agreement with your tracking, each of the last 14 days")
+                    }
                     metric(fmt(disagree / 60), "disagrees", .primary)
                 }
                 metric("\(sw.count)", sw.count == 1 ? "switch it saw" : "switches it saw", .primary)
@@ -720,6 +727,27 @@ struct ScreenTimelineSection: View {
             }
             .font(.system(size: 12).monospacedDigit())
             .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Share of labeled, active screen time matching your tracking, per day,
+    /// oldest first; nil where there's too little to say.
+    private func dailyAgreement() -> [Double?] {
+        (0..<14).reversed().map { back -> Double? in
+            let a = cal.date(byAdding: .day, value: -back, to: day)!, b = cal.date(byAdding: .day, value: 1, to: a)!
+            let track = sessions.map {
+                Tracked(start: $0.startTime, end: $0.startTime.addingTimeInterval($0.durationMinutes * 60),
+                        label: $0.type != .work ? "Break" : ($0.label ?? "Focus"))
+            }.filter { $0.end > a && $0.start < b }
+            var same = 0.0, total = 0.0
+            for s in watcher.spans(from: a, to: b) where s.active != false && s.source != "focus" {
+                guard let c = s.category else { continue }
+                let d = s.end.timeIntervalSince(s.start)
+                guard let t = trackedLabel(at: s.start.addingTimeInterval(d / 2), in: track) else { continue }
+                total += d
+                if t == c { same += d }
+            }
+            return total >= 600 ? same / total : nil
         }
     }
 
@@ -1339,6 +1367,28 @@ struct ScreenReviewSection: View {
                         .foregroundStyle(c.answer?.hasPrefix("switched") == true ? Color.good : Color.secondaryText)
                 }
                 .frame(minHeight: 38)
+            }
+        }
+    }
+}
+
+
+/// A tiny trend line; gaps where a value is nil.
+struct Sparkline: View {
+    let values: [Double?]
+
+    var body: some View {
+        Canvas { ctx, size in
+            let pts = values.enumerated().compactMap { i, v in
+                v.map { CGPoint(x: size.width * CGFloat(i) / CGFloat(max(values.count - 1, 1)), y: size.height * (1 - CGFloat($0))) }
+            }
+            guard pts.count >= 2 else { return }
+            var p = Path()
+            p.move(to: pts[0])
+            for q in pts.dropFirst() { p.addLine(to: q) }
+            ctx.stroke(p, with: .color(Color.secondaryText), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            if let last = pts.last {
+                ctx.fill(Path(ellipseIn: CGRect(x: last.x - 2.5, y: last.y - 2.5, width: 5, height: 5)), with: .color(.primary))
             }
         }
     }
