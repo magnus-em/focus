@@ -20,9 +20,11 @@ the directions artifact below.
 1. **One hero per surface.** Popover: what's running and for how long.
    Dashboard: today's story (timeline, activity log, focus vs goal). Everything
    else is secondary and visually quieter.
-2. **Glass is for the floating layer only** (Apple, Liquid Glass): tab bar,
-   timer controls, chips, corner cards, toolbars. Content (cards, lists,
-   charts) sits on plain or lightly tinted surfaces. Never glass on glass.
+2. **Glass is for the floating layer only** (Apple, Liquid Glass): the popover
+   panel itself (a Maps-style sheet), the Now Playing bar, corner cards,
+   toolbars. Everything inside a glass panel is plain fills (wells, tinted
+   capsules), and content cards sit on plain or lightly tinted surfaces.
+   Never glass on glass.
 3. **Say it once.** One label per fact. No "FOCUS" + "SWE" + "Sites Blocked" +
    ring stack; no goal shown as both "8.5h / 4h" and "8h 28m".
 4. **Color means category.** The running category's color is the accent
@@ -71,7 +73,7 @@ lightness, not only hue.
   a visible caption.
 - No new hardcoded font sizes outside the scale above.
 
-## Known problems (popover, 2026-10-13)
+## Known problems (popover, 2026-10-13, before the A+B rebuild)
 
 1. Empty band under the tabs; header row crowded, "Yesterday: 0h 19m
    untracked" wraps to three lines.

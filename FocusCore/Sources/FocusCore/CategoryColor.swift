@@ -15,6 +15,8 @@ public func categoryColor(_ tag: String) -> Color {
     case "social":   return Color(red: 0.80, green: 0.35, blue: 0.80)
     case "commute":  return Color(red: 0.45, green: 0.55, blue: 0.62)
     case "admin":    return Color(red: 0.62, green: 0.50, blue: 0.40)
+    // Math sat on the default teal, a shade off SWE's green (10/13).
+    case "math":     return Color(red: 0.12, green: 0.45, blue: 0.98)
     default:         return Color(red: 0.30, green: 0.78, blue: 0.74)
     }
 }

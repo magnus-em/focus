@@ -196,10 +196,14 @@ struct DashboardView: View {
             Divider()
             rightPanel
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if timerManager.isActive { NowPlayingBar(timer: timerManager) }
+        }
         .background {
-            AmbientBackdrop(colors: [red, amber, blue], intensity: 0.35, speed: 0.06)
+            AmbientBackdrop(colors: washColors, intensity: 0.35, speed: 0.06)
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
+                .animation(.easeInOut(duration: 0.8), value: timerManager.currentLabel)
         }
         .glassChrome()
         .frame(minWidth: 640, minHeight: 440)
@@ -227,6 +231,13 @@ struct DashboardView: View {
             )
             .frame(width: 360, height: 320)
         }
+    }
+
+    /// The running category tints the window (DESIGN.md idea 3).
+    private var washColors: [Color] {
+        guard timerManager.isActive else { return [red, amber, blue] }
+        let c = timerManager.isOnBreak ? TimerView.breakBlue : categoryColor(timerManager.currentLabel)
+        return [c, c.opacity(0.7), blue.opacity(0.5)]
     }
 
     // MARK: - Left: Selected day's log
@@ -361,6 +372,8 @@ struct DashboardView: View {
     private var rightPanel: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                DayRingSection(store: sessionStore, watcher: screenWatcher, settings: settings,
+                               day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions)
                 ScreenTimelineSection(watcher: screenWatcher, day: Calendar.current.startOfDay(for: selectedDay), sessions: liveSessions)
                 ScreenActivitySection(
                     watcher: screenWatcher, day: selectedDay,
@@ -375,7 +388,6 @@ struct DashboardView: View {
                     endDay: weekEndDay, selectedDay: selectedDay,
                     onSelectDay: { selectedDay = $0 }
                 )
-                statCards
                 browserSection
                 problemProgressSection
                 weeklySection
@@ -2207,5 +2219,196 @@ private struct GapFillPopover: View {
             .foregroundStyle(color)
             .buttonStyle(.plain)
             .disabled(end.timeIntervalSince(start) < 60)
+    }
+}
+
+// MARK: - Day ring
+
+/// The day as a 24-hour dial (DESIGN.md idea 4): what you tracked on the
+/// outer ring, what the screen thought on the inner one, a hand at now.
+/// Hover to scrub. Beside it, one big number per fact (idea 5).
+struct DayRingSection: View {
+    @ObservedObject var store: SessionStore
+    @ObservedObject var watcher: ScreenWatcher
+    @ObservedObject var settings: AppSettings
+    let day: Date
+    let sessions: [WorkSession]
+
+    @State private var scrub: Date?
+    private let cal = Calendar.current
+    private var dayEnd: Date { cal.date(byAdding: .day, value: 1, to: day)! }
+    private var isToday: Bool { cal.isDateInToday(day) }
+
+    private struct Arc { let start: Date, end: Date, label: String }
+
+    private var tracked: [Arc] {
+        sessions.compactMap { s in
+            let e = s.startTime.addingTimeInterval(s.durationMinutes * 60)
+            guard e > day, s.startTime < dayEnd else { return nil }
+            return Arc(start: max(day, s.startTime), end: min(dayEnd, e), label: s.type != .work ? "Break" : (s.label ?? "Focus"))
+        }
+    }
+
+    private var screen: [Arc] {
+        watcher.activities(from: day, to: dayEnd).compactMap { a in
+            a.category.map { Arc(start: a.start, end: a.end, label: $0) }
+        }
+    }
+
+    /// Focus minutes on `d` before `cutoff` seconds into the day.
+    private func focus(on d: Date, before cutoff: TimeInterval) -> Double {
+        let start = cal.startOfDay(for: d), stop = start.addingTimeInterval(cutoff)
+        return store.sessions.filter(\.isFocus).reduce(0) { sum, s in
+            let e = s.startTime.addingTimeInterval(s.durationMinutes * 60)
+            return sum + max(0, min(e, stop).timeIntervalSince(max(s.startTime, start))) / 60
+        }
+    }
+
+    var body: some View {
+        let arcs = tracked, guesses = screen
+        let cutoff = isToday ? Date().timeIntervalSince(day) : 86400
+        let today = sessions.filter { $0.isFocus }.reduce(0.0) { sum, s in
+            let e = s.startTime.addingTimeInterval(s.durationMinutes * 60)
+            return sum + max(0, min(e, dayEnd).timeIntervalSince(max(s.startTime, day))) / 60
+        }
+        let past = (1...6).compactMap { cal.date(byAdding: .day, value: -7 * $0, to: day) }
+            .filter { d in store.sessions.contains { cal.isDate($0.startTime, inSameDayAs: d) } }
+        let usual = past.isEmpty ? nil : past.map { focus(on: $0, before: cutoff) }.reduce(0, +) / Double(past.count)
+        let weekday = day.formatted(.dateTime.weekday(.wide))
+        HStack(alignment: .center, spacing: 28) {
+            ring(arcs, guesses)
+                .frame(width: 210, height: 210)
+            VStack(alignment: .leading, spacing: 18) {
+                bigNumber(fmt(today), "focus",
+                          usual.map { u in
+                              let d = today - u
+                              guard abs(d) >= 5 else { return "about your usual \(weekday)\(isToday ? " by now" : "")" }
+                              return "\(fmt(abs(d))) \(d > 0 ? "more" : "less") than your usual \(weekday)\(isToday ? " by now" : "")"
+                          } ?? "no other \(weekday)s yet",
+                          tint: settings.dailyGoal > 0 && today / 60 >= Double(settings.dailyGoal) ? .green : .primary)
+                if settings.dailyGoal > 0 {
+                    let goal = Double(settings.dailyGoal) * 60
+                    bigNumber("\(settings.dailyGoal)h", "goal",
+                              today >= goal ? "met, with \(fmt(today - goal)) to spare" : "\(fmt(goal - today)) to go",
+                              tint: today >= goal ? .green : .primary)
+                }
+                let streak = store.currentStreak
+                if isToday, streak > 0 {
+                    bigNumber("\(streak)", streak == 1 ? "day streak" : "day streak",
+                              "\(fmt(store.totalWorkHours * 60)) of focus all-time", tint: .primary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(20)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
+    }
+
+    private func bigNumber(_ value: String, _ unit: String, _ line: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(value).font(.system(size: 26, weight: .semibold, design: .rounded).monospacedDigit()).foregroundStyle(tint)
+                Text(unit).font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary)
+            }
+            Text(line).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+        }
+    }
+
+    private func agreement(_ arcs: [Arc], _ guesses: [Arc]) -> Double? {
+        var total = 0.0, same = 0.0
+        for g in guesses {
+            for a in arcs {
+                let o = min(g.end, a.end).timeIntervalSince(max(g.start, a.start))
+                guard o > 0 else { continue }
+                total += o
+                if a.label == g.label { same += o }
+            }
+        }
+        return total >= 600 ? same / total : nil
+    }
+
+    private func angle(_ d: Date) -> Angle {
+        .degrees(d.timeIntervalSince(day) / 86400 * 360 - 90)
+    }
+
+    private func ring(_ arcs: [Arc], _ guesses: [Arc]) -> some View {
+        GeometryReader { g in
+            let size = min(g.size.width, g.size.height)
+            let c = CGPoint(x: g.size.width / 2, y: g.size.height / 2)
+            ZStack {
+                Canvas { ctx, _ in
+                    func band(_ list: [Arc], radius: CGFloat, width: CGFloat, alpha: Double) {
+                        var track = Path()
+                        track.addArc(center: c, radius: radius, startAngle: .zero, endAngle: .degrees(360), clockwise: false)
+                        ctx.stroke(track, with: .color(.primary.opacity(0.07)), lineWidth: width)
+                        for a in list {
+                            var p = Path()
+                            p.addArc(center: c, radius: radius, startAngle: angle(a.start), endAngle: angle(a.end), clockwise: false)
+                            let col = a.label == "Break" ? TimerView.breakBlue.opacity(0.5) : categoryColor(a.label)
+                            ctx.stroke(p, with: .color(col.opacity(alpha)), style: StrokeStyle(lineWidth: width, lineCap: .butt))
+                        }
+                    }
+                    band(arcs, radius: size / 2 - 10, width: 16, alpha: 1)
+                    band(guesses, radius: size / 2 - 30, width: 8, alpha: 0.8)
+                    for h in stride(from: 0, to: 24, by: 3) {
+                        let a = Angle.degrees(Double(h) / 24 * 360 - 90).radians
+                        let r1 = size / 2 - 40, r2 = size / 2 - (h % 6 == 0 ? 46 : 43)
+                        var t = Path()
+                        t.move(to: CGPoint(x: c.x + cos(a) * r1, y: c.y + sin(a) * r1))
+                        t.addLine(to: CGPoint(x: c.x + cos(a) * r2, y: c.y + sin(a) * r2))
+                        ctx.stroke(t, with: .color(.secondary.opacity(0.6)), lineWidth: 1)
+                    }
+                    if let hand = scrub ?? (isToday ? Date() : nil) {
+                        let a = angle(hand).radians
+                        var p = Path()
+                        p.move(to: CGPoint(x: c.x + cos(a) * (size / 2 - 38), y: c.y + sin(a) * (size / 2 - 38)))
+                        p.addLine(to: CGPoint(x: c.x + cos(a) * (size / 2), y: c.y + sin(a) * (size / 2)))
+                        ctx.stroke(p, with: .color(.primary), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    }
+                }
+                ForEach([(0, "12a"), (6, "6a"), (12, "12p"), (18, "6p")], id: \.0) { h, label in
+                    let a = Angle.degrees(Double(h) / 24 * 360 - 90).radians
+                    Text(label).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .position(x: c.x + cos(a) * (size / 2 - 58), y: c.y + sin(a) * (size / 2 - 58))
+                }
+                center(arcs, guesses)
+            }
+            .contentShape(Circle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let p):
+                    var a = atan2(p.y - c.y, p.x - c.x) + .pi / 2
+                    if a < 0 { a += 2 * .pi }
+                    scrub = day.addingTimeInterval(a / (2 * .pi) * 86400)
+                case .ended: scrub = nil
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Day ring: tracked categories outside, screen guesses inside")
+    }
+
+    @ViewBuilder
+    private func center(_ arcs: [Arc], _ guesses: [Arc]) -> some View {
+        VStack(spacing: 2) {
+            if let t = scrub {
+                Text(t.formatted(date: .omitted, time: .shortened)).font(.system(size: 15, weight: .semibold).monospacedDigit())
+                let you = arcs.last { $0.start <= t && $0.end > t }?.label
+                let it = guesses.last { $0.start <= t && $0.end > t }?.label
+                Text("You: \(you ?? "nothing")").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("Screen: \(it ?? "nothing")").font(.system(size: 12))
+                    .foregroundStyle(it != nil && you != nil && it != you ? Color.orange : .secondary)
+            } else {
+                Text(isToday ? "Today" : day.formatted(.dateTime.weekday(.abbreviated).month().day()))
+                    .font(.system(size: 15, weight: .semibold))
+                Text("You outside").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("Screen inside").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func fmt(_ m: Double) -> String {
+        let h = Int(m) / 60, mn = Int(m) % 60
+        return h > 0 ? "\(h)h \(mn)m" : "\(mn)m"
     }
 }

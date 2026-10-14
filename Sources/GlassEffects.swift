@@ -74,6 +74,24 @@ extension View {
         }
     }
 
+    /// The popover itself is the one glass layer (a Maps-style sheet); inside
+    /// it everything is plain fills, tinted by the running category's wash.
+    @ViewBuilder
+    func popoverPanel(tint: Color) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
+        if #available(macOS 26.0, *) {
+            self
+                .background { CategoryWash(color: tint).clipShape(shape) }
+                .background(WindowTransparencyConfigurator().frame(width: 0, height: 0))
+                .glassEffect(.regular, in: shape)
+                .contentShape(shape)
+        } else {
+            self
+                .background { CategoryWash(color: tint) }
+                .background(.regularMaterial)
+        }
+    }
+
     // Kept for any other callers.
     @ViewBuilder
     func glassChrome() -> some View {

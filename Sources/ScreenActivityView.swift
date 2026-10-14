@@ -546,6 +546,7 @@ struct ScreenTimelineSection: View {
     @State private var pinned: ScreenSpan?
     @State private var pinch: CGFloat = 1
     @State private var jump: Date?
+    @State private var follow = 0
     @State private var showAllSwitches = false
 
     private let cal = Calendar.current
@@ -574,7 +575,7 @@ struct ScreenTimelineSection: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Snapshots").font(.system(size: 15, weight: .semibold))
-                    Text("What the screen thought, every 15 seconds").font(.system(size: 12)).foregroundStyle(.secondary)
+                    TimelineView(.periodic(from: .now, by: 1)) { ctx in liveLine(ctx.date) }
                 }
                 Spacer()
                 Picker("Zoom", selection: $zoom) {
@@ -595,6 +596,31 @@ struct ScreenTimelineSection: View {
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
+    }
+
+    /// What the watcher is doing this second, then the last snapshot and why
+    /// a card did or didn't fire, so testing a switch shows each stage.
+    private func liveLine(_ now: Date) -> some View {
+        let stage = watcher.stage
+        let next = watcher.nextSnapshotAt.map { max(0, Int($0.timeIntervalSince(now).rounded(.up))) }
+        let head: String = !stage.isEmpty ? "\(stage)…"
+            : watcher.status != "Watching" && !watcher.status.hasPrefix("Watching") ? watcher.status
+            : next.map { "Next snapshot in \($0)s" } ?? watcher.status
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Circle().fill(stage.isEmpty ? Color.secondary.opacity(0.5) : .green).frame(width: 7, height: 7)
+                    .opacity(stage.isEmpty || Int(now.timeIntervalSince1970 * 2) % 2 == 0 ? 1 : 0.35)
+                Text(head).foregroundStyle(stage.isEmpty ? .secondary : .primary)
+            }
+            if let last = watcher.lastSnapshot {
+                Text("Last \(last.date.formatted(date: .omitted, time: .standard)): \(last.app)\(last.title.isEmpty ? "" : " · \(last.title)") → \(last.category ?? "no label") (\(last.source), \(String(format: "%.1f", last.seconds))s)")
+                    .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            }
+            if !watcher.coachStatus.isEmpty {
+                Text(watcher.coachStatus).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .font(.system(size: 12).monospacedDigit())
     }
 
     private func hourRange(_ spans: [ScreenSpan]) -> [Date] {
@@ -751,20 +777,23 @@ struct ScreenTimelineSection: View {
         return lag > 0 ? "you switched \(m)m later" : "\(m)m after you"
     }
 
-    private let laneH: CGFloat = 28, blockH: CGFloat = 6, trackH: CGFloat = 6, axisH: CGFloat = 16
+    private let laneH: CGFloat = 30, blockH: CGFloat = 18, trackH: CGFloat = 18, axisH: CGFloat = 16
 
     private func timeline(hours: [Date], spans: [ScreenSpan], blocks: [ScreenActivity], track: [Tracked]) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Screen").frame(height: laneH)
-                Text("Blocks").frame(height: blockH + 6, alignment: .bottom)
-                Text("You").frame(height: trackH + 8, alignment: .bottom)
+                Text("Blocks").frame(height: blockH)
+                Text("You").frame(height: trackH)
             }
             .font(.system(size: 11)).foregroundStyle(.secondary)
             .frame(width: 44, alignment: .leading)
             lanes(hours: hours, spans: spans, blocks: blocks, track: track)
         }
         .frame(height: laneH + blockH + trackH + axisH + 22)
+        .onChange(of: watcher.spans.count) { _, _ in
+            if pinned == nil, hovered == nil, zoom != .day { jump = nil; follow &+= 1 }
+        }
         .gesture(MagnifyGesture().onChanged { pinch = $0.magnification }.onEnded { _ in
             let all = Zoom.allCases
             if let i = all.firstIndex(of: zoom) {
@@ -789,6 +818,7 @@ struct ScreenTimelineSection: View {
                 .onAppear { scrollToNow(proxy, hours) }
                 .onChange(of: zoom) { _, _ in scrollToNow(proxy, hours) }
                 .onChange(of: jump) { _, _ in scrollToNow(proxy, hours) }
+                .onChange(of: follow) { _, _ in scrollToNow(proxy, hours) }
             }
         }
     }
@@ -805,37 +835,59 @@ struct ScreenTimelineSection: View {
         let x = { (t: Date) -> CGFloat in CGFloat(t.timeIntervalSince(h) / 3600) * width }
         let focusID = (pinned ?? hovered)?.id
         return Canvas { ctx, size in
+            let blocksY = laneH + 6, youY = laneH + 6 + blockH + 6
+            // Same-category snapshots draw as one block, so the lane reads
+            // as stretches of work rather than a barcode; thin seams mark
+            // each 15s snapshot once there's room to see them.
+            var runs: [(c: String?, a: Date, b: Date)] = []
             for s in mine {
-                let w = max(x(s.end) - x(s.start), 1)
-                let gap: CGFloat = w >= 6 ? 1 : 0
-                let r = CGRect(x: x(s.start) + gap / 2, y: 0, width: max(w - gap, 1), height: laneH)
-                let c = s.category.map(categoryColor) ?? .gray
-                ctx.fill(Path(roundedRect: r, cornerRadius: min(4, r.width / 2), style: .continuous),
-                         with: .color(c.opacity(s.active == false ? 0.28 : 0.85)))
+                if let l = runs.last, l.c == s.category, s.start.timeIntervalSince(l.b) < 20 { runs[runs.count - 1].b = s.end }
+                else { runs.append((s.category, s.start, s.end)) }
+            }
+            let seams = width / 3600 * 15 >= 4
+            for r in runs {
+                let rect = CGRect(x: x(r.a), y: 0, width: max(x(r.b) - x(r.a), 1.5), height: laneH)
+                let c = r.c.map(categoryColor) ?? .gray
+                ctx.fill(Path(roundedRect: rect, cornerRadius: min(6, rect.width / 2), style: .continuous), with: .color(c))
+                label(ctx, r.c ?? "?", in: rect, bold: true)
+            }
+            for s in mine {
+                let r = CGRect(x: x(s.start), y: 0, width: max(x(s.end) - x(s.start), 1), height: laneH)
+                if s.active == false {
+                    ctx.fill(Path(r), with: .color(Color(nsColor: .windowBackgroundColor).opacity(0.55)))
+                }
+                if seams, r.minX > 0 {
+                    ctx.fill(Path(CGRect(x: r.minX, y: 3, width: 1, height: laneH - 6)), with: .color(.black.opacity(0.18)))
+                }
                 if s.id == focusID {
-                    ctx.stroke(Path(roundedRect: r.insetBy(dx: -1, dy: -1), cornerRadius: 5, style: .continuous),
+                    ctx.stroke(Path(roundedRect: r.insetBy(dx: -1, dy: -1), cornerRadius: 4, style: .continuous),
                                with: .color(.primary), lineWidth: 2)
                 }
                 if let t = trackedLabel(at: s.start.addingTimeInterval(s.end.timeIntervalSince(s.start) / 2), in: track),
                    let c = s.category, t != c, s.active != false {
-                    ctx.fill(Path(roundedRect: CGRect(x: r.minX, y: laneH + 2, width: r.width, height: 2), cornerRadius: 1), with: .color(.orange))
+                    ctx.fill(Path(roundedRect: CGRect(x: r.minX, y: laneH + 1.5, width: r.width, height: 3), cornerRadius: 1.5),
+                             with: .color(.orange))
                 }
             }
             for b in blocks where b.end > h && b.start < end {
-                let r = CGRect(x: x(b.start), y: laneH + 6, width: max(x(b.end) - x(b.start), 1), height: blockH)
-                ctx.fill(Path(roundedRect: r, cornerRadius: blockH / 2), with: .color((b.category.map(categoryColor) ?? .gray).opacity(0.7)))
+                let r = CGRect(x: x(b.start), y: blocksY, width: max(x(b.end) - x(b.start), 1), height: blockH)
+                ctx.fill(Path(roundedRect: r, cornerRadius: min(blockH / 2, r.width / 2)),
+                         with: .color((b.category.map(categoryColor) ?? .gray).opacity(0.75)))
+                label(ctx, b.category ?? "", in: r, bold: false)
             }
             for t in track where t.end > h && t.start < end {
-                let r = CGRect(x: x(t.start), y: laneH + blockH + 10, width: max(x(t.end) - x(t.start), 1), height: trackH)
-                ctx.fill(Path(roundedRect: r, cornerRadius: trackH / 2), with: .color(t.label == "Break" ? .gray.opacity(0.5) : categoryColor(t.label)))
+                let r = CGRect(x: x(t.start), y: youY, width: max(x(t.end) - x(t.start), 1), height: trackH)
+                ctx.fill(Path(roundedRect: r, cornerRadius: min(trackH / 2, r.width / 2)),
+                         with: .color(t.label == "Break" ? TimerView.breakBlue.opacity(0.6) : categoryColor(t.label)))
+                label(ctx, t.label, in: r, bold: false)
             }
             let now = Date()
             if now > h, now < end {
-                ctx.fill(Path(roundedRect: CGRect(x: x(now) - 1, y: -2, width: 2, height: laneH + blockH + trackH + 14), cornerRadius: 1),
+                ctx.fill(Path(roundedRect: CGRect(x: x(now) - 1, y: -3, width: 2, height: laneH + blockH + trackH + 18), cornerRadius: 1),
                          with: .color(.primary.opacity(0.7)))
             }
             var tick = h
-            let axisY = laneH + blockH + trackH + 14
+            let axisY = laneH + blockH + trackH + 18
             while tick < end {
                 let tx = x(tick)
                 ctx.fill(Path(CGRect(x: tx, y: axisY - 2, width: 1, height: 3)), with: .color(.secondary.opacity(0.5)))
@@ -858,6 +910,16 @@ struct ScreenTimelineSection: View {
             }
         }
         .onTapGesture { pinned = (pinned?.id == hovered?.id) ? nil : hovered }
+    }
+
+    /// The category name inside a block, only when it fits.
+    private func label(_ ctx: GraphicsContext, _ text: String, in r: CGRect, bold: Bool) {
+        guard r.width >= 30, !text.isEmpty else { return }
+        let t = ctx.resolve(Text(text).font(.system(size: 11, weight: bold ? .semibold : .medium)).foregroundStyle(.white))
+        let size = t.measure(in: CGSize(width: 400, height: 40))
+        guard size.width + 12 <= r.width else { return }
+        let visible = r.intersection(CGRect(x: 0, y: r.minY, width: 100_000, height: r.height))
+        ctx.draw(t, at: CGPoint(x: max(visible.minX, 0) + 6, y: r.midY), anchor: .leading)
     }
 
     private func nearest(_ list: [ScreenSpan], _ t: Date, slack: TimeInterval) -> ScreenSpan? {

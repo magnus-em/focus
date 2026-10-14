@@ -227,7 +227,14 @@ struct FocusApp: App {
                 DesignGallery.show(EveningReviewView(store: store, days: days, settings: appSettings, timer: timer) {},
                                    name: name, dark: dark, size: NSSize(width: 620, height: 900))
             default:
-                let tab = Int(name.replacingOccurrences(of: "popover-", with: "")) ?? 0
+                var spec = name.replacingOccurrences(of: "popover-", with: "")
+                let detent: TimerView.Detent? = switch spec.last {
+                case "s": .small
+                case "l": .large
+                default: nil
+                }
+                if detent != nil { spec.removeLast() }
+                let tab = Int(spec) ?? 0
                 DesignGallery.show(
                     PopoverContent(
                         timerManager: timer, sessionStore: store, settings: appSettings, problemStore: problems,
@@ -235,9 +242,9 @@ struct FocusApp: App {
                         practiceStore: practice, homeworkStoreForPractice: homework, zetamacStore: zetamac,
                         leetCodeStore: leetCode, recallStore: recall,
                         openDashboard: {}, openOnboarding: {}, openPractice: {}, openZetamac: {}, openLeetCode: {},
-                        openRecall: {}, initialTab: tab
+                        openRecall: {}, initialTab: tab, initialDetent: detent
                     ).modelContainer(focusContainer),
-                    name: name, dark: dark, size: NSSize(width: 300, height: 720))
+                    name: name, dark: dark, size: NSSize(width: 320, height: tab == 0 ? (detent == .large ? 760 : 360) : 640))
             }
         }
         QuickSwitch.shared?.openReview = {
@@ -336,10 +343,15 @@ struct PopoverContent: View {
     let openZetamac: () -> Void
     let openLeetCode: () -> Void
     let openRecall: () -> Void
-    /// Gallery screenshots open a given tab.
+    /// Gallery screenshots open a given page and sheet size.
     var initialTab: Int? = nil
+    var initialDetent: TimerView.Detent? = nil
 
     @State private var selectedTab = 0
+    @AppStorage("popoverExpanded") private var expandedStored = false
+    /// Gallery shots set this instead of the stored size, so a screenshot
+    /// never changes how your own popover opens.
+    @State private var detentOverride: TimerView.Detent?
     @State private var showYesterdayRecall = false
     @State private var showCommitment = false
     @State private var reviewTarget: DayRecord? = nil
@@ -349,10 +361,11 @@ struct PopoverContent: View {
 
     var body: some View {
         popoverBody
-            .frame(width: 300)
-            .popoverBackground()
+            .frame(width: 320)
+            .popoverPanel(tint: washColor)
             .onAppear {
                 if let initialTab { selectedTab = initialTab }
+                if let initialDetent { detentOverride = initialDetent }
                 // Force "today"-scoped views to re-evaluate every time the
                 // popover opens. Without this, a menu-bar app that's been
                 // running since yesterday would still display yesterday's
@@ -408,69 +421,40 @@ struct PopoverContent: View {
         return String(format: "%02d:%02d", s / 60, s % 60)
     }
 
-    private func launcherTile(icon: String, title: String, badge: String?, badgeColor: Color? = nil,
-                              tint: Color, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 3) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(height: 16)
-                Text(title)
-                    .font(.system(size: 10, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Text(badge ?? " ")
-                    .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(badgeColor ?? Color.secondary)
-                    .lineLimit(1)
-            }
-            .foregroundStyle(tint)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
-            .background(RoundedRectangle(cornerRadius: 9).fill(tint.opacity(0.09)))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(tint.opacity(0.18), lineWidth: 1))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
+    private var washColor: Color {
+        guard dayState == .open, selectedTab == 0 else { return .clear }
+        if timerManager.isActive && timerManager.isOnBreak { return TimerView.breakBlue }
+        return timerManager.currentLabel.isEmpty ? .clear : categoryColor(timerManager.currentLabel)
     }
 
-    private var launcherRow: some View {
-        let orange = Color(red: 0.98, green: 0.63, blue: 0.16)
-        let blue = Color(red: 0.27, green: 0.62, blue: 0.83)
-        let green = Color(red: 0.25, green: 0.72, blue: 0.53)
+    private var moreItems: [TimerView.MoreItem] {
         let lc = leetCodeStore
-        let lcBadge: String = {
-            if let p = lc.activeProblem { return "#\(p.number)" }
-            return "\(lc.todayCount)/\(lc.dailyGoal)" + (lc.streak > 0 ? " · \(lc.streak)🔥" : "")
-        }()
-        let lcBadgeColor: Color = lc.activeProblem == nil && lc.todayCount >= lc.dailyGoal ? .green
-            : (lc.streakAtRisk ? .red : orange)
-        return HStack(spacing: 6) {
-            launcherTile(icon: "chevron.left.forwardslash.chevron.right", title: "LeetCode",
-                         badge: lcBadge, badgeColor: lcBadgeColor, tint: orange,
-                         help: lc.activeProblem.map { "LeetCode · #\($0.number) \($0.title)" } ?? "Open LeetCode",
-                         action: openLeetCode)
-            launcherTile(icon: "scope", title: "Practice",
-                         badge: practiceStore.isActive ? practiceElapsedShort
-                             : (dueReviewBadge > 0 ? "\(dueReviewBadge) due" : nil),
-                         badgeColor: practiceStore.isActive ? blue : .orange, tint: blue,
-                         help: "Open Practice Mode", action: openPractice)
-            launcherTile(icon: "brain.head.profile", title: "Recall",
-                         badge: recallDue > 0 ? "\(recallDue) due" : nil,
-                         badgeColor: recallPurple, tint: recallPurple,
-                         help: "Open Recall (⌃⌥⌘;)", action: openRecall)
-            launcherTile(icon: "plus.forwardslash.minus", title: "Sprint",
-                         badge: zetamacStore.isGameActive ? "\(zetamacLiveTimeShort) · \(zetamacStore.liveScore)"
-                             : (zetamacStore.bestScore > 0 ? "best \(zetamacStore.bestScore)" : nil),
-                         badgeColor: green, tint: green,
-                         help: "Open Math Sprint", action: openZetamac)
-            launcherTile(icon: "chart.bar.doc.horizontal.fill", title: "Dashboard",
-                         badge: nil, tint: .secondary,
-                         help: "Open Dashboard", action: openDashboard)
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
+        let lcBadge = lc.activeProblem.map { "#\($0.number)" } ?? "\(lc.todayCount)/\(lc.dailyGoal)"
+        return [
+            .init(title: "Stats", icon: "chart.bar") { selectedTab = 1 },
+            .init(title: "Problems", icon: "list.bullet.rectangle") { selectedTab = 2 },
+            .init(title: "Scratchpad", icon: "square.and.pencil") { selectedTab = 3 },
+            .init(title: "Health", icon: "heart") { selectedTab = 5 },
+            .init(title: "Settings", icon: "gearshape") { selectedTab = 4 },
+            .init(title: "LeetCode", icon: "chevron.left.forwardslash.chevron.right", badge: lcBadge, divider: true, action: openLeetCode),
+            .init(title: "Practice", icon: "scope",
+                  badge: practiceStore.isActive ? practiceElapsedShort : (dueReviewBadge > 0 ? "\(dueReviewBadge) due" : nil),
+                  action: openPractice),
+            .init(title: "Recall", icon: "brain.head.profile", badge: recallDue > 0 ? "\(recallDue) due" : nil, action: openRecall),
+            .init(title: "Math Sprint", icon: "plus.forwardslash.minus",
+                  badge: zetamacStore.isGameActive ? zetamacLiveTimeShort : (zetamacStore.bestScore > 0 ? "best \(zetamacStore.bestScore)" : nil),
+                  action: openZetamac),
+            .init(title: "Dashboard", icon: "rectangle.grid.2x2", action: openDashboard),
+            .init(title: "End Day", icon: "moon", divider: true) {
+                withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) { dayStore.endDay() }
+                if let open = QuickSwitch.shared?.openReview {
+                    open()
+                } else if dayStore.todayCommitmentNeedsReview, let r = dayStore.todayRecord {
+                    reviewTarget = r
+                }
+            },
+            .init(title: "Quit Focus", icon: "power") { NSApplication.shared.terminate(nil) },
+        ]
     }
 
     private var dueReviewBadge: Int { homeworkStoreForPractice.dueForReview.count }
@@ -478,19 +462,6 @@ struct PopoverContent: View {
 
     private var needsYesterdayRecall: Bool {
         settings.morningRecall && recallStore.needsYesterdayRecall(sessionStore: sessionStore)
-    }
-
-    private func tabChipButton(icon: String, tag: Int, help: String) -> some View {
-        let selected = selectedTab == tag
-        return Button { selectedTab = tag } label: {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: selected ? .semibold : .regular))
-                .frame(width: 40, height: 30)
-                .foregroundStyle(selected ? AnyShapeStyle(.white) : AnyShapeStyle(Color.secondary))
-        }
-        .buttonStyle(.plain)
-        .glassTabChip(selected: selected)
-        .help(help)
     }
 
     private var dayState: DayGateState {
@@ -594,10 +565,8 @@ struct PopoverContent: View {
                 .zIndex(11)
             }
 
-            // Always-available Quit (sits in the lower-right corner whether
-            // the day is open or not — the cover gates everything else but
-            // shouldn't trap the user in the app).
-            VStack {
+            // On the covers there's no More menu, so Quit sits in the corner.
+            if dayState != .open { VStack {
                 Spacer()
                 HStack {
                     Spacer()
@@ -610,51 +579,63 @@ struct PopoverContent: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 6)
-            }
-            .allowsHitTesting(true)
+            } }
+        }
+    }
+
+    private var pageTitle: String {
+        switch selectedTab {
+        case 1: "Stats"
+        case 2: "Problems"
+        case 3: "Scratchpad"
+        case 5: "Health"
+        default: "Settings"
         }
     }
 
     private var openBookContent: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 4) {
-                tabChipButton(icon: "timer", tag: 0, help: "Timer")
-                tabChipButton(icon: "chart.bar.fill", tag: 1, help: "Stats")
-                tabChipButton(icon: "function", tag: 2, help: "Problems")
-                tabChipButton(icon: "square.and.pencil", tag: 3, help: "Scratchpad")
-                tabChipButton(icon: "heart.fill", tag: 5, help: "Health")
-                tabChipButton(icon: "gearshape.fill", tag: 4, help: "Settings")
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 2)
-
-            Group {
-                switch selectedTab {
-                case 0:
-                    GeometryReader { geo in
-                        ScrollView(.vertical, showsIndicators: false) {
-                            TimerView(
-                                timer: timerManager, store: sessionStore, settings: settings,
-                                dayStore: dayStore, showCommitment: $showCommitment,
-                                reviewTarget: $reviewTarget, showDayReview: $showDayReview
-                            )
-                            .frame(minHeight: geo.size.height)
+        Group {
+            if selectedTab == 0 {
+                TimerView(
+                    timer: timerManager, store: sessionStore, settings: settings, dayStore: dayStore,
+                    showDayReview: $showDayReview,
+                    detent: Binding(get: { detentOverride ?? (expandedStored ? .large : .small) },
+                                    set: { if detentOverride != nil { detentOverride = $0 } else { expandedStored = $0 == .large } }),
+                    more: moreItems
+                )
+            } else {
+                VStack(spacing: 0) {
+                    HStack(spacing: 6) {
+                        Button { selectedTab = 0 } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left").font(.system(size: 13, weight: .semibold))
+                                Text("Now").font(.system(size: 13))
+                            }
+                            .frame(minHeight: 36)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .keyboardShortcut(.cancelAction)
+                        Spacer()
+                        Text(pageTitle).font(.system(size: 15, weight: .semibold))
+                        Spacer()
+                        Color.clear.frame(width: 52, height: 1)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    Group {
+                        switch selectedTab {
+                        case 1: StatsView(store: sessionStore, settings: settings)
+                        case 2: ProblemsView(store: problemStore, homeworkStore: homeworkStore, settings: settings)
+                        case 3: ScratchpadView(store: scratchStore)
+                        case 5: HealthView(store: healthStore, sessionStore: sessionStore)
+                        default: SettingsView(settings: settings, timer: timerManager, store: sessionStore, openOnboarding: openOnboarding)
                         }
                     }
-                case 1: StatsView(store: sessionStore, settings: settings)
-                case 2: ProblemsView(store: problemStore, homeworkStore: homeworkStore, settings: settings)
-                case 3: ScratchpadView(store: scratchStore)
-                case 5: HealthView(store: healthStore, sessionStore: sessionStore)
-                default: SettingsView(settings: settings, timer: timerManager, store: sessionStore, openOnboarding: openOnboarding)
+                    .frame(height: 560)
                 }
             }
-            .frame(height: 540)
-
-            Divider()
-
-            launcherRow
-                .padding(.bottom, 24)
         }
     }
 }

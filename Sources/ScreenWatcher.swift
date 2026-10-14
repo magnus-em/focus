@@ -40,8 +40,12 @@ final class ScreenWatcher: ObservableObject {
         "org.torproject.torbrowser", "com.apple.FaceTime",
     ]
     private static let ignoredApps: Set<String> = [
-        "com.magnus.focus", "com.apple.loginwindow", "com.apple.ScreenSaver.Engine",
+        "com.apple.loginwindow", "com.apple.ScreenSaver.Engine",
     ]
+    /// Time in Focus itself is logged (not read: its own text would feed the
+    /// model "SWE 1:58:50"), labeled with what's running, and never counts as
+    /// evidence for a switch.
+    static let ownBundle = "com.magnus.focus"
 
     /// Apps you've told it to skip (ATV Remote, a music player): never
     /// sampled, and dropped from the log, notes and off-task counts, past ones too.
@@ -86,6 +90,9 @@ final class ScreenWatcher: ObservableObject {
     private var settings: AppSettings?
     private var tick: Timer?
     private var busy = false
+    /// What the watcher is doing right now, for the live line on the Dashboard.
+    @Published private(set) var stage = ""
+    var nextSnapshotAt: Date? { tick?.fireDate }
     private var cache: [String: (category: String?, summary: String)] = [:]
     /// The small model flips between neighbors (Math/Reading) on the same
     /// window; a window's label only changes after 3 disagreements in a row.
@@ -296,6 +303,16 @@ final class ScreenWatcher: ObservableObject {
         let appName = app.localizedName ?? bundle
         let now = Date()
 
+        if bundle == Self.ownBundle {
+            let window = Self.frontTitle(pid: app.processIdentifier) ?? ""
+            lastSampleAt = now
+            lastSampled = "\(bundle)|\(window)"
+            record(ScreenSample(date: now, app: "Focus", bundleID: bundle, title: window.isEmpty ? "Focus" : window,
+                                summary: "Checking Focus", category: runningCategory().flatMap { $0 == "Break" ? nil : $0 },
+                                active: idle < 90))
+            return
+        }
+
         if Self.privateApps.contains(bundle) {
             record(ScreenSample(date: now, app: appName, bundleID: bundle, title: "", summary: "Private", category: nil,
                                 active: idle < 90))
@@ -304,13 +321,15 @@ final class ScreenWatcher: ObservableObject {
 
         busy = true
         lastSampleAt = now
-        defer { busy = false }
+        stage = "Capturing \(appName)"
+        defer { busy = false; stage = "" }
         // Other monitors' windows are re-read at most once a minute each.
         otherScreensReadAt = otherScreensReadAt.filter { now.timeIntervalSince($0.value) < 3600 }
         let recentOthers = Set(otherScreensReadAt.filter { now.timeIntervalSince($0.value) < 60 }.keys)
         guard let capture = await Self.captureWindows(pid: app.processIdentifier, skipOthers: recentOthers) else { return }
         let shot = capture.front
         let skip = Self.chromeFraction(shot, bundle: bundle)
+        stage = "Reading text in \(appName)"
         let read = await Task.detached(priority: .utility) { Self.recognize(shot.image, skipTop: skip) }.value
         let text = read.text
         var title = shot.title
@@ -334,6 +353,7 @@ final class ScreenWatcher: ObservableObject {
             keepPageText(otherText, window: "\(key) (other screen)", at: now)
             otherTexts.append((key, otherText))
         }
+        stage = "Labeling \(title.isEmpty ? appName : title)"
         let (category, summary) = await classify(app: appName, bundle: bundle, title: title, text: text, url: url)
         status = Self.modelAvailable ? "Watching" : "Watching · Apple Intelligence off, learning from your choices only"
         lastSampled = "\(bundle)|\(shot.title)"
@@ -547,7 +567,8 @@ final class ScreenWatcher: ObservableObject {
         guard let b = target else { return }
         let pages = fresh(b)
         noting = true
-        defer { noting = false }
+        stage = "Writing notes for \(b.category ?? "this block")"
+        defer { noting = false; if stage.hasPrefix("Writing notes") { stage = "" } }
         let previous = notes(for: b)
         if let (title, bullets) = await ScreenLabeler.studyNotes(
             category: b.category ?? "Unlabeled", windows: b.distinctTitles,
@@ -622,7 +643,7 @@ final class ScreenWatcher: ObservableObject {
             guard let top = windows.first(where: { d.contains(center($0.bounds)) }),
                   let app = NSRunningApplication(processIdentifier: top.pid),
                   let bundle = app.bundleIdentifier,
-                  !privateApps.contains(bundle), !ignoredApps.contains(bundle) else { continue }
+                  !privateApps.contains(bundle), !ignoredApps.contains(bundle), bundle != ownBundle else { continue }
             let name = app.localizedName ?? bundle
             guard !skipOthers.contains("\(name): \(top.name)"),
                   let shot = await shoot(top.id, in: content, fallbackTitle: top.name) else { continue }
@@ -878,10 +899,10 @@ final class ScreenCoach {
     /// picked the current category ends it: what was on screen before your
     /// own choice isn't evidence against it.
     private func trailingRun(notBefore floor: Date?) -> Run? {
-        let samples = watcher.samples
+        let samples = watcher.samples.filter { $0.bundleID != ScreenWatcher.ownBundle }
         guard let last = samples.last, last.active, let c = last.category else { return nil }
         var start = last.date, hits = 0, total = 0, missStreak = 0
-        var keys: Set<String> = []
+        var keyCounts: [String: Int] = [:]
         var allLearned = true
         var newer = last.date
         for s in samples.reversed() {
@@ -892,7 +913,7 @@ final class ScreenCoach {
             total += 1
             if s.category == c {
                 hits += 1; missStreak = 0; start = s.date
-                if !ScreenWatcher.isGeneric(title: s.title, app: s.app) { keys.insert(s.memoryKey) }
+                if !ScreenWatcher.isGeneric(title: s.title, app: s.app) { keyCounts[s.memoryKey, default: 0] += 1 }
                 allLearned = allLearned && s.learned
             } else {
                 missStreak += 1
@@ -902,13 +923,19 @@ final class ScreenCoach {
         let needed = settings.screenEverySwitch ? 25 : allLearned ? Self.learnedRunSeconds : Double(settings.screenSuggestMinutes) * 60
         guard hits >= (settings.screenEverySwitch ? 2 : allLearned ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
               last.date.timeIntervalSince(start) >= needed else { return nil }
+        // Your answer teaches the windows the run was made of, not one stray
+        // snapshot of another window the model happened to call the same
+        // (10/13: accepting Math taught this Claude chat "Math").
+        let keys = Set(keyCounts.filter { $0.value >= 2 && Double($0.value) >= Double(hits) * 0.25 }.keys)
         return Run(category: c, start: start, keys: keys, summary: last.summary, trusted: allLearned)
     }
 
     /// Plain-language reason no card fired, from the recent snapshots.
     private func evidenceStatus(running: String?) -> String {
         let floor = timer.isActive ? timer.sessionStartTime : nil
-        let recent = watcher.samples.filter { s in Date().timeIntervalSince(s.date) < 600 && s.date >= (floor ?? .distantPast) }
+        let recent = watcher.samples.filter { s in
+            Date().timeIntervalSince(s.date) < 600 && s.date >= (floor ?? .distantPast) && s.bundleID != ScreenWatcher.ownBundle
+        }
         guard let last = recent.last else { return "No snapshots since you picked \(running ?? "this")" }
         guard last.active else { return "You've been idle, so snapshots don't count" }
         guard let c = last.category else { return "Last snapshot had no label" }
