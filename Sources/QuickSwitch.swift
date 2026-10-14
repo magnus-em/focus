@@ -216,55 +216,106 @@ private final class SwitcherPanel {
     }
 }
 
+/// Spotlight-style: type to filter ("ma" ↩ → Math), ↑↓ to move, ↩ to run,
+/// Esc to close. Also "break 15", "stop", "dashboard", "recall", "end day".
 private struct SwitcherView: View {
     let quick: QuickSwitch
     let dismiss: () -> Void
+    @State private var query = ""
+    @State private var selection = 0
     @FocusState private var focused: Bool
 
-    private let accent = Color(red: 0.96, green: 0.36, blue: 0.36)
+    private struct Item: Identifiable {
+        let title: String
+        var detail: String = ""
+        let color: Color?
+        var icon: String? = nil
+        var hint: String = ""
+        var current = false
+        let run: () -> Void
+        var id: String { title }
+    }
+
+    private var allItems: [Item] {
+        var out: [Item] = quick.tags.enumerated().map { i, tag in
+            Item(title: tag, detail: FocusCategories.isLife(tag) ? "life" : "", color: categoryColor(tag),
+                 hint: i < QuickSwitch.categoryKeys.count ? "⌃⌥⌘\(String(QuickSwitch.categoryKeys[i].key).uppercased())" : "",
+                 current: tag == quick.currentLabel) { quick.switchTo(tag) }
+        }
+        let minutes = query.split(separator: " ").dropFirst().first.flatMap { Double($0) }
+        out.append(Item(title: "Break", detail: minutes.map { "\(Int($0)) min" } ?? "counts up", color: TimerView.breakBlue,
+                        icon: "cup.and.saucer", hint: "⌃⌥⌘L", current: quick.isOnBreak) { quick.startBreak(minutes: minutes) })
+        if quick.isActive {
+            out.append(Item(title: "Stop", detail: "saves what's running", color: nil, icon: "stop.fill", hint: "⌃⌥⌘0") { quick.stop() })
+        }
+        out.append(Item(title: "Dashboard", color: nil, icon: "rectangle.grid.2x2") { quick.openDashboard?() })
+        out.append(Item(title: "Recall", color: nil, icon: "brain.head.profile", hint: "⌃⌥⌘;") { quick.openRecall?() })
+        out.append(Item(title: "End day", detail: "review", color: nil, icon: "moon") { quick.openReview?() })
+        return out
+    }
+
+    /// Prefix beats word-prefix beats letters in order ("sw" → SWE, "eday" → End day).
+    private var items: [Item] {
+        let q = (query.split(separator: " ").first.map(String.init) ?? "").lowercased()
+        guard !q.isEmpty else { return allItems }
+        func score(_ t: String) -> Int? {
+            let s = t.lowercased()
+            if s.hasPrefix(q) { return 0 }
+            if s.split(separator: " ").contains(where: { $0.hasPrefix(q) }) { return 1 }
+            var idx = s.startIndex
+            for ch in q {
+                guard let f = s[idx...].firstIndex(of: ch) else { return nil }
+                idx = s.index(after: f)
+            }
+            return 2
+        }
+        return allItems.compactMap { i in score(i.title).map { (i, $0) } }.sorted { $0.1 < $1.1 }.map(\.0)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(statusLine)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 6)
-            ForEach(Array(quick.tags.enumerated()), id: \.offset) { i, tag in
-                row(key: i < QuickSwitch.categoryKeys.count ? String(QuickSwitch.categoryKeys[i].key).uppercased() : "·",
-                    title: tag, current: tag == quick.currentLabel) { quick.switchTo(tag) }
+        let list = items
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").font(.system(size: 17)).foregroundStyle(Color.secondaryText)
+                TextField(statusLine, text: $query)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 20))
+                    .focused($focused)
+                    .onSubmit { if let i = list[safe: selection] { run(i.run) } }
+                    .onKeyPress(.downArrow) { selection = min(selection + 1, max(list.count - 1, 0)); return .handled }
+                    .onKeyPress(.upArrow) { selection = max(selection - 1, 0); return .handled }
+                    .onKeyPress(.escape) { dismiss(); return .handled }
+                    .onChange(of: query) { _, _ in selection = 0 }
             }
-            Divider().padding(.vertical, 4)
-            row(key: "L", title: "Break", current: quick.isOnBreak) { quick.startBreak() }
-            if quick.isActive {
-                row(key: "0", title: "Stop", current: false) { quick.stop() }
+            .padding(.horizontal, 18)
+            .frame(height: 56)
+            Divider().opacity(0.5)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 2) {
+                        ForEach(Array(list.enumerated()), id: \.element.id) { n, item in
+                            row(item, selected: n == selection).id(n)
+                                .onTapGesture { run(item.run) }
+                        }
+                        if list.isEmpty {
+                            Text("No match").font(.system(size: 13)).foregroundStyle(Color.secondaryText).padding(14)
+                        }
+                    }
+                    .padding(8)
+                }
+                .onChange(of: selection) { _, n in proxy.scrollTo(n) }
             }
+            .frame(height: 320)
         }
-        .padding(12)
-        .frame(width: 240)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .focusable()
-        .focusEffectDisabled()
-        .focused($focused)
+        .frame(width: 440)
+        .modifier(FloatingPanelGlass())
         .onAppear { focused = true }
-        .onKeyPress { press in
-            let c = press.characters.lowercased()
-            if press.key == .escape { dismiss(); return .handled }
-            if c == "0" || c == "k" { run { quick.stop() }; return .handled }
-            if c == "l" { run { quick.startBreak() }; return .handled }
-            if c == "j" { dismiss(); return .handled }
-            if let ch = c.first, let i = QuickSwitch.categoryKeys.firstIndex(where: { $0.key == ch }), i < quick.tags.count {
-                run { quick.switchTo(quick.tags[i]) }
-                return .handled
-            }
-            return .ignored
-        }
     }
 
     private var statusLine: String {
-        if quick.isOnBreak { return "On a break" }
-        if !quick.currentLabel.isEmpty { return "Now: \(quick.currentLabel)" }
-        return quick.isActive ? "Focus (no category)" : "Idle — pick what you're doing"
+        if quick.isOnBreak { return "On a break · switch to…" }
+        if !quick.currentLabel.isEmpty { return "\(quick.currentLabel) now · switch to…" }
+        return "Start…"
     }
 
     private func run(_ action: @escaping () -> Void) {
@@ -272,23 +323,43 @@ private struct SwitcherView: View {
         action()
     }
 
-    private func row(key: String, title: String, current: Bool, action: @escaping () -> Void) -> some View {
-        Button { run(action) } label: {
-            HStack(spacing: 10) {
-                Text(key)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .frame(width: 20, height: 20)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(Color.secondary.opacity(0.15)))
-                Text(title).font(.system(size: 13, weight: current ? .semibold : .regular))
-                Spacer()
-                if current { Circle().fill(accent).frame(width: 6, height: 6) }
+    private func row(_ item: Item, selected: Bool) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                if let c = item.color { Circle().fill(c).frame(width: 12, height: 12) }
+                if let icon = item.icon, item.color == nil {
+                    Image(systemName: icon).font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .contentShape(Rectangle())
+            .frame(width: 20)
+            Text(item.title).font(.system(size: 15, weight: item.current ? .semibold : .regular))
+            if !item.detail.isEmpty {
+                Text(item.detail).font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+            }
+            if item.current { Text("now").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText) }
+            Spacer()
+            Text(item.hint).font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(selected ? Color.primary.opacity(0.1) : .clear))
+        .contentShape(Rectangle())
     }
+}
+
+private struct FloatingPanelGlass: ViewModifier {
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: shape)
+        } else {
+            content.background(.regularMaterial, in: shape)
+        }
+    }
+}
+
+private extension Array {
+    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
 
 final class FocusAppDelegate: NSObject, NSApplicationDelegate {
