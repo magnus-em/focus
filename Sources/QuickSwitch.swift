@@ -131,8 +131,12 @@ final class QuickSwitch {
         case "switcher": showSwitcher()
         case "recall": openRecall?()
         case "review": openReview?()
-        case "gallery": openGallery?(param("view") ?? "popover-0", param("dark") == "1")
-        case "gallery-close": Task { @MainActor in DesignGallery.closeAll() }
+        case "gallery":
+            Task { @MainActor in
+                DesignGallery.virtual = param("virtual") == "1"
+                openGallery?(param("view") ?? "popover-0", param("dark") == "1")
+            }
+        case "gallery-close": Task { @MainActor in DesignGallery.closeAll(keepDisplay: param("display") != "0") }
         case "screen-debug": Task { @MainActor in ScreenWatcher.shared.dumpDebug() }
         case "dashboard": openDashboard?()
         case "log":

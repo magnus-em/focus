@@ -614,7 +614,8 @@ final class ScreenWatcher: ObservableObject {
         var ids = [CGDirectDisplayID](repeating: 0, count: 8)
         var count: UInt32 = 0
         CGGetActiveDisplayList(8, &ids, &count)
-        let displays = ids.prefix(Int(count)).map { CGDisplayBounds($0) }
+        // 0xF0C5: the design gallery's virtual display (DesignGallery.swift).
+        let displays = ids.prefix(Int(count)).filter { CGDisplayVendorNumber($0) != 0xF0C5 }.map { CGDisplayBounds($0) }
         let center = { (r: CGRect) in CGPoint(x: r.midX, y: r.midY) }
         var others: [(String, Shot, String)] = []
         for d in displays where !d.contains(center(front.bounds)) {
@@ -733,11 +734,11 @@ final class ScreenWatcher: ObservableObject {
         let window = Self.memoryKey(bundle: bundle, title: title)
         if let c = result.0, !generic {
             if let held = windowLabel[window], held.category != c, candidates.contains(held.category) {
-                if held.against + 1 >= 3 {
+                if held.against + 1 >= (settings?.screenEverySwitch == true ? 2 : 3) {
                     windowLabel[window] = (c, 0)
                 } else {
                     windowLabel[window] = (held.category, held.against + 1)
-                    labelSource = "kept \(held.category): model said \(c), \(held.against + 1) of 3 disagreements to switch"
+                    labelSource = "kept \(held.category): model said \(c), \(held.against + 1) of \(settings?.screenEverySwitch == true ? 2 : 3) disagreements to switch"
                     result.0 = held.category
                 }
             } else {

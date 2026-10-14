@@ -8,10 +8,16 @@ let package = Package(
         .package(path: "FocusCore"),
     ],
     targets: [
+        .target(
+            name: "VirtualDisplay",
+            path: "VirtualDisplay",
+            linkerSettings: [.linkedFramework("CoreGraphics")]
+        ),
         .executableTarget(
             name: "Focus",
             dependencies: [
                 .product(name: "FocusCore", package: "FocusCore"),
+                "VirtualDisplay",
             ],
             path: "Sources",
             resources: [
