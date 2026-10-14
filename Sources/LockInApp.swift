@@ -249,7 +249,7 @@ struct FocusApp: App {
                         openDashboard: {}, openOnboarding: {}, openPractice: {}, openZetamac: {}, openLeetCode: {},
                         openRecall: {}, initialTab: tab, initialDetent: detent
                     ).modelContainer(focusContainer),
-                    name: name, dark: dark, size: NSSize(width: 320, height: tab == 0 ? (detent == .large ? 760 : 360) : 640))
+                    name: name, dark: dark, size: NSSize(width: 320, height: tab == 0 ? (detent == .large ? 820 : 420) : 680))
             }
         }
         QuickSwitch.shared?.openReview = {
@@ -438,10 +438,6 @@ struct PopoverContent: View {
         let lc = leetCodeStore
         let lcBadge = lc.activeProblem.map { "#\($0.number)" } ?? "\(lc.todayCount)/\(lc.dailyGoal)"
         return [
-            .init(title: "Stats", icon: "chart.bar") { selectedTab = 1 },
-            .init(title: "Problems", icon: "list.bullet.rectangle") { selectedTab = 2 },
-            .init(title: "Scratchpad", icon: "square.and.pencil") { selectedTab = 3 },
-            .init(title: "Health", icon: "heart") { selectedTab = 5 },
             .init(title: "Settings", icon: "gearshape") { selectedTab = 4 },
             .init(title: "LeetCode", icon: "chevron.left.forwardslash.chevron.right", badge: lcBadge, divider: true, action: openLeetCode),
             .init(title: "Practice", icon: "scope",
@@ -594,56 +590,90 @@ struct PopoverContent: View {
         switch selectedTab {
         case 1: "Stats"
         case 2: "Problems"
-        case 3: "Scratchpad"
+        case 3: "Notes"
         case 5: "Health"
         default: "Settings"
         }
     }
 
     private var openBookContent: some View {
-        Group {
+        VStack(spacing: 0) {
             if selectedTab == 0 {
                 TimerView(
                     timer: timerManager, store: sessionStore, settings: settings, dayStore: dayStore,
                     showDayReview: $showDayReview,
                     detent: Binding(get: { detentOverride ?? (expandedStored ? .large : .small) },
-                                    set: { if detentOverride != nil { detentOverride = $0 } else { expandedStored = $0 == .large } }),
-                    more: moreItems
+                                    set: { if detentOverride != nil { detentOverride = $0 } else { expandedStored = $0 == .large } })
                 )
             } else {
-                VStack(spacing: 0) {
-                    HStack(spacing: 6) {
-                        Button { selectedTab = 0 } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left").font(.system(size: 13, weight: .semibold))
-                                Text("Now").font(.system(size: 13))
-                            }
-                            .frame(minHeight: 36)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .keyboardShortcut(.cancelAction)
-                        Spacer()
-                        Text(pageTitle).font(.system(size: 15, weight: .semibold))
-                        Spacer()
-                        Color.clear.frame(width: 52, height: 1)
-                    }
-                    .padding(.horizontal, 16)
+                Text(pageTitle)
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(maxWidth: .infinity, minHeight: 36)
                     .padding(.top, 8)
-                    Group {
-                        switch selectedTab {
-                        case 1: StatsView(store: sessionStore, settings: settings)
-                        case 2: ProblemsView(store: problemStore, homeworkStore: homeworkStore, settings: settings)
-                        case 3: ScratchpadView(store: scratchStore)
-                        case 5: HealthView(store: healthStore, sessionStore: sessionStore)
-                        default: SettingsView(settings: settings, timer: timerManager, store: sessionStore, openOnboarding: openOnboarding)
-                        }
+                Group {
+                    switch selectedTab {
+                    case 1: StatsView(store: sessionStore, settings: settings)
+                    case 2: ProblemsView(store: problemStore, homeworkStore: homeworkStore, settings: settings)
+                    case 3: ScratchpadView(store: scratchStore)
+                    case 5: HealthView(store: healthStore, sessionStore: sessionStore)
+                    default: SettingsView(settings: settings, timer: timerManager, store: sessionStore, openOnboarding: openOnboarding)
                     }
-                    .frame(height: 560)
                 }
+                .frame(height: 540)
             }
+            PageBar(selected: $selectedTab, more: moreItems)
         }
+    }
+}
+
+/// The popover's tab bar (iOS style: icon over a caption), so every page is
+/// one click away. More holds Settings and the tool windows.
+struct PageBar: View {
+    @Binding var selected: Int
+    let more: [TimerView.MoreItem]
+
+    private let pages: [(tag: Int, title: String, icon: String)] = [
+        (0, "Now", "timer"), (1, "Stats", "chart.bar"), (2, "Problems", "list.bullet.rectangle"),
+        (3, "Notes", "square.and.pencil"), (5, "Health", "heart"),
+    ]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(pages, id: \.tag) { p in
+                Button { selected = p.tag } label: { item(p.title, p.icon, on: selected == p.tag) }
+                    .buttonStyle(.plain)
+                    .help(p.title)
+            }
+            Menu {
+                ForEach(more) { m in
+                    if m.divider { Divider() }
+                    Button { m.action() } label: {
+                        Label(m.badge.map { "\(m.title)  \($0)" } ?? m.title, systemImage: m.icon)
+                    }
+                }
+            } label: {
+                item("More", "ellipsis.circle", on: selected == 4)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .help("Settings, LeetCode, Practice, Recall, Math Sprint, Dashboard, End Day")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .overlay(alignment: .top) { Divider().opacity(0.6) }
+    }
+
+    private func item(_ title: String, _ icon: String, on: Bool) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: on ? icon + (icon.hasSuffix(".circle") ? ".fill" : "") : icon)
+                .font(.system(size: 16, weight: on ? .semibold : .regular))
+                .frame(height: 20)
+            Text(title).font(.system(size: 11, weight: on ? .semibold : .regular))
+        }
+        .foregroundStyle(on ? Color.accentColor : Color.secondaryText)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .contentShape(Rectangle())
     }
 }
 

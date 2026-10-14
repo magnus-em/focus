@@ -25,7 +25,6 @@ struct TimerView: View {
     @ObservedObject var dayStore: DayStore
     @Binding var showDayReview: Bool
     @Binding var detent: Detent
-    let more: [MoreItem]
     @ObservedObject private var syncMonitor = CloudSyncMonitor.shared
     @ObservedObject private var watcher = ScreenWatcher.shared
 
@@ -450,27 +449,6 @@ struct TimerView: View {
             if timer.isActive && !onBreak {
                 roundButton("cup.and.saucer", help: "Take a break (⌃⌥⌘L)") { timer.startManualBreak(minutes: 0) }
             }
-            Menu {
-                ForEach(more) { item in
-                    if item.divider { Divider() }
-                    Button {
-                        item.action()
-                    } label: {
-                        Label(item.badge.map { "\(item.title)  \($0)" } ?? item.title, systemImage: item.icon)
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 17, weight: .semibold))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Circle())
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help("Stats, problems, notes, health, settings and tools")
-            .accessibilityLabel("More")
         }
         .padding(6)
         .background(Capsule().fill(Color.primary.opacity(0.06)))

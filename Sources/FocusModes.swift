@@ -38,7 +38,8 @@ final class FocusModes: ObservableObject {
         case "Break": return "Off"
         case "Sleep": return "Sleep"
         case "Class": return "School"
-        default: return FocusCategories.isLife(category) ? "Personal" : "School"
+        // Life time (Admin, Leisure, Meals…) shouldn't filter notifications.
+        default: return FocusCategories.isLife(category) ? "Off" : "School"
         }
     }
 
