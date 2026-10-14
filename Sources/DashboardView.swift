@@ -46,8 +46,7 @@ private struct DayEvent: Identifiable {
 // MARK: - Shared formatters
 
 private func fmtMins(_ m: Double) -> String {
-    let h = Int(m) / 60, mn = Int(m) % 60
-    return h > 0 ? "\(h)h \(mn)m" : "\(Int(m))m"
+    durationText(minutes: m)
 }
 
 private func fmtHours(_ h: Double) -> String {
@@ -198,9 +197,6 @@ struct DashboardView: View {
             Divider()
             rightPanel
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if timerManager.isActive { NowPlayingBar(timer: timerManager) }
-        }
         .background {
             AmbientBackdrop(colors: washColors, intensity: 0.35, speed: 0.06)
                 .ignoresSafeArea()
@@ -260,12 +256,9 @@ struct DashboardView: View {
                     .foregroundStyle(.secondary)
                 if let rec = selectedDayRecord, let start = rec.dayStart {
                     HStack(spacing: 3) {
-                        Image(systemName: "sunrise").font(.system(size: 9))
-                        Text(clockStr(start))
+                        Text("Started \(start.formatted(date: .omitted, time: .shortened))")
                         if let end = rec.dayEnd {
-                            Text("→")
-                            Image(systemName: "moon").font(.system(size: 9))
-                            Text(clockStr(end))
+                            Text("· ended \(end.formatted(date: .omitted, time: .shortened))")
                         }
                     }
                     .font(.system(size: 12))
@@ -313,8 +306,6 @@ struct DashboardView: View {
 
             Divider()
             HStack {
-                Label("\(fmtMins(selectedDayFocusMinutes)) focus", systemImage: "timer")
-                    .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 if selectedDayBreakMinutes >= 1 {
                     Label(fmtMins(selectedDayBreakMinutes), systemImage: "cup.and.saucer")
@@ -405,7 +396,10 @@ struct DashboardView: View {
             }
             .padding(14)
         }
-        .contentMargins(.bottom, timerManager.isActive ? 80 : 0, for: .scrollContent)
+        .contentMargins(.bottom, timerManager.isActive ? 90 : 0, for: .scrollContent)
+        .overlay(alignment: .bottom) {
+            if timerManager.isActive { NowPlayingBar(timer: timerManager).padding(.horizontal, 24) }
+        }
         .onChange(of: selectedDay) { _, day in
             let cal = Calendar.current
             let weekStart = cal.date(byAdding: .day, value: -6, to: weekEndDay)!
@@ -1514,7 +1508,7 @@ private struct EventRow: View {
             Text(timeStr)
                 .font(.system(size: 12).monospacedDigit())
                 .foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .trailing)
+                .frame(width: 62, alignment: .trailing)
                 .padding(.trailing, 10)
 
             switch event.kind {
@@ -1541,8 +1535,7 @@ private struct EventRow: View {
     }
 
     private var timeStr: String {
-        let f = DateFormatter(); f.dateFormat = "h:mm"
-        return f.string(from: event.time)
+        event.time.formatted(date: .omitted, time: .shortened)
     }
 
     private func inProgressRow(mins: Double, label: String?) -> some View {
@@ -2249,10 +2242,19 @@ struct DayRingSection: View {
         }
     }
 
+    /// Blocks under 3 min fold into their neighbour so the inner ring reads
+    /// as stretches, not confetti (the Snapshots card has the detail).
     private var screen: [Arc] {
-        watcher.activities(from: day, to: dayEnd).compactMap { a in
-            a.category.map { Arc(start: a.start, end: a.end, label: $0) }
+        var out: [Arc] = []
+        for a in watcher.activities(from: day, to: dayEnd) {
+            guard let c = a.category else { continue }
+            if let l = out.last, l.label == c || a.minutes < 3, a.start.timeIntervalSince(l.end) < 300 {
+                out[out.count - 1] = Arc(start: l.start, end: a.end, label: l.label)
+            } else {
+                out.append(Arc(start: a.start, end: a.end, label: c))
+            }
         }
+        return out
     }
 
     /// Focus minutes on `d` before `cutoff` seconds into the day.
@@ -2320,7 +2322,7 @@ struct DayRingSection: View {
             if let goal {
                 Label(goal, systemImage: met ? "checkmark.circle.fill" : "target")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(met ? Color.green : .secondary)
+                    .foregroundStyle(met ? Color.good : .secondary)
             }
             Text(line).font(.system(size: 13)).foregroundStyle(.secondary)
         }
@@ -2421,14 +2423,19 @@ struct DayRingSection: View {
                 Text("Screen: \(it ?? "nothing")").font(.system(size: 12))
                     .foregroundStyle(it != nil && you != nil && it != you ? Color.orange : .secondary)
             } else {
-                Text(isToday ? "Today" : day.formatted(.dateTime.weekday(.abbreviated).month().day()))
-                    .font(.system(size: 15, weight: .semibold))
+                if isToday {
+                    Text(Date().formatted(date: .omitted, time: .shortened)).font(.system(size: 15, weight: .semibold).monospacedDigit())
+                    if let now = arcs.last(where: { $0.start <= Date() && $0.end >= Date().addingTimeInterval(-60) })?.label {
+                        Text(now).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    }
+                } else {
+                    Text(day.formatted(.dateTime.weekday(.abbreviated).month().day())).font(.system(size: 15, weight: .semibold))
+                }
             }
         }
     }
 
     private func fmt(_ m: Double) -> String {
-        let h = Int(m) / 60, mn = Int(m) % 60
-        return h > 0 ? "\(h)h \(mn)m" : "\(mn)m"
+        durationText(minutes: m)
     }
 }

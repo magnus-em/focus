@@ -49,34 +49,30 @@ struct StatsView: View {
         let consistency = store.consistencyScore(days: 14)
 
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                sectionLabel("Last 7 days")
-                Spacer()
+            sectionLabel("Last 7 days")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(formatMinutes(last))
+                    .font(.system(size: 26, weight: .semibold, design: .rounded).monospacedDigit())
                 if prior > 0 {
-                    HStack(spacing: 2) {
-                        Image(systemName: delta >= 0 ? "arrow.up.right" : "arrow.down.right")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("\(formatMinutes(abs(delta))) \(delta >= 0 ? "more" : "less") than the week before")
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .foregroundStyle(delta >= 0 ? Color.green : .secondary)
+                    Label("\(formatMinutes(abs(delta))) \(delta >= 0 ? "more" : "less") than the week before",
+                          systemImage: delta >= 0 ? "arrow.up.right" : "arrow.down.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(delta >= 0 ? Color.good : Color.secondaryText)
                 }
             }
-
-            Text(formatMinutes(last))
-                .font(.system(size: 26, weight: .semibold, design: .rounded).monospacedDigit())
 
             Chart {
                 ForEach(days) { d in
                     BarMark(x: .value("Day", d.date, unit: .day), y: .value("Hours", d.hours))
-                        .foregroundStyle(goal > 0 && d.hours >= goal ? Color.green : Color.primary.opacity(0.28))
+                        .foregroundStyle(goal > 0 && d.hours >= goal ? Color.good : Color.primary.opacity(0.28))
                         .cornerRadius(4)
                 }
                 if goal > 0 {
                     RuleMark(y: .value("Goal", goal))
                         .foregroundStyle(Color.secondary.opacity(0.6))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                        .annotation(position: .top, alignment: .trailing) {
+                        .annotation(position: .top, alignment: .leading) {
                             Text("\(Int(goal))h goal").font(.system(size: 11)).foregroundStyle(.secondary)
                         }
                 }
@@ -87,7 +83,7 @@ struct StatsView: View {
             }
             .chartXAxis {
                 AxisMarks(values: .stride(by: .day)) { _ in
-                    AxisValueLabel(format: .dateTime.weekday(.abbreviated)).font(.system(size: 11))
+                    AxisValueLabel(format: .dateTime.weekday(.abbreviated)).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                 }
             }
             .frame(height: 96)
@@ -95,8 +91,8 @@ struct StatsView: View {
             HStack(spacing: 0) {
                 metric(formatMinutes(last / 7), "a day")
                 metric(formatMinutes(store.averageSessionMinutes(last: 20)), "a block")
-                metric("\(Int(consistency * 100))%", "days active, 2 weeks",
-                       color: consistency >= 0.8 ? .green : .primary)
+                let active = days.filter { $0.hours > 0 }.count
+                metric("\(active) of 7", "days with focus", color: active == 7 ? Color.good : .primary)
             }
         }
         .padding(14)
@@ -215,8 +211,7 @@ struct StatsView: View {
     }
 
     private func formatMinutes(_ minutes: Double) -> String {
-        let h = Int(minutes) / 60, m = Int(minutes) % 60
-        return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+        durationText(minutes: minutes)
     }
 
     private func formatHours(_ hours: Double) -> String {
@@ -237,7 +232,7 @@ struct HeatmapView: View {
         guard minutes >= 0 else { return .clear }
         guard minutes > 0 else { return Color.secondary.opacity(0.12) }
         let t = min(1.0, minutes / 120.0)
-        return Color.green.opacity(0.2 + t * 0.8)
+        return Color.good.opacity(0.2 + t * 0.8)
     }
 
     private func monthLabel(weekIndex: Int) -> String? {

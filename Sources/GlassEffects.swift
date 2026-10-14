@@ -191,3 +191,16 @@ struct ContentCard: ViewModifier {
             .fill(scheme == .dark ? Color.white.opacity(0.07) : Color.white.opacity(0.5)))
     }
 }
+
+/// DESIGN.md color roles that the system styles don't hit on glass.
+extension Color {
+    private static func dynamic(light: NSColor, dark: NSColor) -> Color {
+        Color(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light })
+    }
+    /// Goal met / good: #1F8F55 on light, #4CD38A on dark (system green is too light on white).
+    static let good = dynamic(light: NSColor(srgbRed: 0.12, green: 0.56, blue: 0.33, alpha: 1),
+                              dark: NSColor(srgbRed: 0.30, green: 0.83, blue: 0.54, alpha: 1))
+    /// Secondary text that keeps 4.5:1 on light glass and washes: #5E606B / #A9AAB4.
+    static let secondaryText = dynamic(light: NSColor(srgbRed: 0.37, green: 0.38, blue: 0.42, alpha: 1),
+                                       dark: NSColor(srgbRed: 0.66, green: 0.67, blue: 0.71, alpha: 1))
+}

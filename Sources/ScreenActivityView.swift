@@ -58,13 +58,13 @@ struct ScreenActivitySection: View {
                 if score.total > 0 {
                     Text("Your checks: \(score.right)/\(score.total) right this week")
                         .font(.system(size: 10, weight: .medium).monospacedDigit())
-                        .foregroundStyle(Double(score.right) / Double(score.total) >= 0.85 ? .green : .orange)
+                        .foregroundStyle(Double(score.right) / Double(score.total) >= 0.85 ? Color.good : .orange)
                         .help("✓ or ✗ a block below to grade the labels. Your answers also teach it those windows.")
                 }
                 if let ag = agreement(list) {
                     Text("Screen matches your tracking \(Int(ag.pct * 100))% of \(fmt(ag.minutes))")
                         .font(.system(size: 10, weight: .medium).monospacedDigit())
-                        .foregroundStyle(ag.pct >= 0.8 ? .green : ag.pct >= 0.6 ? .orange : .red)
+                        .foregroundStyle(ag.pct >= 0.8 ? Color.good : ag.pct >= 0.6 ? .orange : .red)
                 }
             }
 
@@ -167,11 +167,11 @@ struct ScreenActivitySection: View {
         return TimelineView(.periodic(from: .now, by: 5)) { ctx in
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Circle().fill(.green).frame(width: 6, height: 6)
+                    Circle().fill(Color.good).frame(width: 6, height: 6)
                     Text("NOW · \(fmt(ctx.date.timeIntervalSince(a.start) / 60))")
                         .font(.system(size: 9, weight: .bold).monospacedDigit())
                         .tracking(0.8)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Color.good)
                     Spacer()
                     categoryVsTracked(a)
                 }
@@ -279,7 +279,7 @@ struct ScreenActivitySection: View {
             HStack(spacing: 4) {
                 Button { watcher.setCheck(a, right: true) } label: {
                     Image(systemName: c?.right == true ? "checkmark.circle.fill" : "checkmark.circle")
-                        .foregroundStyle(c?.right == true ? .green : .secondary)
+                        .foregroundStyle(c?.right == true ? Color.good : .secondary)
                 }
                 .buttonStyle(.plain)
                 .help("Label is right")
@@ -310,7 +310,7 @@ struct ScreenActivitySection: View {
             if a.category != nil {
                 Image(systemName: match ? "checkmark" : "arrow.left.arrow.right")
                     .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(match ? .green : .orange)
+                    .foregroundStyle(match ? Color.good : .orange)
             }
             Text(t.map { "tracked \($0)" } ?? "untracked")
                 .font(.system(size: 9.5))
@@ -360,8 +360,7 @@ struct ScreenActivitySection: View {
     }
 
     private func fmt(_ m: Double) -> String {
-        let h = Int(m) / 60, mn = Int(m) % 60
-        return h > 0 ? "\(h)h \(mn)m" : "\(max(mn, 1))m"
+        durationText(minutes: m)
     }
 }
 
@@ -451,7 +450,7 @@ struct DistractionSection: View {
                 if focus >= 10 {
                     Text("\(drifts.count) drift\(drifts.count == 1 ? "" : "s") · \(fmt(total)) · \(String(format: "%.1f", total / (focus / 60)))m per focus hour")
                         .font(.system(size: 10, weight: .medium).monospacedDigit())
-                        .foregroundStyle(total / (focus / 60) <= 3 ? .green : total / (focus / 60) <= 8 ? .orange : .red)
+                        .foregroundStyle(total / (focus / 60) <= 3 ? Color.good : total / (focus / 60) <= 8 ? .orange : .red)
                 }
             }
             if drifts.isEmpty {
@@ -516,8 +515,7 @@ struct DistractionSection: View {
     }
 
     private func fmt(_ m: Double) -> String {
-        let h = Int(m) / 60, mn = Int(m.rounded()) % 60
-        return h > 0 ? "\(h)h \(mn)m" : "\(max(mn, 1))m"
+        durationText(minutes: m)
     }
 }
 
@@ -612,7 +610,7 @@ struct ScreenTimelineSection: View {
         }
         if !watcher.coachStatus.isEmpty { detail.append(watcher.coachStatus) }
         return HStack(spacing: 6) {
-            Circle().fill(stage.isEmpty ? (paused ? Color.orange : .secondary.opacity(0.6)) : .green).frame(width: 7, height: 7)
+            Circle().fill(stage.isEmpty ? Color.secondaryText.opacity(paused ? 0.4 : 0.8) : Color.good).frame(width: 7, height: 7)
                 .opacity(stage.isEmpty || Int(now.timeIntervalSince1970 * 2) % 2 == 0 ? 1 : 0.35)
             Text(head).foregroundStyle(stage.isEmpty ? .secondary : .primary).lineLimit(1)
             if !watcher.coachStatus.isEmpty {
@@ -696,31 +694,27 @@ struct ScreenTimelineSection: View {
             HStack(alignment: .top, spacing: 24) {
                 if labeled >= 300 {
                     metric("\(Int(((labeled - disagree) / labeled * 100).rounded()))%", "agrees with you",
-                           (labeled - disagree) / labeled >= 0.85 ? .green : .orange)
-                    metric(fmt(disagree / 60), "disagrees", disagree / 60 >= 15 ? .orange : .primary)
+                           (labeled - disagree) / labeled >= 0.85 ? Color.good : .orange)
+                    metric(fmt(disagree / 60), "disagrees", .primary)
                 }
                 metric("\(sw.count)", sw.count == 1 ? "switch it saw" : "switches it saw", .primary)
                 if missed > 0 { metric("\(missed)", "you kept going", .primary) }
                 Spacer(minLength: 0)
             }
-            GeometryReader { g in
-                HStack(spacing: 2) {
-                    ForEach(cats, id: \.key) { c, m in
-                        Capsule().fill(categoryColor(c)).frame(width: max(2, (g.size.width - CGFloat(cats.count) * 2) * m / total))
-                    }
-                }
-            }
-            .frame(height: 6)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
-                    Text("Screen saw").foregroundStyle(.secondary)
-                    ForEach(cats, id: \.key) { c, m in
+                    Text("Screen saw").foregroundStyle(Color.secondaryText)
+                    ForEach(cats.prefix(4), id: \.key) { c, m in
                         HStack(spacing: 5) {
                             Circle().fill(categoryColor(c)).frame(width: 7, height: 7)
                             Text(c).foregroundStyle(.primary)
                             Text(fmt(m))
                         }
                         .fixedSize()
+                    }
+                    if cats.count > 4 {
+                        Text("+\(cats.count - 4) more").foregroundStyle(Color.secondaryText)
+                            .help(cats.dropFirst(4).map { "\($0.key) \(fmt($0.value))" }.joined(separator: ", "))
                     }
                 }
             }
@@ -740,18 +734,19 @@ struct ScreenTimelineSection: View {
     private func switchList(_ sw: [Switch]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Switches it saw").font(.system(size: 13, weight: .semibold)).padding(.bottom, 6)
-            ForEach(sw.suffix(showAllSwitches ? 200 : 6).reversed()) { s in
+            ForEach(collapsed(sw).suffix(showAllSwitches ? 200 : 6).reversed()) { s in
                 HStack(spacing: 8) {
                     Text(s.at.formatted(date: .omitted, time: .shortened))
                         .font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
                         .frame(width: 62, alignment: .leading)
-                    HStack(spacing: 4) {
-                        Circle().fill(categoryColor(s.from)).frame(width: 6, height: 6)
+                    HStack(spacing: 5) {
+                        Circle().fill(categoryColor(s.from)).frame(width: 7, height: 7)
+                        Text(s.from).font(.system(size: 13)).foregroundStyle(Color.secondaryText)
                         Image(systemName: "arrow.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
-                        Circle().fill(categoryColor(s.to)).frame(width: 6, height: 6)
+                        Circle().fill(categoryColor(s.to)).frame(width: 7, height: 7)
                         Text(s.to).font(.system(size: 13, weight: .medium))
                     }
-                    .frame(width: 96, alignment: .leading)
+                    .frame(width: 150, alignment: .leading)
                     Text(s.title.isEmpty ? "untitled" : s.title)
                         .font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 4)
@@ -771,27 +766,35 @@ struct ScreenTimelineSection: View {
         }
     }
 
-    private func lagText(_ lag: TimeInterval?, trackedFrom: String? = nil) -> String {
-        guard let lag else { return "kept \(trackedFrom ?? "going")" }
-        if abs(lag) < 30 { return "matches you" }
-        let m = Int((abs(lag) / 60).rounded(.up))
-        return lag > 0 ? "you switched \(m)m later" : "\(m)m after you"
+    /// The same window flipping back and forth reads as one line.
+    private func collapsed(_ sw: [Switch]) -> [Switch] {
+        var out: [Switch] = []
+        for s in sw {
+            if let l = out.last, l.title == s.title, s.at.timeIntervalSince(l.at) < 300 { out[out.count - 1] = s } else { out.append(s) }
+        }
+        return out
     }
 
-    private let laneH: CGFloat = 22, blockH: CGFloat = 22, trackH: CGFloat = 22, axisH: CGFloat = 16
+    private func lagText(_ lag: TimeInterval?, trackedFrom: String? = nil) -> String {
+        guard let lag else { return "you stayed on \(trackedFrom ?? "it")" }
+        if abs(lag) < 30 { return "you switched too" }
+        let m = Int((abs(lag) / 60).rounded(.up))
+        return lag > 0 ? "you switched \(m)m later" : "it noticed \(m)m after you"
+    }
+
+    private let laneH: CGFloat = 26, blockH: CGFloat = 0, trackH: CGFloat = 26, axisH: CGFloat = 16
 
     private func timeline(hours: [Date], spans: [ScreenSpan], blocks: [ScreenActivity], track: [Tracked]) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Screen").frame(height: laneH).help("Every 15s snapshot and its label. Orange underline: it disagreed with what you tracked. Faded: no keyboard or mouse.")
-                Text("Blocks").frame(height: blockH).help("The stretches it grouped snapshots into (short blips smoothed out)")
-                Text("You").frame(height: trackH).help("What you tracked")
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Screen").frame(height: laneH).help("Every 15s snapshot and its label. Faded: no keyboard or mouse.")
+                Text("You").frame(height: trackH).help("What you tracked. Orange hatching: the screen said something else.")
             }
             .font(.system(size: 11)).foregroundStyle(.secondary)
             .frame(width: 44, alignment: .leading)
             lanes(hours: hours, spans: spans, blocks: blocks, track: track)
         }
-        .frame(height: laneH + blockH + trackH + axisH + 22)
+        .frame(height: laneH + trackH + axisH + 30)
         .onChange(of: watcher.spans.count) { _, _ in
             if pinned == nil, hovered == nil, zoom != .day { jump = nil; follow &+= 1 }
         }
@@ -840,16 +843,18 @@ struct ScreenTimelineSection: View {
         let x = { (t: Date) -> CGFloat in CGFloat(t.timeIntervalSince(h) / 3600) * width }
         let focusID = (pinned ?? hovered)?.id
         return Canvas { ctx, size in
-            let blocksY = laneH + 6, youY = laneH + 6 + blockH + 6
+            let youY = laneH + 8
             // Same-category snapshots draw as one block, so the lane reads
             // as stretches of work rather than a barcode; thin seams mark
             // each 15s snapshot once there's room to see them.
             var runs: [(c: String?, a: Date, b: Date)] = []
             for s in mine {
-                if let l = runs.last, l.c == s.category, s.start.timeIntervalSince(l.b) < 20 { runs[runs.count - 1].b = s.end }
+                if let l = runs.last, l.c == s.category || s.end.timeIntervalSince(s.start) < 10,
+                   s.start.timeIntervalSince(l.b) < 20 { runs[runs.count - 1].b = s.end }
                 else { runs.append((s.category, s.start, s.end)) }
             }
             let seams = width / 3600 * 15 >= 4
+            var disagreements: [CGRect] = []
             for r in runs {
                 let rect = CGRect(x: x(r.a), y: 0, width: max(x(r.b) - x(r.a), 1.5), height: laneH)
                 let c = r.c.map(categoryColor) ?? .gray
@@ -869,16 +874,9 @@ struct ScreenTimelineSection: View {
                                with: .color(.primary), lineWidth: 2)
                 }
                 if let t = trackedLabel(at: s.start.addingTimeInterval(s.end.timeIntervalSince(s.start) / 2), in: track),
-                   let c = s.category, t != c, s.active != false {
-                    ctx.fill(Path(roundedRect: CGRect(x: r.minX, y: laneH + 1.5, width: r.width, height: 3), cornerRadius: 1.5),
-                             with: .color(.orange))
+                   let c = s.category, t != c, s.active != false, s.end.timeIntervalSince(s.start) >= 10 {
+                    disagreements.append(CGRect(x: r.minX, y: youY, width: r.width, height: trackH))
                 }
-            }
-            for b in blocks where b.end > h && b.start < end {
-                let r = CGRect(x: x(b.start), y: blocksY, width: max(x(b.end) - x(b.start), 1), height: blockH)
-                ctx.fill(Path(roundedRect: r, cornerRadius: min(5, r.width / 2), style: .continuous),
-                         with: .color((b.category.map(categoryColor) ?? .gray).opacity(0.75)))
-                label(ctx, b.category ?? "", in: r, bold: false)
             }
             for t in track where t.end > h && t.start < end {
                 let r = CGRect(x: x(t.start), y: youY, width: max(x(t.end) - x(t.start), 1), height: trackH)
@@ -886,13 +884,26 @@ struct ScreenTimelineSection: View {
                          with: .color(t.label == "Break" ? TimerView.breakBlue.opacity(0.6) : categoryColor(t.label)))
                 label(ctx, t.label, in: r, bold: false)
             }
+            // Orange hatch over your lane wherever the screen said otherwise.
+            for r in disagreements {
+                var hatch = Path()
+                var hx = r.minX - r.height
+                while hx < r.maxX {
+                    hatch.move(to: CGPoint(x: hx, y: r.maxY)); hatch.addLine(to: CGPoint(x: hx + r.height, y: r.minY))
+                    hx += 5
+                }
+                ctx.drawLayer { l in
+                    l.clip(to: Path(r))
+                    l.stroke(hatch, with: .color(.orange), lineWidth: 1.5)
+                }
+            }
             let now = Date()
             if now > h, now < end {
-                ctx.fill(Path(roundedRect: CGRect(x: x(now) - 1, y: -3, width: 2, height: laneH + blockH + trackH + 18), cornerRadius: 1),
+                ctx.fill(Path(roundedRect: CGRect(x: x(now) - 1, y: -3, width: 2, height: laneH + trackH + 14), cornerRadius: 1),
                          with: .color(.primary.opacity(0.7)))
             }
             var tick = h
-            let axisY = laneH + blockH + trackH + 18
+            let axisY = laneH + trackH + 18
             while tick < end {
                 let tx = x(tick)
                 ctx.fill(Path(CGRect(x: tx, y: axisY - 2, width: 1, height: 3)), with: .color(.secondary.opacity(0.5)))
@@ -934,8 +945,8 @@ struct ScreenTimelineSection: View {
 
     private func tickLabel(_ d: Date) -> String {
         let f = DateFormatter()
-        f.dateFormat = cal.component(.minute, from: d) == 0 ? "ha" : "h:mm"
-        return f.string(from: d).lowercased()
+        f.dateFormat = cal.component(.minute, from: d) == 0 ? "h a" : "h:mm"
+        return f.string(from: d)
     }
 
     @ViewBuilder
@@ -951,7 +962,7 @@ struct ScreenTimelineSection: View {
                             .monospacedDigit().foregroundStyle(.secondary)
                         if let t {
                             Text(t == s.category ? "tracked \(t) ✓" : "tracked \(t)")
-                                .foregroundStyle(t == s.category ? Color.green : .orange)
+                                .foregroundStyle(t == s.category ? Color.good : .orange)
                         }
                         if s.active == false { Text("idle screen").foregroundStyle(.tertiary) }
                         Spacer()
@@ -969,7 +980,7 @@ struct ScreenTimelineSection: View {
                 }
             }
         }
-        .frame(minHeight: 52, alignment: .top)
+        .frame(minHeight: s == nil ? 16 : 52, alignment: .top)
     }
 
     private func clock(_ d: Date) -> String {
@@ -979,7 +990,6 @@ struct ScreenTimelineSection: View {
     }
 
     private func fmt(_ m: Double) -> String {
-        let h = Int(m) / 60, mn = Int(m.rounded()) % 60
-        return h > 0 ? "\(h)h \(mn)m" : "\(max(mn, 1))m"
+        durationText(minutes: m)
     }
 }

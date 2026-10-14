@@ -105,12 +105,19 @@ struct TimerView: View {
                 .stroke(accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.spring(response: 0.6), value: hours)
+            // Past the goal, a second, lighter lap keeps the ring meaningful.
+            if met {
+                Circle()
+                    .trim(from: 0, to: min(1, hours / goal - 1))
+                    .stroke(Color.white.opacity(0.45), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
             VStack(spacing: 1) {
                 Text(hm(todayFocusMinutes))
                     .font(.system(size: 12, weight: .semibold).monospacedDigit())
                     .contentTransition(.numericText())
                 if met {
-                    Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(.green)
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(Color.good)
                 } else if settings.dailyGoal > 0 {
                     Text("of \(settings.dailyGoal)h").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
@@ -344,14 +351,17 @@ struct TimerView: View {
                 .clipShape(Capsule())
             }
             .frame(height: 10)
-            HStack {
-                Text("Today")
-                Spacer()
-                let streak = store.currentStreak + (store.todayWorkMinutes < 1 && todayFocusMinutes >= 1 ? 1 : 0)
-                if streak > 0 { Text("\(streak)-day streak") }
+            ZStack {
+                HStack {
+                    Text("12 AM")
+                    Spacer()
+                    let streak = store.currentStreak + (store.todayWorkMinutes < 1 && todayFocusMinutes >= 1 ? 1 : 0)
+                    if streak > 0 { Text("\(streak)-day streak") } else { Text("12 AM") }
+                }
+                Text("Noon")
             }
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
+            .font(.system(size: 11))
+            .foregroundStyle(Color.secondaryText)
         }
         .accessibilityElement(children: .combine)
     }
@@ -381,7 +391,7 @@ struct TimerView: View {
                 }
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
-                Text(heading).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Text(EveningReviewView.sentenceCase(heading)).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                 if let line = notes?.bullets.last ?? block.spans.last?.summary, !line.isEmpty,
                    !line.localizedCaseInsensitiveContains(heading) {
                     Text(line).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
@@ -477,7 +487,7 @@ struct TimerView: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryText)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
@@ -504,8 +514,7 @@ struct TimerView: View {
     }
 
     private func hm(_ minutes: Double) -> String {
-        let h = Int(minutes) / 60, m = Int(minutes) % 60
-        return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+        durationText(minutes: minutes)
     }
 
     private func clock(_ d: Date) -> String {

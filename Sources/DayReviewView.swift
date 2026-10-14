@@ -161,7 +161,7 @@ struct DayReviewView: View {
                     Spacer()
                     Image(systemName: "checkmark.seal.fill")
                         .font(.system(size: 30))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Color.good)
                     Text(filledMinutes > 0 ? "Filled \(fmt(filledMinutes)). All 24 hours tracked."
                                            : "No holes. Nice.")
                         .font(.system(size: 12, weight: .medium))
@@ -199,8 +199,7 @@ struct DayReviewView: View {
     }
 
     private func fmt(_ m: Double) -> String {
-        let h = Int(m) / 60, mn = Int(m) % 60
-        return h > 0 ? "\(h)h \(mn)m" : "\(mn)m"
+        durationText(minutes: m)
     }
 }
 
@@ -296,8 +295,7 @@ private struct GapRow: View {
     }
 
     private func fmt(_ m: Double) -> String {
-        let h = Int(m) / 60, mn = Int(m) % 60
-        return h > 0 ? "\(h)h \(mn)m" : "\(mn)m"
+        durationText(minutes: m)
     }
 }
 
@@ -747,11 +745,16 @@ struct EveningReviewView: View {
                             .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
                         Text("focus").font(.system(size: 15, weight: .medium)).foregroundStyle(.secondary)
                         Spacer()
+                    }
+                    HStack(spacing: 6) {
                         Label(focusTotal >= goal ? "\(settings.dailyGoal)h goal met" : "\(fmt(goal - focusTotal)) short of \(settings.dailyGoal)h",
                               systemImage: focusTotal >= goal ? "checkmark.circle.fill" : "target")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(focusTotal >= goal ? Color.green : .secondary)
+                            .foregroundStyle(focusTotal >= goal ? Color.good : Color.secondaryText)
+                        if let kept = days.todayRecord?.commitmentFulfilled {
+                            Text("· commitment \(kept ? "kept" : "not kept")").foregroundStyle(Color.secondaryText)
+                        }
                     }
+                    .font(.system(size: 13, weight: .medium))
                     split(focus, total: max(focusTotal, goal))
                     chips(focus)
                 }
@@ -761,7 +764,7 @@ struct EveningReviewView: View {
                         Text("\u{201C}\(text)\u{201D}").font(.system(size: 14).italic())
                             .fixedSize(horizontal: false, vertical: true)
                         HStack {
-                            choice("Kept it", on: rec.commitmentFulfilled == true, color: .green) {
+                            choice("Kept it", on: rec.commitmentFulfilled == true, color: Color.good) {
                                 days.setFulfillment(true, forDayID: rec.id)
                             }
                             choice("Didn't", on: rec.commitmentFulfilled == false, color: .orange) {
@@ -773,10 +776,13 @@ struct EveningReviewView: View {
 
                 workedOn
 
-                offTask
-
                 if !life.isEmpty {
-                    section("The rest of the day") { chips(life) }
+                    section("The rest of the day") {
+                        chips(life)
+                        offTaskLine
+                    }
+                } else if !offTaskText.isEmpty {
+                    section("Off-task during focus") { offTaskLine }
                 }
 
                 section("Looking back") {
@@ -788,7 +794,7 @@ struct EveningReviewView: View {
                 }
 
                 HStack(spacing: 12) {
-                    if saved { Label("Saved", systemImage: "checkmark").font(.system(size: 13)).foregroundStyle(.green) }
+                    if saved { Label("Saved", systemImage: "checkmark").font(.system(size: 13)).foregroundStyle(Color.good) }
                     Spacer()
                     if days.isDayStarted {
                         Button("Save") { save() }
@@ -814,7 +820,8 @@ struct EveningReviewView: View {
             .padding(24)
         }
         .frame(minWidth: 520, minHeight: 500)
-        .background(.regularMaterial)
+        .foregroundStyle(Color.primary)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { if let e = EveningLog.entry(for: day) { entry = e } }
     }
 
@@ -846,7 +853,9 @@ struct EveningReviewView: View {
             t.first = min(t.first, a.start)
             for raw in screen.notes(for: a)?.bullets ?? [] {
                 let b = raw.trimmingCharacters(in: CharacterSet(charactersIn: "-•*· ").union(.whitespaces))
-                if !b.isEmpty, !t.bullets.contains(b) { t.bullets.append(b) }
+                // "The C distinction is:" and "Projects: No projects" are page scraps, not notes.
+                guard !b.hasSuffix(":"), b.split(separator: " ").count >= 4, !t.bullets.contains(b) else { continue }
+                t.bullets.append(b)
             }
             byName[name] = t
         }
@@ -862,15 +871,19 @@ struct EveningReviewView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline) {
                                 Circle().fill(t.category.map(categoryColor) ?? .secondary).frame(width: 6, height: 6)
-                                Text(t.name).font(.system(size: 14, weight: .semibold)).lineLimit(2)
+                                Text(Self.sentenceCase(t.name)).font(.system(size: 14, weight: .semibold)).lineLimit(2)
                                 Spacer()
                                 Text("\(fmt(t.minutes)) · from \(t.first.formatted(date: .omitted, time: .shortened))")
                                     .font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
                             }
                             ForEach(Array(t.bullets.prefix(3).enumerated()), id: \.offset) { _, b in
-                                Text("• \(b)").font(.system(size: 13)).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .padding(.leading, 12)
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text("•")
+                                    Text(b).fixedSize(horizontal: false, vertical: true)
+                                }
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color.secondaryText)
+                                .padding(.leading, 12)
                             }
                         }
                     }
@@ -879,21 +892,32 @@ struct EveningReviewView: View {
         }
     }
 
-    private var offTask: some View {
+    private var offTaskText: String {
         let drifts = screen.drifts(sessions: sessions, from: day, to: dayEnd)
+        guard !drifts.isEmpty else { return "" }
         let total = drifts.reduce(0) { $0 + $1.minutes }
         let top = Dictionary(grouping: drifts, by: \.source).mapValues { $0.reduce(0) { $0 + $1.minutes } }
             .max { $0.value < $1.value }
-        return Group {
-            if !drifts.isEmpty {
-                section("Off-task during focus") {
-                    Text("\(drifts.count) drift\(drifts.count == 1 ? "" : "s"), \(fmt(total)) in all"
-                         + (top.map { ". Most of it: \(Self.dedupe($0.key)) (\(fmt($0.value)))" } ?? ""))
-                        .font(.system(size: 13))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+        return "Off-task during focus: \(drifts.count) drift\(drifts.count == 1 ? "" : "s"), \(fmt(total))"
+            + (top.map { ", mostly \(Self.dedupe($0.key)) (\(fmt($0.value)))" } ?? "")
+    }
+
+    @ViewBuilder
+    private var offTaskLine: some View {
+        if !offTaskText.isEmpty {
+            Text(offTaskText).font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// "MATH 244 Midterm Prep" → "MATH 244 midterm prep": Title Case words
+    /// after the first go lower; acronyms and codes stay.
+    static func sentenceCase(_ s: String) -> String {
+        let words = s.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        return words.enumerated().map { i, w in
+            guard i > 0, let f = w.first, f.isUppercase, w.dropFirst().allSatisfy({ $0.isLowercase }) else { return w }
+            return w.lowercased()
+        }.joined(separator: " ")
     }
 
     /// "ChatGPT: ChatGPT" → "ChatGPT".
@@ -958,8 +982,7 @@ struct EveningReviewView: View {
     }
 
     private func fmt(_ m: Double) -> String {
-        let h = Int(m) / 60, mn = Int(m.rounded()) % 60
-        return h > 0 ? "\(h)h \(mn)m" : "\(max(mn, 1))m"
+        durationText(minutes: m)
     }
 }
 

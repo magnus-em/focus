@@ -5,7 +5,8 @@ import SwiftUI
 /// were a shade apart until 10/13.
 public func categoryColor(_ tag: String) -> Color {
     switch tag.lowercased() {
-    case "swe":      return Color(red: 0.20, green: 0.74, blue: 0.47)
+    // Teal, not green: green means "goal met" (DESIGN.md).
+    case "swe":      return Color(red: 0.05, green: 0.62, blue: 0.66)
     case "math":     return Color(red: 0.12, green: 0.36, blue: 1.00)
     case "quant":    return Color(red: 0.35, green: 0.78, blue: 0.98)
     case "ai", "ai/ml": return Color(red: 0.66, green: 0.38, blue: 0.94)
@@ -20,7 +21,7 @@ public func categoryColor(_ tag: String) -> Color {
     case "chores":   return Color(red: 0.62, green: 0.58, blue: 0.52)
     case "commute":  return Color(red: 0.48, green: 0.56, blue: 0.62)
     case "admin":    return Color(red: 0.60, green: 0.50, blue: 0.42)
-    default:         return Color(red: 0.30, green: 0.70, blue: 0.70)
+    default:         return Color(red: 0.55, green: 0.58, blue: 0.63)
     }
 }
 
@@ -41,4 +42,12 @@ public func categoryIcon(_ category: String) -> String {
     case "hw": return "pencil.and.list.clipboard"
     default: return "scope"
     }
+}
+
+/// "7h", "7h 5m", "45m": no "0m" tails.
+public func durationText(minutes: Double) -> String {
+    let total = Int(minutes.rounded(.down))
+    let h = total / 60, m = total % 60
+    if h == 0 { return "\(m)m" }
+    return m == 0 ? "\(h)h" : "\(h)h \(m)m"
 }
