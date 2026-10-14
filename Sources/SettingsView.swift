@@ -1098,6 +1098,13 @@ private struct FocusModeSettings: View {
                 }
             }
         }
+        let scenes = (tags + ["Break"]).map(FocusModes.sceneName).filter { modes.installed.contains($0) }
+        Text(scenes.isEmpty ? "Scenes: none yet" : "Scenes: " + scenes.joined(separator: ", "))
+            .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+        Text("Scenes: a shortcut named “Scene Math”, “Scene Break” and so on runs when you switch to that category, e.g. a Home scene for the HomePod and lights, or a playlist.")
+            .font(.system(size: 11))
+            .foregroundStyle(Color.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
         Text("Runs your shortcut “Focus School”, “Focus Personal”, “Focus Sleep” or “Focus Off” (each one Set Focus action) when the category changes. With Share across devices on, your iPhone and iPad follow. A mode you set yourself stays until a switch wants a different one.")
             .font(.system(size: 11))
             .foregroundStyle(Color.secondaryText)

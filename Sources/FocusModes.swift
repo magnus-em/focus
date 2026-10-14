@@ -18,6 +18,12 @@ final class FocusModes: ObservableObject {
     @Published private(set) var installed: Set<String> = []
     @Published private(set) var lastResult = ""
     private var applied: String?
+    /// Category whose "Scene <category>" shortcut last ran.
+    private var appliedScene: String?
+
+    /// Any shortcut named "Scene <category>" ("Scene Math", "Scene Break")
+    /// runs when you switch to it: Home scenes on the HomePod, lights, music.
+    static func sceneName(_ category: String) -> String { "Scene \(category)" }
     private var started = false
     private var bag: AnyCancellable?
 
@@ -49,6 +55,7 @@ final class FocusModes: ObservableObject {
         refreshInstalled()
         // Launching (or redeploying) mid-block shouldn't override what you set.
         applied = wanted(timer)
+        appliedScene = timer.isActive ? (timer.isOnBreak ? "Break" : timer.currentLabel) : nil
         bag = Publishers.CombineLatest3(timer.$currentLabel, timer.$currentPhase, timer.$isRunning)
             .debounce(for: .seconds(2), scheduler: RunLoop.main)
             .sink { [weak self, weak timer] _ in
@@ -64,6 +71,7 @@ final class FocusModes: ObservableObject {
     }
 
     private func update(_ timer: TimerManager) {
+        runScene(timer)
         guard enabled, let m = wanted(timer), m != applied else { return }
         applied = m
         let name = Self.shortcutName(m)
@@ -72,6 +80,21 @@ final class FocusModes: ObservableObject {
             await MainActor.run {
                 self.lastResult = err ?? "Turned on \(m) at \(Date().formatted(date: .omitted, time: .shortened))"
                 if err != nil { self.refreshInstalled() }
+            }
+        }
+    }
+
+    private func runScene(_ timer: TimerManager) {
+        guard timer.isActive else { appliedScene = nil; return }
+        let category = timer.isOnBreak ? "Break" : timer.currentLabel
+        guard category != appliedScene else { return }
+        appliedScene = category
+        let name = Self.sceneName(category)
+        guard installed.contains(name) else { return }
+        Task.detached {
+            let err = Self.run(name)
+            await MainActor.run {
+                self.lastResult = err ?? "Ran \(name) at \(Date().formatted(date: .omitted, time: .shortened))"
             }
         }
     }
