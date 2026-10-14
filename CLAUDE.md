@@ -230,23 +230,29 @@ Read `DESIGN.md` first: principles, type/spacing/corner scale, color roles and t
 - Pending chores: user to reload the Chrome extension (new `/tab` posting); untested: iPad broadcast, calendar permission, dual monitors.
 - A Claude scheduled task (`focus-prompt-log-tuning`, daily 8:30) reads `prompt-log.jsonl` and the debug dump and tunes the screen rules; it commits to main too.
 
-### Ranked roadmap (updated 2026-10-13 night; value for interview prep + study + trustworthy tracking, per effort)
-Done 10/13: popover A+B with tab bar, Dashboard day ring / Now Playing bar / category wash / big numbers, Snapshot timeline (zoom to 15 min, live stage line), Screen Review card (triage Y/N/S, confusions, worst windows, card ledger, span label source), virtual display for screenshots, Settings / Stats / Problems / Health / End of Day restyle, menu bar category ring, corner cards as glass Live Activity cards, few-shot labels, model-failure hold, Apple Health import (iOS, not installed), recall cards from screen notes + tonight's 3 questions, Spotlight-style switcher, Scenes, Siri focus-today intent, exam radar from the real calendar + suggested morning plan, insights by hour + weekly letter, End of Day story mode, FocusCore tests.
-1. **Install on iPhone/iPad** (see In flight) and check Apple Health import fills last night's Sleep.
-2. **Finish tuning from the switch testing**, then turn test mode off (ask the user first). Read `prompt-log.jsonl`, the Review card's confusions and `focus://screen-debug`.
-3. **Another design review round** (reviewer agent, DESIGN.md, 85+): tab bar popover, Settings, End of Day story, Notes/Scratchpad page.
-4. **Rest of the Screen Review spec** below: scorecard with check accuracy, card precision, detection delay and auto-switch undo rate; click a disagreement → side panel with snapshots, label source, page excerpt, fix buttons; 30-second triage of yesterday in the morning review.
-5. **Screen Time** on the phone (FamilyControls/DeviceActivity: phone use during focus → off-task log; ManagedSettings shields with the 30s + reason bypass). Needs the Family Controls entitlement request.
-6. **Embedding classifier** (kNN over checks + `screenMemory`); model only for unfamiliar pages.
-7. **iPad Notability path**: verify handwriting reaches the log via the broadcast.
-8. **Recall as a card deck** (the review UI as swipeable cards).
-9. **Lecture notes** for calendar classes (on-device transcription; needs the user's consent decision and a battery check).
-10. **Places** → suggested categories; Commute from movement (iPhone, CoreLocation visits).
-11. **Apple Watch** (complication/Action button switching, wrist tap on drift, HR/HRV).
-12. HomePod extras ("quiz me", spoken nudges, room sensors vs drift).
-13. Shared live status; auto-pause when every device says you left.
-14. All-day voice capture → a model of the user (privacy design first).
-15. Apple Journal hand-off revisit.
+### Ranked roadmap (2026-10-14, Claude + Codex, from an accounting of what's built, what's been asked for and actual usage; drafts in `agent-bus-state/planning/`)
+Usage finding behind it: features that run on their own or ride a habit get used (tracking ~24 h/day since 10/10, blocking, the morning commitment 18 of 23 days); features that need a separate visit don't (End of Day 0, Recall 0 cards, 7 problems ever, 1 ✓/✗ check). New loops go into the morning commitment, the popover or one notification. No Apple Watch app for now (user, 10/14).
+
+**Tier 1: make the log true**
+1. **Time integrity across devices.** Reproduce 10/14's case first (Mac Class from 12:17, iPad Class from 12:42, `skipStaleSegment` at 19:08Z, both rows closed at 15:10; 10/13 logged 25.3 h), decide interval ownership, then fix with idempotent reconciliation. Surface save failures (SessionStore's `try? context.save()`), extend the existing CloudKit warnings, warn on low disk (heuristic). Daily diagnostic: clipped intervals vs the local day's real length (DST), overlaps; offers a fix, never repairs silently. Include iPhone/iPad in the tests.
+2. **Class exit.** Remember the calendar event that started Class; at its end a quiet choice (still in class / resume X / end Class at the event end). Dismissing changes nothing.
+3. **Junk-title guard.** Stop learning labels from non-titles (log lines, timestamps, code); offer a review of suspicious existing learned labels instead of purging.
+4. **Verify Health import and Siri totals** end to end on devices; last-import status; fix the Siri total's missing midnight clipping.
+
+**Tier 2: fixing and steering with little effort**
+5. **Morning correction pass inside the morning commitment.** Yesterday's biggest disagreements and unknown stretches by minutes, with the saved screenshots; correct / Mixed / skip; reversible. Reuses the shipped evidence and corrections.
+6. **Next block.** One concrete next action from exams, the commitment and last night's "start with"; the user picks the assignment/concept and an optional target (no guessed hour deficits; category hours are labelled as category hours); one evening notification proposing tomorrow's first block. Recall/problem queues join when they have content.
+7. **Fix the log by saying it.** "I was in class 1–1:40, the rest was leisure" → preview → apply. Pilot as text in the popover; phone and Siri later.
+8. **Optional course/task identity** under categories, one tap to attach or resume; needed before per-exam allocation.
+
+**Tier 3: measure and make study count**
+9. **Trust scorecard**: checked accuracy with sample size, agreement, cards accepted/kept/ignored, detection delay, Undo rate, test vs normal mode kept apart.
+10. **Quiz from your own notes before an exam**, with the source block kept; good questions become cards.
+11. **Possible drift shown next to focus**, not subtracted; only user-confirmed intervals ever come off.
+12. **Optional simpler view** that hides dormant tabs only if the user turns it on.
+
+**Later:** phone use during focus (Screen Time); iPad Notability verification, if the user studies on the iPad; Sunday weekly letter.
+**Deferred:** Watch app, all-day voice capture, Places, HomePod extras, embedding classifier (until there are a few hundred checks), another redesign. Lecture transcription needs a consent decision first.
 
 #### Screen Review spec (roadmap #2)
 Goal: see in 30 seconds whether the auto-log was right today, fix what wasn't, and watch accuracy improve.
