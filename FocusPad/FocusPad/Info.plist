@@ -25,6 +25,8 @@
 		<string>_focus-timer._tcp</string>
 		<string>_focus-timer._udp</string>
 	</array>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Focus fills untracked time in your day log with Sleep from Apple Health sleep data and Exercise from your workouts.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Focus uses your local network to sync the timer instantly between your iPad and Mac on the same Wi-Fi.</string>
 	<key>NSSupportsLiveActivities</key>

@@ -189,6 +189,15 @@ struct SettingsScreen: View {
             }
             .onAppear { forceSyncProbe() }
 
+            Section("Apple Health") {
+                Toggle("Fill Sleep and Exercise from Health", isOn: Binding(
+                    get: { HealthImport.enabled },
+                    set: { UserDefaults.standard.set($0, forKey: HealthImport.enabledKey) }
+                ))
+                Text("Nights of sleep (3h+) and workouts (10 min+) fill time you didn't track. Nothing you tracked is changed.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Activity Log on the Mac") {
                 if UIDevice.current.userInterfaceIdiom == .pad {
                     HStack {

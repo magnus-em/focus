@@ -19,6 +19,7 @@ struct FocusPadApp: App {
     let container: ModelContainer
     @StateObject private var settings: PadSettings
     @StateObject private var engine: FocusTimerEngine
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let c = Self.sharedContainer
@@ -56,6 +57,10 @@ struct FocusPadApp: App {
                 .environmentObject(engine)
                 .onAppear { Self.liveEngine = engine }
                 .onChange(of: settings.tags) { _, tags in SharedStore.defaults.set(tags, forKey: "tags") }
+                .onChange(of: scenePhase, initial: true) { _, phase in
+                    guard phase == .active else { return }
+                    Task { await HealthImport.run(container: container, tags: settings.tags, runningSince: engine.isActive ? engine.sessionStartTime : nil) }
+                }
         }
         .modelContainer(container)
     }
