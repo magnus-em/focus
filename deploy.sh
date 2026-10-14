@@ -3,6 +3,8 @@
 # Usage: ./deploy.sh (run from repo root) — builds, installs to /Applications, relaunches
 set -e
 cd "$(dirname "$0")"
+source scripts/lock.sh
+focus_lock deploy
 
 # Claude Code and Codex deploy from different checkouts. Only install committed
 # code that contains whatever is installed now, so one agent's deploy can't

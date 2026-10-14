@@ -4,10 +4,7 @@ Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). 
 
 Last touched: 2026-10-14 (Claude Code and Codex both active).
 
-## Active now
-
-| Agent | Task | Files |
-| --- | --- | --- |
+Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 
 ## Notes
 
