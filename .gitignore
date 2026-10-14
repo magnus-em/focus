@@ -10,4 +10,4 @@ xcuserdata/
 build/
 DerivedData/
 .shots/
-.agents/
+agent-bus-state/
