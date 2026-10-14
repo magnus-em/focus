@@ -1,4 +1,5 @@
 import AppKit
+import NaturalLanguage
 import CloudKit
 import EventKit
 import FoundationModels
@@ -743,6 +744,41 @@ final class ScreenWatcher: ObservableObject {
         UserDefaults.standard.dictionary(forKey: memoryDefaultsKey) as? [String: String] ?? [:]
     }
 
+    // MARK: - Few-shot examples
+
+    private lazy var titleEmbedding = NLEmbedding.sentenceEmbedding(for: .english)
+    private var titleVectors: [String: [Double]] = [:]
+
+    /// Up to 4 windows you've labeled whose titles mean something close to
+    /// this one ("Plan MATH 244 midterm prep" for "MATH 244 problem set 6").
+    private func examples(like title: String, among categories: [String]) -> [(title: String, category: String)] {
+        guard let emb = titleEmbedding, title.count >= 4, let q = emb.vector(for: title.lowercased()) else { return [] }
+        var scored: [(sim: Double, title: String, category: String)] = []
+        for (key, label) in Self.memory where categories.contains(label) {
+            guard let bar = key.firstIndex(of: "|") else { continue }
+            let t = String(key[key.index(after: bar)...])
+            guard t.count >= 4, t != title.lowercased() else { continue }
+            guard let v = titleVectors[t] ?? emb.vector(for: t) else { continue }
+            titleVectors[t] = v
+            scored.append((Self.cosine(q, v), t, label))
+        }
+        let top = scored.filter { $0.sim >= 0.55 }.sorted { $0.sim > $1.sim }.prefix(4)
+        if let best = top.first, best.sim >= 0.8, top.dropFirst().allSatisfy({ $0.sim < 0.8 || $0.category == best.category }) {
+            nearMatch = best
+        }
+        return top.map { ($0.title, $0.category) }
+    }
+
+    /// Set by `examples(like:)`: a window you labeled that's nearly the same
+    /// title (0.8+), whose label is used without asking the model.
+    private var nearMatch: (sim: Double, title: String, category: String)?
+
+    private static func cosine(_ a: [Double], _ b: [Double]) -> Double {
+        var dot = 0.0, na = 0.0, nb = 0.0
+        for i in 0..<min(a.count, b.count) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i] }
+        return na > 0 && nb > 0 ? dot / (na.squareRoot() * nb.squareRoot()) : 0
+    }
+
     /// The user's answer for these windows beats the model next time.
     static func learn(_ keys: Set<String>, as category: String) {
         var m = memory
@@ -771,8 +807,15 @@ final class ScreenWatcher: ObservableObject {
             return "\(title) (\(String(short.prefix(120))))"
         } ?? title
         let window = Self.memoryKey(bundle: bundle, title: title)
+        nearMatch = nil
+        let shots = generic ? [] : examples(like: title, among: candidates)
+        if let near = nearMatch {
+            labelSource = "your earlier answer for a similar window (\"\(near.title)\", \(Int(near.sim * 100))% alike)"
+            return (near.category, cache[key]?.summary ?? fallbackSummary)
+        }
+        if !shots.isEmpty { labelSource = "on-device model, with \(shots.count) of your labels as examples" }
         guard var result = await ScreenLabeler.classify(app: app, title: shownTitle, text: text, categories: candidates,
-                                                        current: generic ? runningCategory() : nil) else {
+                                                        current: generic ? runningCategory() : nil, examples: shots) else {
             // The model threw (often its rate limit for background apps): keep
             // this window's last label instead of leaving a hole in the log.
             let held = generic ? samples.last { $0.bundleID == bundle }?.category : windowLabel[window]?.category

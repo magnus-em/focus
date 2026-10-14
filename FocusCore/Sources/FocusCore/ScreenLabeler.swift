@@ -77,14 +77,17 @@ public enum ScreenLabeler {
     /// background app, guardrails, context size). For the debug dump.
     nonisolated(unsafe) public static var lastError: String?
 
+    /// `examples`: the student's own labels for the most similar windows
+    /// (few-shot), which beat the generic hints for their kind of work.
     public static func classify(app: String, title: String, text: String, categories: [String],
-                                current: String? = nil) async -> (String?, String)? {
+                                current: String? = nil, examples: [(title: String, category: String)] = []) async -> (String?, String)? {
         let lines = categories.map { c in hints[c].map { "- \(c): \($0)" } ?? "- \(c)" }
         let instructions = """
         You label what a student is doing on their computer or tablet from the app, window title and on-screen text. Pick the single best category.
         \(lines.joined(separator: "\n"))
         - Unclear: not enough information.
         Coursework and problem sets are never Reading.
+        \(examples.isEmpty ? "" : "Windows the student labeled before; similar windows are usually the same kind of work:\n" + examples.map { "- \"\($0.title)\": \($0.category)" }.joined(separator: "\n"))
         A course code in the window title names the subject: MATH courses are Math, CPSC courses are SWE.
         \(current.map { categories.contains($0) ? "The student says they are doing \($0) right now. Answer \($0) unless the screen clearly shows a different kind of work; numbers, binary or arithmetic inside programming material are still \($0)." : "" } ?? "")
         """
