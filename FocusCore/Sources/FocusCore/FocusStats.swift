@@ -5,6 +5,24 @@ import Foundation
 public enum FocusStats {
     public static var cal: Calendar { Calendar.current }
 
+    public static func focusCategoryMinutes(_ sessions: [WorkSession], live: WorkSession? = nil,
+                                            on day: Date, through now: Date, lifeTags: Set<String>,
+                                            calendar: Calendar = .current) -> [String: Double] {
+        let start = calendar.startOfDay(for: day)
+        guard let next = calendar.date(byAdding: .day, value: 1, to: start) else { return [:] }
+        let end = min(next, now)
+        guard end > start else { return [:] }
+        var totals: [String: Double] = [:]
+        for session in sessions + [live].compactMap({ $0 }) where session.type == .work {
+            let label = session.label ?? "Focus"
+            guard !lifeTags.contains(label), session.durationMinutes.isFinite, session.durationMinutes > 0 else { continue }
+            let sessionEnd = session.startTime.addingTimeInterval(session.durationMinutes * 60)
+            let minutes = min(end, sessionEnd).timeIntervalSince(max(start, session.startTime)) / 60
+            if minutes > 0 { totals[label, default: 0] += minutes }
+        }
+        return totals
+    }
+
     // MARK: - Per-day work minutes
 
     public static func workMinutes(_ sessions: [StoredWorkSession], on day: Date) -> Double {

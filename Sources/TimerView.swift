@@ -4,7 +4,7 @@ import FocusCore
 /// The popover's "Now" page (DESIGN.md, direction A+B). Shows only what
 /// matters at this moment: what's running and for how long beside a small
 /// goal ring, at most one line that needs you, and the controls. The day
-/// strip, what the screen sees and today's log sit behind the grabber.
+/// strip, what the screen sees and today's log sit behind a Details button.
 /// Category chips appear only when nothing is running, because then picking
 /// one is the next thing to do.
 struct TimerView: View {
@@ -27,6 +27,8 @@ struct TimerView: View {
     @Binding var detent: Detent
     @ObservedObject private var syncMonitor = CloudSyncMonitor.shared
     @ObservedObject private var watcher = ScreenWatcher.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var savedFocusTotals: [String: Double] = [:]
 
     static let breakBlue = Color(red: 0.27, green: 0.62, blue: 0.83)
 
@@ -44,8 +46,15 @@ struct TimerView: View {
     }
 
     private var todayFocusMinutes: Double {
-        let live = timer.currentInProgressSession.flatMap { $0.isFocus ? $0.durationMinutes : nil } ?? 0
-        return store.todayWorkMinutes + live
+        todayFocusByCategory.values.reduce(0, +)
+    }
+
+    private var todayFocusByCategory: [String: Double] {
+        var totals = savedFocusTotals
+        let live = FocusStats.focusCategoryMinutes([], live: timer.currentInProgressSession,
+                                                  on: Date(), through: Date(), lifeTags: Set(settings.lifeTags))
+        for (label, minutes) in live { totals[label, default: 0] += minutes }
+        return totals
     }
 
     private var running: String? { timer.isActive ? (onBreak ? "Break" : timer.currentLabel) : nil }
@@ -53,6 +62,7 @@ struct TimerView: View {
     var body: some View {
         VStack(spacing: 14) {
             hero
+            focusTotals
             if !timer.isActive {
                 if !FocusCategories.isLife(timer.currentLabel) { presets }
                 startChips
@@ -64,12 +74,44 @@ struct TimerView: View {
                 todayLog
             }
             controlBar
-            grabber
+            detailsButton
         }
         .padding(.horizontal, 16)
         .padding(.top, 18)
         .padding(.bottom, 6)
-        .animation(.spring(response: 0.4, dampingFraction: 0.88), value: detent)
+        .onReceive(store.$sessions) { refreshFocusTotals($0) }
+        .onChange(of: settings.lifeTags) { _, _ in refreshFocusTotals(store.sessions) }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in refreshFocusTotals(store.sessions) }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: detent)
+    }
+
+    private func refreshFocusTotals(_ sessions: [WorkSession]) {
+        savedFocusTotals = FocusStats.focusCategoryMinutes(sessions, on: Date(), through: Date(), lifeTags: Set(settings.lifeTags))
+    }
+
+    @ViewBuilder
+    private var focusTotals: some View {
+        let totals = todayFocusByCategory.filter { $0.value > 2 }
+        let labels = settings.tags.filter { totals[$0] != nil }
+            + totals.keys.filter { !settings.tags.contains($0) }.sorted()
+        if !labels.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Focus today").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                FlowLayout(spacing: 8) {
+                    ForEach(labels, id: \.self) { label in
+                        HStack(spacing: 6) {
+                            Circle().fill(categoryColor(label)).frame(width: 7, height: 7)
+                            Text(label).font(.system(size: 13, weight: .medium))
+                            Text(hm(totals[label] ?? 0)).font(.system(size: 13).monospacedDigit()).foregroundStyle(Color.secondaryText)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 8)
+                        .background(Capsule().fill(Color.primary.opacity(0.05)))
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     // MARK: - Hero
@@ -80,11 +122,11 @@ struct TimerView: View {
             VStack(alignment: .leading, spacing: 2) {
                 categoryMenu
                 Text(timer.timeString)
-                    .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
+                    .font(.system(size: 46, weight: .semibold, design: .rounded).monospacedDigit())
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .contentTransition(.numericText())
-                    .animation(.linear(duration: 0.3), value: timer.timeString)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: timer.timeString)
                 subline
             }
             Spacer(minLength: 0)
@@ -103,7 +145,7 @@ struct TimerView: View {
                 .trim(from: 0, to: min(1, hours / goal))
                 .stroke(accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .animation(.spring(response: 0.6), value: hours)
+                .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: hours)
             // Past the goal, a second, lighter lap keeps the ring meaningful.
             if met {
                 Circle()
@@ -428,67 +470,17 @@ struct TimerView: View {
     // MARK: - Controls
 
     private var controlBar: some View {
-        HStack(spacing: 6) {
-            if timer.isActive {
-                roundButton("stop.fill", help: "Stop (saves what's running)") { timer.reset() }
-            }
-            Button {
-                if onBreak, !timer.currentLabel.isEmpty { timer.switchTo(timer.currentLabel) }
-                else if timer.isRunning { timer.pause() } else { timer.start() }
-            } label: {
-                Label(primaryTitle, systemImage: onBreak ? "arrow.uturn.backward" : timer.isRunning ? "pause.fill" : "play.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(Capsule().fill(onBreak && !timer.currentLabel.isEmpty ? categoryColor(timer.currentLabel) : accent))
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            if timer.isActive && !onBreak {
-                roundButton("cup.and.saucer", help: "Take a break (⌃⌥⌘L)") { timer.startManualBreak(minutes: 0) }
-            }
-        }
-        .padding(6)
-        .background(Capsule().fill(Color.primary.opacity(0.06)))
+        FocusTransportControls(timer: timer, returnsFromBreak: true)
     }
 
-    private var primaryTitle: String {
-        if onBreak { return timer.currentLabel.isEmpty ? "Pause" : "Back to \(timer.currentLabel)" }
-        if timer.isRunning { return "Pause" }
-        if timer.isActive { return "Resume" }
-        return timer.currentLabel.isEmpty ? "Start" : "Start \(timer.currentLabel)"
-    }
-
-    private func roundButton(_ icon: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(Color.secondaryText)
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
+    private var detailsButton: some View {
+        Button { detent = detent == .small ? .large : .small } label: {
+            Label(detent == .large ? "Hide details" : "Details", systemImage: detent == .large ? "chevron.up" : "chevron.down")
+                .font(.system(size: 12, weight: .medium)).frame(minHeight: 36)
         }
         .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
-    }
-
-    /// Like a Maps sheet: drag down for more, up for less, or click.
-    private var grabber: some View {
-        Capsule()
-            .fill(Color.secondary.opacity(0.45))
-            .frame(width: 36, height: 5)
-            .frame(maxWidth: .infinity, minHeight: 16)
-            .contentShape(Rectangle())
-            .onTapGesture { detent = detent == .small ? .large : .small }
-            .gesture(DragGesture(minimumDistance: 6).onEnded { v in
-                if v.translation.height > 20 { detent = .large }
-                if v.translation.height < -20 { detent = .small }
-            })
-            .help(detent == .large ? "Show less" : "Show today and what's on screen")
-            .accessibilityLabel(detent == .large ? "Show less" : "Show more")
-            .accessibilityAddTraits(.isButton)
+        .foregroundStyle(Color.secondaryText)
+        .help("Show or hide today's timeline and screen activity")
     }
 
     private func hm(_ minutes: Double) -> String {
@@ -513,6 +505,99 @@ struct CategoryWash: View {
         }
         .animation(.easeInOut(duration: 0.6), value: color)
         .allowsHitTesting(false)
+    }
+}
+
+struct NativeGlassControl: ViewModifier {
+    var prominent: Bool
+    var tint: Color
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        Group {
+            if #available(macOS 26.0, *) {
+                if prominent { content.buttonStyle(.glassProminent).tint(tint) }
+                else { content.buttonStyle(.glass) }
+            } else {
+                if prominent { content.buttonStyle(.borderedProminent).tint(tint) }
+                else { content.buttonStyle(.bordered) }
+            }
+        }
+        .environment(\.controlActiveState, .active)
+    }
+}
+
+struct FocusTransportControls: View {
+    @ObservedObject var timer: TimerManager
+    var returnsFromBreak = false
+    @Namespace private var glassNamespace
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var returning: Bool { returnsFromBreak && timer.isActive && timer.isOnBreak && !timer.currentLabel.isEmpty }
+    private var tint: Color { timer.isActive && timer.isOnBreak && !returning ? TimerView.breakBlue : categoryColor(timer.currentLabel) }
+    private var title: String {
+        if returning { return "Back to \(timer.currentLabel)" }
+        if timer.isRunning { return "Pause" }
+        return timer.isActive ? "Resume" : "Start"
+    }
+
+    var body: some View {
+        Group {
+            if #available(macOS 26.0, *) { GlassEffectContainer(spacing: 8) { buttons } }
+            else { buttons }
+        }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: timer.isActive)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: timer.isOnBreak)
+    }
+
+    private var buttons: some View {
+        HStack(spacing: 8) {
+            if timer.isActive {
+                control(id: "stop", prominent: false) {
+                    Button { timer.reset() } label: {
+                        Image(systemName: "stop.fill").font(.system(size: 13)).frame(width: 36, height: 36)
+                    }
+                    .buttonBorderShape(.circle)
+                    .help("Stop and save this session").accessibilityLabel("Stop")
+                }
+            }
+            control(id: "playback", prominent: true) {
+                Button {
+                    if returning { timer.switchTo(timer.currentLabel) }
+                    else if timer.isRunning { timer.pause() }
+                    else { timer.start() }
+                } label: {
+                    Label {
+                        Text(title).lineLimit(1).minimumScaleFactor(0.8)
+                    } icon: {
+                        Image(systemName: returning ? "arrow.uturn.backward" : timer.isRunning ? "pause.fill" : "play.fill")
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(colorScheme == .dark ? Color.white : Color.black)
+                    .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonBorderShape(.capsule).help(title)
+            }
+            if timer.isActive && !timer.isOnBreak {
+                control(id: "break", prominent: false) {
+                    Button { timer.startManualBreak(minutes: 0) } label: {
+                        Image(systemName: "cup.and.saucer").font(.system(size: 14)).frame(width: 36, height: 36)
+                    }
+                    .buttonBorderShape(.circle)
+                    .help("Take a break").accessibilityLabel("Take a break")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func control<V: View>(id: String, prominent: Bool, @ViewBuilder content: () -> V) -> some View {
+        if #available(macOS 26.0, *) {
+            content().modifier(NativeGlassControl(prominent: prominent, tint: tint))
+                .glassEffectID(id, in: glassNamespace)
+        } else { content().modifier(NativeGlassControl(prominent: prominent, tint: tint)) }
     }
 }
 
@@ -541,35 +626,12 @@ struct NowPlayingBar: View {
             Text(timer.timeString)
                 .font(.system(size: 17, weight: .semibold, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText())
-            Button { timer.isRunning ? timer.pause() : timer.start() } label: {
-                Image(systemName: timer.isRunning ? "pause.fill" : "play.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(accent))
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help(timer.isRunning ? "Pause" : "Start")
-            .accessibilityLabel(timer.isRunning ? "Pause" : "Start")
-            if timer.isActive {
-                Button { timer.startManualBreak(minutes: 0) } label: {
-                    Image(systemName: "cup.and.saucer").font(.system(size: 14, weight: .medium))
-                        .frame(width: 36, height: 36).contentShape(Circle())
-                }
-                .buttonStyle(.plain).help("Take a break").accessibilityLabel("Take a break")
-                .disabled(timer.isOnBreak)
-                Button { timer.reset() } label: {
-                    Image(systemName: "stop.fill").font(.system(size: 13, weight: .medium))
-                        .frame(width: 36, height: 36).contentShape(Circle())
-                }
-                .buttonStyle(.plain).help("Stop (saves what's running)").accessibilityLabel("Stop")
-            }
+            FocusTransportControls(timer: timer).frame(maxWidth: 200)
         }
         .padding(.leading, 18)
         .padding(.trailing, 8)
-        .frame(height: 52)
-        .frame(maxWidth: 460)
+        .frame(minHeight: 60)
+        .frame(maxWidth: 540)
         .modifier(FloatingGlass())
         .padding(.bottom, 14)
     }

@@ -59,3 +59,40 @@ final class DurationTextTests: XCTestCase {
         XCTAssertEqual(durationText(minutes: 0.4), "0m")
     }
 }
+
+final class DailyFocusCategoryTests: XCTestCase {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+    private var day: Date { calendar.date(from: DateComponents(year: 2026, month: 10, day: 14))! }
+
+    func testAggregatesRepeatedFocusAndLiveWorkWithoutLifeOrBreaks() {
+        let sessions = [
+            WorkSession(startTime: day, durationMinutes: 1, type: .work, label: "Math"),
+            WorkSession(startTime: day.addingTimeInterval(120), durationMinutes: 1.5, type: .work, label: "Math"),
+            WorkSession(startTime: day, durationMinutes: 30, type: .work, label: "Admin"),
+            WorkSession(startTime: day, durationMinutes: 20, type: .shortBreak, label: "Math"),
+            WorkSession(startTime: day, durationMinutes: 2, type: .work, label: "AI")
+        ]
+        let live = WorkSession(startTime: day.addingTimeInterval(600), durationMinutes: 3, type: .work, label: "SWE")
+        let totals = FocusStats.focusCategoryMinutes(sessions, live: live, on: day,
+                                                     through: day.addingTimeInterval(3600), lifeTags: ["Admin"], calendar: calendar)
+        XCTAssertEqual(totals["Math"], 2.5)
+        XCTAssertEqual(totals["SWE"], 3)
+        XCTAssertNil(totals["Admin"])
+        XCTAssertEqual(Set(totals.filter { $0.value > 2 }.keys), ["Math", "SWE"])
+    }
+
+    func testClipsMidnightSessionsAndIgnoresFutureTime() {
+        let sessions = [
+            WorkSession(startTime: day.addingTimeInterval(-900), durationMinutes: 45, type: .work, label: "Math"),
+            WorkSession(startTime: day.addingTimeInterval(7200), durationMinutes: 60, type: .work, label: "SWE")
+        ]
+        let totals = FocusStats.focusCategoryMinutes(sessions, on: day, through: day.addingTimeInterval(600),
+                                                     lifeTags: [], calendar: calendar)
+        XCTAssertEqual(totals["Math"], 10)
+        XCTAssertNil(totals["SWE"])
+    }
+}

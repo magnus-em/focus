@@ -250,7 +250,7 @@ struct FocusApp: App {
                         openDashboard: {}, openOnboarding: {}, openPractice: {}, openZetamac: {}, openLeetCode: {},
                         openRecall: {}, initialTab: tab, initialDetent: detent
                     ).modelContainer(focusContainer),
-                    name: name, dark: dark, size: NSSize(width: 320, height: tab == 0 ? (detent == .large ? 820 : 420) : 680))
+                    name: name, dark: dark, size: NSSize(width: 360, height: tab == 0 ? (detent == .large ? 740 : 460) : 680))
             }
         }
         QuickSwitch.shared?.openReview = {
@@ -356,7 +356,7 @@ struct PopoverContent: View {
     var initialDetent: TimerView.Detent? = nil
 
     @State private var selectedTab = 0
-    @AppStorage("popoverExpanded") private var expandedStored = false
+    @AppStorage("quickPanelDetails") private var expandedStored = false
     /// Gallery shots set this instead of the stored size, so a screenshot
     /// never changes how your own popover opens.
     @State private var detentOverride: TimerView.Detent?
@@ -369,7 +369,7 @@ struct PopoverContent: View {
 
     var body: some View {
         popoverBody
-            .frame(width: 320)
+            .frame(width: 360)
             .popoverPanel(tint: washColor)
             .onAppear {
                 if let initialTab { selectedTab = initialTab }
@@ -599,6 +599,17 @@ struct PopoverContent: View {
 
     private var openBookContent: some View {
         VStack(spacing: 0) {
+            HStack {
+                Text(selectedTab == 0 ? "Focus" : pageTitle).font(.system(size: 15, weight: .semibold))
+                Spacer()
+                Button(action: openDashboard) {
+                    Label("Dashboard", systemImage: "rectangle.grid.2x2")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .modifier(NativeGlassControl(prominent: false, tint: .accentColor))
+                .help("Open your Dashboard")
+            }
+            .padding(.horizontal, 16).padding(.top, 12)
             if selectedTab == 0 {
                 TimerView(
                     timer: timerManager, store: sessionStore, settings: settings, dayStore: dayStore,
@@ -607,10 +618,6 @@ struct PopoverContent: View {
                                     set: { if detentOverride != nil { detentOverride = $0 } else { expandedStored = $0 == .large } })
                 )
             } else {
-                Text(pageTitle)
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(maxWidth: .infinity, minHeight: 36)
-                    .padding(.top, 8)
                 Group {
                     switch selectedTab {
                     case 1: StatsView(store: sessionStore, settings: settings)
@@ -632,6 +639,8 @@ struct PopoverContent: View {
 struct PageBar: View {
     @Binding var selected: Int
     let more: [TimerView.MoreItem]
+    @Namespace private var selectionNamespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let pages: [(tag: Int, title: String, icon: String)] = [
         (0, "Now", "timer"), (1, "Stats", "chart.bar"), (2, "Problems", "list.bullet.rectangle"),
@@ -663,6 +672,7 @@ struct PageBar: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .overlay(alignment: .top) { Divider().opacity(0.6) }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: selected)
     }
 
     private func item(_ title: String, _ icon: String, on: Bool) -> some View {
@@ -674,6 +684,12 @@ struct PageBar: View {
         }
         .foregroundStyle(on ? Color.accentColor : Color.secondaryText)
         .frame(maxWidth: .infinity, minHeight: 44)
+        .background {
+            if on {
+                RoundedRectangle(cornerRadius: 15, style: .continuous).fill(Color.primary.opacity(0.06))
+                    .matchedGeometryEffect(id: "selected-page", in: selectionNamespace)
+            }
+        }
         .contentShape(Rectangle())
     }
 }
