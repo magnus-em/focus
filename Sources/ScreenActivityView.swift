@@ -51,10 +51,8 @@ struct ScreenActivitySection: View {
         let earlier = live == nil ? list : Array(list.dropFirst())
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("ACTIVITY LOG")
-                    .font(.system(size: 9, weight: .semibold))
-                    .tracking(1)
-                    .foregroundStyle(.secondary)
+                Text("Activity log")
+                    .font(.system(size: 15, weight: .semibold))
                 Spacer()
                 let score = watcher.checkScore()
                 if score.total > 0 {
@@ -447,8 +445,8 @@ struct DistractionSection: View {
         }
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text("OFF-TASK DURING FOCUS")
-                    .font(.system(size: 9, weight: .semibold)).tracking(1).foregroundStyle(.secondary)
+                Text("Off-task during focus")
+                    .font(.system(size: 15, weight: .semibold))
                 Spacer()
                 if focus >= 10 {
                     Text("\(drifts.count) drift\(drifts.count == 1 ? "" : "s") · \(fmt(total)) · \(String(format: "%.1f", total / (focus / 60)))m per focus hour")

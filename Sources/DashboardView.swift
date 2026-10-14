@@ -246,17 +246,16 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(isSelectedDayToday ? "TODAY'S LOG" : "DAY LOG")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.2)
-                        .foregroundStyle(.secondary)
+                    Text(isSelectedDayToday ? "Today" : selectedDay.formatted(.dateTime.weekday(.wide)))
+                        .font(.system(size: 22, weight: .bold))
                     Spacer()
                     dayNavButton(systemImage: "chevron.left") { shiftSelectedDay(by: -1) }
                     dayNavButton(systemImage: "chevron.right",
                                  disabled: isSelectedDayToday) { shiftSelectedDay(by: 1) }
                 }
-                Text(dayHeaderString(selectedDay))
-                    .font(.system(size: 14, weight: .semibold))
+                Text(selectedDay.formatted(.dateTime.month(.wide).day()))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
                 if let rec = selectedDayRecord, let start = rec.dayStart {
                     HStack(spacing: 3) {
                         Image(systemName: "sunrise").font(.system(size: 9))
@@ -267,13 +266,13 @@ struct DashboardView: View {
                             Text(clockStr(end))
                         }
                     }
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
                 }
                 if let commitText = selectedDayCommitmentText {
                     HStack(alignment: .top, spacing: 6) {
                         Text("\u{201C}\(commitText)\u{201D}")
-                            .font(.system(size: 10).italic())
+                            .font(.system(size: 12).italic())
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                         Spacer(minLength: 4)
@@ -282,9 +281,9 @@ struct DashboardView: View {
                     .padding(.top, 2)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
 
             Divider()
 
@@ -312,18 +311,17 @@ struct DashboardView: View {
 
             Divider()
             HStack {
-                Label(fmtMins(selectedDayFocusMinutes), systemImage: "timer")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(red)
+                Label("\(fmtMins(selectedDayFocusMinutes)) focus", systemImage: "timer")
+                    .font(.system(size: 12, weight: .semibold))
                 Spacer()
                 if selectedDayBreakMinutes >= 1 {
                     Label(fmtMins(selectedDayBreakMinutes), systemImage: "cup.and.saucer")
-                        .font(.system(size: 10))
+                        .font(.system(size: 12))
                         .foregroundStyle(blue)
                     Spacer()
                 }
                 Label("\(selectedDayProblemCount)", systemImage: "checkmark.circle")
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 14)
@@ -433,7 +431,7 @@ struct DashboardView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("ACTIVITY · 18 WEEKS")
+                sectionLabel("Activity, 18 weeks")
                 Spacer()
                 Text(fmtHours(total / 60.0))
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -507,7 +505,7 @@ struct DashboardView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("HOMEWORK · 18 WEEKS")
+                sectionLabel("Homework, 18 weeks")
                 Spacer()
                 Text("\(total) problems")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -655,7 +653,7 @@ struct DashboardView: View {
     private var narrativeInsightsSection: some View {
         let insights = narrativeInsightsList
         return VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("PATTERNS")
+            sectionLabel("Patterns")
             if insights.isEmpty {
                 Text("Log a few more focus sessions and patterns will appear here.")
                     .font(.system(size: 11)).foregroundStyle(.tertiary)
@@ -772,7 +770,7 @@ struct DashboardView: View {
         let earned = awards.filter(\.earned).count
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("AWARDS")
+                sectionLabel("Awards")
                 Spacer()
                 Text("\(earned) / \(awards.count)")
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -822,7 +820,7 @@ struct DashboardView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("DAY TIMELINE")
+                sectionLabel("Day timeline")
                 Spacer()
                 Text(dayHeaderString(selectedDay))
                     .font(.system(size: 10, weight: .medium))
@@ -876,7 +874,7 @@ struct DashboardView: View {
         if !blocks.isEmpty || !daySpans.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    sectionLabel("BROWSER")
+                    sectionLabel("Browser")
                     Spacer()
                     Text("\(fmtMins(chromeMinutes)) in Chrome")
                         .font(.system(size: 10, weight: .medium))
@@ -997,7 +995,7 @@ struct DashboardView: View {
         let purple = Color(red: 0.62, green: 0.45, blue: 0.92)
 
         return VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("PROBLEM PROGRESS")
+            sectionLabel("Problem progress")
 
             ForEach(ProblemDomain.allCases, id: \.self) { domain in
                 let count = problemStore.count(for: domain)
@@ -1098,7 +1096,7 @@ struct DashboardView: View {
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                sectionLabel("LAST 14 DAYS")
+                sectionLabel("Last 14 days")
                 Spacer()
                 Text(fmtMins(sessionStore.last7DaysMinutes) + " this week")
                     .font(.system(size: 10))
@@ -1143,7 +1141,7 @@ struct DashboardView: View {
         let total = split.reduce(0.0) { $0 + $1.minutes }
 
         return VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("FOCUS SPLIT — LAST 7 DAYS")
+            sectionLabel("Focus split, last 7 days")
             if total == 0 {
                 Text("No tagged sessions this week.")
                     .font(.system(size: 11))
@@ -1197,7 +1195,7 @@ struct DashboardView: View {
         let streak = dayStore.commitmentStreak
 
         return VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("INSIGHTS")
+            sectionLabel("Insights")
             VStack(spacing: 6) {
                 let consistency = sessionStore.consistencyScore(days: 14)
                 iRow("Consistency (14d)", "\(Int(consistency * 100))%",
@@ -1251,7 +1249,7 @@ struct DashboardView: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                sectionLabel("COMMITMENTS")
+                sectionLabel("Commitments")
                 Spacer()
                 if !reviewed.isEmpty {
                     Text("\(kept.count)/\(reviewed.count) kept all-time")
@@ -1367,7 +1365,7 @@ struct DashboardView: View {
         let weak = problemStore.weakestCategories(limit: 4)
 
         return VStack(alignment: .leading, spacing: 8) {
-            sectionLabel("WEAK AREAS")
+            sectionLabel("Weak areas")
             if weak.isEmpty {
                 Text("Log 2+ problems per category to see weak spots.")
                     .font(.system(size: 10))
@@ -1427,7 +1425,7 @@ struct DashboardView: View {
     }
 
     private func sectionLabel(_ t: String) -> some View {
-        Text(t).font(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(.secondary)
+        Text(t).font(.system(size: 15, weight: .semibold))
     }
 
     private func iRow(_ label: String, _ value: String, color: Color = .primary) -> some View {
@@ -1511,8 +1509,8 @@ private struct EventRow: View {
     var body: some View {
         HStack(spacing: 0) {
             Text(timeStr)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 12).monospacedDigit())
+                .foregroundStyle(.secondary)
                 .frame(width: 44, alignment: .trailing)
                 .padding(.trailing, 10)
 
@@ -1546,19 +1544,20 @@ private struct EventRow: View {
 
     private func inProgressRow(mins: Double, label: String?) -> some View {
         HStack(spacing: 8) {
+            let c = categoryColor(label ?? "")
             RoundedRectangle(cornerRadius: 2)
-                .fill(red)
-                .frame(width: 3, height: 22)
+                .fill(c)
+                .frame(width: 4, height: 28)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text(label.flatMap { $0.isEmpty ? nil : $0 } ?? "Focus")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
-                    PulsingDot(color: red)
+                    PulsingDot(color: c)
                 }
-                Text(fmtMins(mins) + " · in progress")
-                    .font(.system(size: 10))
-                    .foregroundStyle(red.opacity(0.8))
+                Text(fmtMins(mins) + " so far")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
             }
             Spacer()
         }
@@ -1568,18 +1567,17 @@ private struct EventRow: View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(blue)
-                .frame(width: 3, height: 22)
+                .frame(width: 4, height: 28)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text("Break")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(blue)
+                        .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
                     PulsingDot(color: blue)
                 }
-                Text(fmtMins(mins) + " · in progress")
-                    .font(.system(size: 10))
-                    .foregroundStyle(blue.opacity(0.8))
+                Text(fmtMins(mins) + " so far")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
             }
             Spacer()
             Image(systemName: "cup.and.saucer")
@@ -1591,14 +1589,14 @@ private struct EventRow: View {
     private func focusRow(_ s: WorkSession) -> some View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
-                .fill(red.opacity(0.7))
-                .frame(width: 3, height: 22)
+                .fill(categoryColor(s.label ?? ""))
+                .frame(width: 4, height: 28)
             VStack(alignment: .leading, spacing: 1) {
                 Text(s.label.flatMap { $0.isEmpty ? nil : $0 } ?? "Focus")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
                 Text(fmtMins(s.durationMinutes))
-                    .font(.system(size: 10))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -1609,12 +1607,11 @@ private struct EventRow: View {
         HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(blue.opacity(0.5))
-                .frame(width: 3, height: 22)
+                .frame(width: 4, height: 28)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text("Break")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(blue)
+                        .font(.system(size: 13, weight: .medium))
                         .lineLimit(1)
                     if let kinds = s.breakKinds, !kinds.isEmpty {
                         HStack(spacing: 3) {
@@ -1627,7 +1624,7 @@ private struct EventRow: View {
                     }
                 }
                 Text(breakSubtitle(s))
-                    .font(.system(size: 10))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -1864,7 +1861,7 @@ private struct EventEditSheet: View {
     }
 
     private func sheetLabel(_ t: String) -> some View {
-        Text(t).font(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(.secondary)
+        Text(t).font(.system(size: 15, weight: .semibold))
     }
 
     private func clockStr(_ d: Date) -> String {
