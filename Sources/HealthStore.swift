@@ -121,6 +121,11 @@ class HealthStore: ObservableObject {
         events.filter { $0.kind.tracker == tracker && $0.date >= start && $0.date < end }.map(\.kind.amount).reduce(0, +)
     }
 
+    /// Today's most recent dose (the morning one unless there was a later one).
+    func latestToday(_ tracker: HealthTracker, now: Date = Date()) -> HealthEvent? {
+        events(tracker).first { Calendar.current.isDate($0.date, inSameDayAs: now) && $0.date <= now }
+    }
+
     func daysSinceLast(_ tracker: HealthTracker) -> Int? {
         guard let last = events(tracker).first else { return nil }
         let cal = Self.calendar

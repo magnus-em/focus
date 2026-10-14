@@ -23,6 +23,7 @@ struct TimerView: View {
     @ObservedObject var store: SessionStore
     @ObservedObject var settings: AppSettings
     @ObservedObject var dayStore: DayStore
+    @ObservedObject var health: HealthStore
     @Binding var showDayReview: Bool
     @Binding var detent: Detent
     @ObservedObject private var syncMonitor = CloudSyncMonitor.shared
@@ -128,6 +129,7 @@ struct TimerView: View {
                     .contentTransition(.numericText())
                     .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: timer.timeString)
                 subline
+                doseLine
             }
             Spacer(minLength: 0)
         }
@@ -215,6 +217,21 @@ struct TimerView: View {
         .font(.system(size: 12))
         .lineLimit(1)
         .minimumScaleFactor(0.85)
+    }
+
+    /// Time since today's Adderall, once it's logged (Health tab), for 16 hours.
+    private var doseLine: some View {
+        TimelineView(.everyMinute) { ctx in
+            if let dose = health.latestToday(.adderall, now: ctx.date),
+               ctx.date.timeIntervalSince(dose.date) < 16 * 3600 {
+                Label("Adderall \(durationText(minutes: (ctx.date.timeIntervalSince(dose.date) / 60).rounded(.down))) ago",
+                      systemImage: "pills")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .help("\(dose.kind.displayName) at \(dose.date.formatted(date: .omitted, time: .shortened))")
+            }
+        }
     }
 
     private var sublineText: String {

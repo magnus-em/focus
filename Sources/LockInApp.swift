@@ -613,7 +613,7 @@ struct PopoverContent: View {
             if selectedTab == 0 {
                 TimerView(
                     timer: timerManager, store: sessionStore, settings: settings, dayStore: dayStore,
-                    showDayReview: $showDayReview,
+                    health: healthStore, showDayReview: $showDayReview,
                     detent: Binding(get: { detentOverride ?? (expandedStored ? .large : .small) },
                                     set: { if detentOverride != nil { detentOverride = $0 } else { expandedStored = $0 == .large } })
                 )

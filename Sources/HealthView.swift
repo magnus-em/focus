@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import FocusCore
 
 struct HealthView: View {
     @ObservedObject var store: HealthStore
@@ -42,9 +43,11 @@ struct HealthView: View {
             HStack {
                 label(tracker.displayName)
                 Spacer()
-                Text(lastText)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                TimelineView(.everyMinute) { ctx in
+                    Text(lastText(now: ctx.date))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             HStack(spacing: 8) {
@@ -135,7 +138,11 @@ struct HealthView: View {
         .padding(12)
     }
 
-    private var lastText: String {
+    private func lastText(now: Date) -> String {
+        if tracker == .adderall, let dose = store.latestToday(.adderall, now: now) {
+            let mins = Int(now.timeIntervalSince(dose.date) / 60)
+            return "\(dose.kind.displayName) at \(dose.date.formatted(date: .omitted, time: .shortened)) · \(durationText(minutes: Double(mins))) ago"
+        }
         guard let days = store.daysSinceLast(tracker) else { return "Nothing logged yet" }
         switch days {
         case 0: return "Last: today"
