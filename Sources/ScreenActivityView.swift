@@ -112,7 +112,7 @@ struct ScreenActivitySection: View {
                     Image(systemName: showInspector ? "chevron.down" : "chevron.right").font(.system(size: 8, weight: .bold))
                     Text("What it sees right now")
                     Spacer()
-                    if !watcher.coachStatus.isEmpty { Text(watcher.coachStatus).lineLimit(1).foregroundStyle(.tertiary) }
+                    if !watcher.coachStatus.isEmpty { Text(watcher.coachStatus).lineLimit(1).foregroundStyle(Color.secondaryText) }
                 }
                 .font(.system(size: 10.5, weight: .medium))
                 .foregroundStyle(.secondary)
@@ -183,7 +183,7 @@ struct ScreenActivitySection: View {
                 } else {
                     Text("Taking notes once there's a couple of minutes of pages…")
                         .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Color.secondaryText)
                 }
                 HStack(spacing: 4) {
                     if let s = a.spans.last {
@@ -196,7 +196,7 @@ struct ScreenActivitySection: View {
                     }
                 }
                 .font(.system(size: 9.5).monospacedDigit())
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color.secondaryText)
             }
             .padding(10)
             .background(RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.08)))
@@ -234,7 +234,7 @@ struct ScreenActivitySection: View {
                         Text(a.apps.prefix(3).joined(separator: " · ")).lineLimit(1)
                     }
                     .font(.system(size: 9.5))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Color.secondaryText)
                 }
             }
             .contentShape(Rectangle())
@@ -264,14 +264,14 @@ struct ScreenActivitySection: View {
             if expanded.contains(a.start) { snapshots(a) }
         }
         .font(.system(size: 9.5).monospacedDigit())
-        .foregroundStyle(.tertiary)
+        .foregroundStyle(Color.secondaryText)
         .padding(.vertical, 2)
     }
 
     private func timeColumn(_ a: ScreenActivity) -> some View {
         VStack(alignment: .trailing, spacing: 1) {
             Text(a.start.formatted(date: .omitted, time: .shortened))
-            Text(fmt(a.minutes)).foregroundStyle(.tertiary)
+            Text(fmt(a.minutes)).foregroundStyle(Color.secondaryText)
         }
         .font(.system(size: 10).monospacedDigit())
         .foregroundStyle(.secondary)
@@ -343,7 +343,7 @@ struct ScreenActivitySection: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(bullets.enumerated()), id: \.offset) { _, b in
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
-                    Text("•").foregroundStyle(.tertiary)
+                    Text("•").foregroundStyle(Color.secondaryText)
                     Text(b).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -364,7 +364,7 @@ struct ScreenActivitySection: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(s.start.formatted(date: .omitted, time: .standard))
                         .font(.system(size: 9.5).monospacedDigit())
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Color.secondaryText)
                         .frame(width: 70, alignment: .leading)
                     Text(s.category ?? "–")
                         .font(.system(size: 9.5, weight: .medium))
