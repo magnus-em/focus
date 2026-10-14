@@ -112,11 +112,7 @@ struct MathView: NSViewRepresentable {
     /// per launch into `NSTemporaryDirectory()/focus-katex-<pid>/` and
     /// reuse for every MathView render.
     private static let writableKatexDir: URL? = {
-        #if SWIFT_PACKAGE
-        let resourceBundle: Bundle? = Bundle.module
-        #else
-        let resourceBundle: Bundle? = nil
-        #endif
+        let resourceBundle = Bundle.focusResources
         guard let bundled = resourceBundle?.url(forResource: "katex", withExtension: nil)
                 ?? Bundle.main.url(forResource: "katex", withExtension: nil) else {
             return nil

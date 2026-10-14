@@ -93,11 +93,7 @@ final class LeetCodeCatalog: ObservableObject {
 
     private func load() {
         var docs: [[String: Any]] = []
-        #if SWIFT_PACKAGE
-        let resourceBundle: Bundle? = Bundle.module
-        #else
-        let resourceBundle: Bundle? = nil
-        #endif
+        let resourceBundle = Bundle.focusResources
         if let url = resourceBundle?.url(forResource: "leetcode", withExtension: "json")
             ?? Bundle.main.url(forResource: "leetcode", withExtension: "json"),
            let doc = Self.readDoc(url) {
