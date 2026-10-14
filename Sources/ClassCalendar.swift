@@ -56,21 +56,44 @@ final class ClassCalendar: ObservableObject {
         today = events.filter(Self.isClass).sorted { $0.startDate < $1.startDate }
         let ahead = store.events(matching: store.predicateForEvents(
             withStart: Date(), end: cal.date(byAdding: .day, value: 30, to: start)!, calendars: nil))
+        // "3231 Exam 1" names only the number; the class events say "CPSC 3231".
+        let around = store.events(matching: store.predicateForEvents(
+            withStart: cal.date(byAdding: .day, value: -14, to: start)!, end: cal.date(byAdding: .day, value: 30, to: start)!, calendars: nil))
+        var prefixes: [String: String] = [:]
+        for e in around {
+            let t = (e.title ?? "").uppercased()
+            if let r = t.range(of: #"\b[A-Z]{2,4} ?\d{3,4}\b"#, options: .regularExpression) {
+                let code = String(t[r])
+                let number = code.filter(\.isNumber), letters = code.filter(\.isLetter)
+                prefixes[number] = letters
+            }
+        }
         exams = ahead.compactMap { e in
             let title = e.title ?? ""
+            // "PSET 5 — start after exam" mentions an exam; it isn't one.
             guard title.range(of: #"(?i)\b(exam|midterm|final)\b"#, options: .regularExpression) != nil,
-                  title.range(of: #"(?i)\b(review session|office hours)\b"#, options: .regularExpression) == nil else { return nil }
-            return Exam(title: title, date: e.startDate, category: Self.category(for: title))
+                  title.range(of: #"(?i)\b(review session|office hours|pset|problem set|homework|hw|due|after (the )?exam|study|prep)\b"#,
+                              options: .regularExpression) == nil else { return nil }
+            var category = Self.category(for: title)
+            if category == nil, let r = title.range(of: #"\b\d{3,4}\b"#, options: .regularExpression),
+               let letters = prefixes[String(title[r])] {
+                category = Self.category(for: "\(letters) \(title[r])")
+            }
+            return Exam(title: title, date: e.startDate, category: category)
         }
         .sorted { $0.date < $1.date }
+        // The same exam on two calendars (school + personal) shows once.
+        var seen = Set<String>()
+        exams = exams.filter { seen.insert($0.id).inserted }
         status = today.isEmpty ? "No classes on your calendar today"
             : "\(today.count) class\(today.count == 1 ? "" : "es") today: " + today.map { $0.title ?? "" }.joined(separator: ", ")
     }
 
     nonisolated static func category(for title: String) -> String? {
         let t = title.uppercased()
-        if t.range(of: #"\bMATH ?\d"#, options: .regularExpression) != nil { return "Math" }
-        if t.range(of: #"\b(CPSC|CS) ?\d"#, options: .regularExpression) != nil { return "SWE" }
+        if t.range(of: #"\bMATH ?\d|\bDISCRETE\b|\bMATH\b|\bLINEAR ALGEBRA\b|\bCALCULUS\b|\bPROBABILITY\b"#, options: .regularExpression) != nil { return "Math" }
+        if t.range(of: #"\b(CPSC|CS) ?\d|\bSYSTEMS\b|\bALGORITHMS\b"#, options: .regularExpression) != nil { return "SWE" }
+        if t.range(of: #"\bAI\b|\bMACHINE LEARNING\b|\bML\b"#, options: .regularExpression) != nil { return "AI" }
         return nil
     }
 
