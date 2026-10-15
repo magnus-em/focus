@@ -188,13 +188,15 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
     }
 
     /// Clear the state to idle. `ended` is the start of the session that just
-    /// ended (kept in `startTime`; idle readers ignore it), so a peer still
-    /// holding an older session can tell where its own one stopped.
-    public func pushIdle(ended: Date? = nil) {
+    /// ended and `endedAt` when it ended, which is earlier than now for a
+    /// backdated stop ("End Class at 1:40" clicked at 3:10). Both ride in
+    /// `startTime`/`endTime`, which idle readers ignore, so a peer still holding
+    /// that session saves it to the real end, not to when it heard.
+    public func pushIdle(ended: Date? = nil, endedAt: Date? = nil) {
         push { state in
             state.phase = .idle
             state.isRunning = false
-            state.endTime = nil
+            state.endTime = ended == nil ? nil : endedAt
             state.remainingSeconds = 0
             state.totalSeconds = 0
             state.label = ""
@@ -296,6 +298,16 @@ public enum RemoteStop {
         var end = min(now, stoppedAt)
         if let theirs = stoppedStart, theirs.timeIntervalSince(start) > 3 { end = min(end, theirs) }
         return max(end, start)
+    }
+
+    /// `end`, or nil to not save ours at all: asleep while a peer replaced our
+    /// shared session and later stopped a newer one, we can't know where ours
+    /// really ended, and whoever replaced it saved it (as `skipStaleSegment`).
+    /// A peer stopping an *older* session says nothing about ours, so we keep it.
+    public static func savedEnd(mine start: Date, stoppedStart: Date?, stoppedAt: Date, now: Date = Date(),
+                                stale: Bool, shared: Bool) -> Date? {
+        if let theirs = stoppedStart, theirs.timeIntervalSince(start) > 3, stale, shared { return nil }
+        return end(mine: start, stoppedStart: stoppedStart, stoppedAt: stoppedAt, now: now)
     }
 
     /// Time on the clock between `start` and `end`, capped by the wall-clock

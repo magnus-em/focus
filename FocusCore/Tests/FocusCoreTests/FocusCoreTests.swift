@@ -164,3 +164,73 @@ final class RemoteStopTests: XCTestCase {
         XCTAssertEqual(RemoteStop.duration(elapsed: 5 * 60, start: at(0), end: at(8.9)), 5 * 60)
     }
 }
+
+final class OverlapFixTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    private func at(_ min: Double) -> Date { t0.addingTimeInterval(min * 60) }
+    private func block(_ label: String?, _ from: Double, _ to: Double) -> WorkSession {
+        WorkSession(startTime: at(from), durationMinutes: to - from, type: label == nil ? .shortBreak : .work, label: label)
+    }
+    private func touched(_ edits: [OverlapEdit]) -> Set<UUID> {
+        Set(edits.compactMap { e -> UUID? in
+            switch e { case .setDuration(let id, _), .delete(let id): return id; case .insert: return nil }
+        })
+    }
+
+    // Codex's case: Class A 0–120, Class B 30–60, Leisure C 90–100. Merging A/B leaves C alone.
+    func testMergeTouchesOnlyThePair() {
+        let a = block("Class", 0, 120), b = block("Class", 30, 60), c = block("Leisure", 90, 100)
+        let o = TimeIntegrity.overlaps(in: [a, b, c], from: at(-1), to: at(200)).first { $0.second.id == b.id }!
+        let edits = TimeIntegrity.merge(o)
+        XCTAssertEqual(touched(edits), [a.id, b.id])
+        guard case .setDuration(_, let m) = edits[0] else { return XCTFail() }
+        XCTAssertEqual(m, 120, accuracy: 0.001)
+    }
+
+    func testPickingOneCutsOnlyTheOtherAndKeepsItsOutsideParts() {
+        let swe = block("SWE", 0, 48.8), leisure = block("Leisure", 0.2, 55.6)
+        let o = TimeIntegrity.overlaps(in: [swe, leisure], from: at(-1), to: at(100))[0]
+        let keepSWE = TimeIntegrity.resolve(o, keep: swe.id)
+        XCTAssertEqual(touched(keepSWE), [leisure.id])
+        guard case .insert(let tail) = keepSWE.last else { return XCTFail() }
+        XCTAssertEqual(tail.startTime, at(48.8))
+        XCTAssertEqual(tail.label, "Leisure")
+        let keepLeisure = TimeIntegrity.resolve(o, keep: leisure.id)
+        XCTAssertEqual(touched(keepLeisure), [swe.id])
+        guard case .setDuration(_, let m) = keepLeisure[0] else { return XCTFail() }
+        XCTAssertEqual(m, 0.2, accuracy: 0.001)
+    }
+}
+
+final class RemoteStopSaveTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    private func at(_ min: Double) -> Date { t0.addingTimeInterval(min * 60) }
+
+    // Codex: mine 12:42, a peer stops 12:17 while we slept: ours is newer, keep it.
+    func testStaleDeviceKeepsANewerSessionWhenAnOlderOneStops() {
+        XCTAssertEqual(RemoteStop.savedEnd(mine: at(25), stoppedStart: at(0), stoppedAt: at(173), now: at(200),
+                                           stale: true, shared: true), at(173))
+    }
+
+    func testStaleSharedSessionSkipsWhenALaterOneStopped() {
+        XCTAssertNil(RemoteStop.savedEnd(mine: at(0), stoppedStart: at(25), stoppedAt: at(173), now: at(200),
+                                         stale: true, shared: true))
+    }
+
+    func testAwakeDeviceSavesUpToTheLaterSessionsStart() {
+        XCTAssertEqual(RemoteStop.savedEnd(mine: at(0), stoppedStart: at(25), stoppedAt: at(173), now: at(174),
+                                           stale: false, shared: true), at(25))
+    }
+}
+
+final class BackdatedStopTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    private func at(_ min: Double) -> Date { t0.addingTimeInterval(min * 60) }
+
+    // Codex: Class from 13:00, "End Class at 13:40" clicked at 15:10. The idle
+    // carries 13:40 as its end; a peer holding the same Class saves to 13:40.
+    func testPeerSavesToTheBackdatedEndNotWhenItHeard() {
+        XCTAssertEqual(RemoteStop.savedEnd(mine: at(0), stoppedStart: at(0), stoppedAt: at(40), now: at(130),
+                                           stale: false, shared: true), at(40))
+    }
+}

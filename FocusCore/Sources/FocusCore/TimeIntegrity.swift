@@ -24,7 +24,37 @@ public struct SessionOverlap: Sendable {
     public var key: String { "\(first.id.uuidString)|\(second.id.uuidString)" }
 }
 
+/// One change to a saved block. Fixes touch only the two blocks shown.
+public enum OverlapEdit: Sendable {
+    case setDuration(UUID, minutes: Double)
+    case delete(UUID)
+    case insert(WorkSession)
+}
+
 public enum TimeIntegrity {
+    /// Same category saved twice: the earlier block grows to cover both and
+    /// the other goes. Any third block in that span is left alone (its own
+    /// overlap shows next).
+    public static func merge(_ o: SessionOverlap) -> [OverlapEdit] {
+        [.setDuration(o.first.id, minutes: o.union.end.timeIntervalSince(o.first.startTime) / 60),
+         .delete(o.second.id)]
+    }
+
+    /// `keep` takes the stretch both cover; only the other block changes:
+    /// it's cut around that stretch, keeping whatever lies outside it.
+    public static func resolve(_ o: SessionOverlap, keep: UUID) -> [OverlapEdit] {
+        let loser = keep == o.first.id ? o.second : o.first
+        let a = loser.startTime, b = end(of: loser)
+        var edits: [OverlapEdit] = a < o.start
+            ? [.setDuration(loser.id, minutes: o.start.timeIntervalSince(a) / 60)]
+            : [.delete(loser.id)]
+        if b > o.end {
+            edits.append(.insert(WorkSession(startTime: o.end, durationMinutes: b.timeIntervalSince(o.end) / 60,
+                                             type: loser.type, label: loser.label, breakKinds: loser.breakKinds)))
+        }
+        return edits
+    }
+
     public static func end(of s: WorkSession) -> Date {
         s.startTime.addingTimeInterval(s.durationMinutes * 60)
     }

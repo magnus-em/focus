@@ -257,7 +257,7 @@ class TimerManager: ObservableObject {
         }
     }
 
-    private func pushIdleEverywhere() {
+    private func pushIdleEverywhere(endedAt: Date = Date()) {
         guard let stateSync else { return }
         if let lb = localBroadcast {
             let msg = LocalTimerBroadcast.Message(
@@ -268,13 +268,13 @@ class TimerManager: ObservableObject {
                 label: "",
                 breakKindsRaw: [],
                 startTime: lastSessionStart,
-                endTime: Date?.none,
+                endTime: lastSessionStart == nil ? nil : endedAt,
                 remainingSeconds: 0,
                 timestamp: Date()
             )
             lb.send(msg)
         }
-        stateSync.pushIdle(ended: lastSessionStart)
+        stateSync.pushIdle(ended: lastSessionStart, endedAt: endedAt)
     }
 
     private func applyRemoteMessage(_ msg: LocalTimerBroadcast.Message) {
@@ -297,7 +297,7 @@ class TimerManager: ObservableObject {
             // Save the in-progress local session before remote idle wipes
             // it. Without this guard, a peer launching and broadcasting
             // its own idle state destroys minutes/hours of our progress.
-            savePartialIfActive(reason: "remoteIdleMp", stoppedStart: msg.startTime, stoppedAt: msg.timestamp)
+            savePartialIfActive(reason: "remoteIdleMp", stoppedStart: msg.startTime, stoppedAt: msg.endTime ?? msg.timestamp)
             timer?.cancel(); timer = nil
             isRunning = false
             elapsedBeforePause = 0
@@ -363,7 +363,7 @@ class TimerManager: ObservableObject {
             // (Same rationale as applyRemoteMessage's idle branch — a
             // peer that just launched can broadcast an idle that
             // doesn't reflect our actually-running local session.)
-            savePartialIfActive(reason: "remoteIdleCk", stoppedStart: state.startTime, stoppedAt: state.updatedAt)
+            savePartialIfActive(reason: "remoteIdleCk", stoppedStart: state.startTime, stoppedAt: state.endTime ?? state.updatedAt)
             timer?.cancel(); timer = nil
             isRunning = false
             elapsedBeforePause = 0
@@ -539,7 +539,8 @@ class TimerManager: ObservableObject {
 
     func stop(at date: Date) {
         cancelPauseGrace()
-        closeSegment(at: max(min(date, Date()), sessionStartTime ?? date))
+        let end = max(min(date, Date()), sessionStartTime ?? date)
+        closeSegment(at: end)
         timer?.cancel(); timer = nil
         isRunning = false
         currentBreakKinds = []
@@ -550,7 +551,7 @@ class TimerManager: ObservableObject {
         currentPhase = .work
         setTimeForCurrentPhase()
         unblockIfNeeded()
-        pushIdleEverywhere()
+        pushIdleEverywhere(endedAt: end)
     }
 
     func apply(_ command: TimerCommand) {
@@ -902,15 +903,11 @@ class TimerManager: ObservableObject {
     /// idle destroys our accumulated time silently.
     private func savePartialIfActive(reason: String, stoppedStart: Date? = nil, stoppedAt: Date? = nil) {
         guard let store = sessionStore, let start = sessionStartTime else { return }
-        // Asleep while a peer replaced our shared session with others: like
-        // closeSegmentIfReplaced, whoever replaced it saved it, and we can't
-        // know where it really ended.
-        if let theirs = stoppedStart, abs(theirs.timeIntervalSince(start)) > 3,
-           knowledgeStale, SharedSessionMemory.wasShared(start) {
-            SyncLog.event("skipStaleSegment", ["start": "\(start)", "stoppedStart": "\(theirs)", "reason": reason])
+        guard let end = RemoteStop.savedEnd(mine: start, stoppedStart: stoppedStart, stoppedAt: stoppedAt ?? Date(),
+                                            stale: knowledgeStale, shared: SharedSessionMemory.wasShared(start)) else {
+            SyncLog.event("skipStaleSegment", ["start": "\(start)", "stoppedStart": SyncLog.opt(stoppedStart), "reason": reason])
             return
         }
-        let end = RemoteStop.end(mine: start, stoppedStart: stoppedStart, stoppedAt: stoppedAt ?? Date())
         let elapsed = RemoteStop.duration(elapsed: elapsed(until: end), start: start, end: end)
         guard elapsed >= 60 else {
             SyncLog.event("savePartialSkip", [

@@ -131,11 +131,42 @@ class SessionStore: ObservableObject {
         }
     }
 
-    /// Same category: one block covering both. Otherwise `label` (nil =
-    /// break) takes the stretch both cover. Reversible with `undoReview`.
-    func fixOverlap(_ o: SessionOverlap, label: String?) -> ReviewUndo? {
-        let span: (start: Date, end: Date) = o.sameLabel ? o.union : (o.start, o.end)
-        return paintForReview(start: span.start, end: span.end, label: label)
+    /// `keep` nil: merge a block saved twice. Otherwise `keep` takes the
+    /// stretch both cover. Only the two blocks shown change, in one save;
+    /// reversible with `undoReview`.
+    func fixOverlap(_ o: SessionOverlap, keep: WorkSession?) -> ReviewUndo? {
+        guard !context.hasChanges else { return nil }
+        let edits = keep.map { TimeIntegrity.resolve(o, keep: $0.id) } ?? TimeIntegrity.merge(o)
+        let span = o.union
+        do {
+            let before = try reviewModels(span.start, span.end).map(\.asValue)
+            for edit in edits {
+                switch edit {
+                case .setDuration(let id, let minutes):
+                    guard let m = try model(id) else { throw CocoaError(.validationMissingMandatoryProperty) }
+                    m.durationMinutes = minutes
+                case .delete(let id):
+                    guard let m = try model(id) else { throw CocoaError(.validationMissingMandatoryProperty) }
+                    context.delete(m)
+                case .insert(let s):
+                    context.insert(StoredWorkSession(value: s))
+                }
+            }
+            let after = try reviewModels(span.start, span.end).map(\.asValue)
+            try context.save()
+            refresh()
+            return ReviewUndo(start: span.start, end: span.end, before: before, after: after)
+        } catch {
+            context.rollback()
+            refresh()
+            return nil
+        }
+    }
+
+    private func model(_ id: UUID) throws -> StoredWorkSession? {
+        var d = FetchDescriptor<StoredWorkSession>(predicate: #Predicate { $0.id == id })
+        d.fetchLimit = 1
+        return try context.fetch(d).first
     }
 
     func leaveOverlap(_ o: SessionOverlap) {

@@ -314,14 +314,14 @@ struct TimerView: View {
     /// after noon they're in the End of Day review instead of nagging.
     private var currentAttention: Attention? {
         let now = Date()
+        if store.saveError != nil { return .storage("Couldn't save your log. Is the disk full?") }
+        if let gb = store.lowDiskGB { return .storage(String(format: "Disk almost full: %.1f GB left", gb)) }
         if let running, running != "Break", settings.screenWatch,
            let block = watcher.activities(from: Calendar.current.startOfDay(for: now), to: now)
                .last(where: { $0.device == nil && now.timeIntervalSince($0.end) < 90 }),
            let c = block.category, c != running, now.timeIntervalSince(block.start) >= 60 {
             return .screen(category: c, since: block.start)
         }
-        if store.saveError != nil { return .storage("Couldn't save your log. Is the disk full?") }
-        if let gb = store.lowDiskGB { return .storage(String(format: "Disk almost full: %.1f GB left", gb)) }
         if syncMonitor.health == .failing { return .sync("iCloud sync is failing. See Settings.") }
         if syncMonitor.health == .stale { return .sync("iCloud hasn't synced in 3 days.") }
         if let o = store.overlaps.first { return .overlap(o) }
@@ -732,15 +732,15 @@ struct OverlapFixView: View {
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {
-                    Button("Merge") { apply(name(overlap.first)) }.keyboardShortcut(.defaultAction)
+                    Button("Merge") { apply(keep: nil) }.keyboardShortcut(.defaultAction)
                     Button("Leave as is") { store.leaveOverlap(overlap) }
                 }
             } else {
                 Text("Which was it, \(clock(overlap.start))–\(clock(overlap.end))?")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
                 HStack {
-                    Button(title(overlap.first)) { apply(name(overlap.first)) }
-                    Button(title(overlap.second)) { apply(name(overlap.second)) }
+                    Button(title(overlap.first)) { apply(keep: overlap.first) }
+                    Button(title(overlap.second)) { apply(keep: overlap.second) }
                     Button("Leave as is") { store.leaveOverlap(overlap) }
                 }
             }
@@ -753,7 +753,7 @@ struct OverlapFixView: View {
         .frame(width: 300, alignment: .leading)
     }
 
-    private func apply(_ label: String?) {
-        if let u = store.fixOverlap(overlap, label: label) { undo = u } else { failed = true }
+    private func apply(keep: WorkSession?) {
+        if let u = store.fixOverlap(overlap, keep: keep) { undo = u } else { failed = true }
     }
 }
