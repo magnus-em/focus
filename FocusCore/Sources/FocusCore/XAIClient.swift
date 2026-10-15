@@ -161,22 +161,32 @@ public actor CoachBudget {
         public var state: State
     }
 
-    public enum Problem: Error, Equatable { case invalidAmount, ledgerUnwritable(String) }
+    public enum Problem: Error, Equatable { case invalidAmount, ledgerUnwritable(String), ledgerUnreadable(String) }
 
     public let fileURL: URL
     public private(set) var dailyCapUSD: Double
     private let calendar: Calendar
     /// Latest entry per call.
     private var latest: [UUID: Entry] = [:]
+    /// Set when an existing ledger couldn't be read in full; nothing is sent
+    /// then, since today's spend is unknown.
+    private var loadProblem: String?
 
     public init(fileURL: URL, dailyCapUSD: Double, calendar: Calendar = .current) {
         self.fileURL = fileURL
         self.dailyCapUSD = dailyCapUSD.isFinite && dailyCapUSD >= 0 ? dailyCapUSD : 0
         self.calendar = calendar
-        let lines = (try? String(contentsOf: fileURL, encoding: .utf8))?.split(separator: "\n") ?? []
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        for e in lines.compactMap({ try? decoder.decode(Entry.self, from: Data($0.utf8)) }) { latest[e.id] = e }
+        do {
+            for line in try String(contentsOf: fileURL, encoding: .utf8).split(separator: "\n") {
+                let e = try decoder.decode(Entry.self, from: Data(line.utf8))
+                latest[e.id] = e
+            }
+        } catch {
+            loadProblem = "\(fileURL.lastPathComponent): \(error.localizedDescription)"
+        }
     }
 
     public func setCap(_ usd: Double) {
@@ -202,6 +212,7 @@ public actor CoachBudget {
     /// Runs `call` if its estimate fits under today's cap, and records what it cost.
     public func run(estimateUSD: Double, model: String, purpose: String, now: Date = Date(),
                     _ call: @Sendable () async throws -> XAIClient.Reply) async throws -> XAIClient.Reply {
+        if let loadProblem { throw Problem.ledgerUnreadable(loadProblem) }
         guard estimateUSD.isFinite, estimateUSD >= 0 else { throw Problem.invalidAmount }
         let committed = spent(on: now)
         guard committed + estimateUSD <= dailyCapUSD else {

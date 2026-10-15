@@ -136,4 +136,17 @@ final class XAIClientTests: XCTestCase {
             XCTFail("NaN estimate accepted")
         } catch {}
     }
+
+    func testRefusesWhenTheLedgerIsCorrupt() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("spend-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data("{not json}\n".utf8).write(to: url)
+        let budget = CoachBudget(fileURL: url, dailyCapUSD: 1)
+        do {
+            _ = try await budget.run(estimateUSD: 0.01, model: "grok-4.3", purpose: "test") { self.reply(0.01) }
+            XCTFail("sent with an unreadable ledger")
+        } catch let p as CoachBudget.Problem {
+            if case .ledgerUnreadable = p {} else { XCTFail("\(p)") }
+        }
+    }
 }
