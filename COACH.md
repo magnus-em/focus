@@ -2,6 +2,58 @@
 
 Read this first if you're picking up the coach work in a new session. Written by Claude with the user on 10/15 after the morning recall showed nonsense topics.
 
+## Status and decisions (10/15 afternoon; overrides the sections below where they differ)
+
+Claude and Codex brainstormed separately, critiqued each other and merged the results (full write-up: `agent-bus-state/planning/coach-final.md`, gitignored). The user then decided:
+
+- **Record everything, not just study.** Every stretch of screen time gets a fine-grained entry (articles with a gist, videos, feeds, shopping, chats). Study gets full depth (course, task, concepts, questions); other time gets a short description.
+- **Screen-text journal on, for all time** (Codex, 0876a85): full OCR text per snapshot, line deltas with per-file baselines, `Focus/journal/DATE*.jsonl`, 7 days / 128 MiB. Messages, Mail and Passwords are never recorded.
+- **Screenshots go to the cloud model** on meaningful change, together with the OCR text. Privacy is a low concern for the user. Incognito and unverified browser windows stay out of the cloud: a Chrome row is `regular` only when the extension's window-bound focus report matches it (needs an extension reload after install).
+- **xAI key** is in the login Keychain, service `com.magnus.focus.xai`, account `api`, readable by Focus.app without a prompt. Never print or commit it. The user pasted it in chat on 10/15, so suggest rotating it.
+
+**Measured 10/15** on the user's saved screenshots (stored JPEGs ≤ 1600 px):
+
+| | Apple Vision OCR | grok-4.3 | grok-4.7, reasoning low | grok-4.7 |
+|---|---|---|---|---|
+| Math chat (2^Y, ⊆, ∤, proof line) | garbled; "3 ∤ 8" → "3 1 8" | exact LaTeX | exact | exact |
+| Hasse diagram | numbers, no edges | **invented edges** | all 9 edges right | right |
+| Two-column cheat sheet | columns interleaved | right | right | right |
+| Cost / time per screenshot | free, ~1 s | 0.5–0.8¢, 13–33 s | 1.3–3.4¢, 10–38 s | 1.6–9¢, 21–118 s |
+
+Each image costs ~1.5–2.2k input tokens. xAI returns exact cost per call (`usage.cost_in_usd_ticks`, 1e-10 USD). The live labeler only keeps 2,500 characters per snapshot; the journal keeps everything.
+
+**Routing:** grok-4.3 for every observation. If it reports a diagram or low confidence, grok-4.7 with `reasoning_effort: low`. Day records use grok-4.7. Apple OCR stays for live tracking and as the text channel alongside each image.
+
+**Built:**
+- `FocusCore/StudyRecall.swift`: morning cues from study time only, grouped by course, topics from the notes.
+- `FocusCore/XAIClient.swift`: images, strict JSON schema, exact cost.
+- `CoachBudget`: a daily cap, with reservations written to disk before each call and unknown spend kept.
+- `Sources/Coach.swift`: the shared `Coach.client` and `Coach.budget` ($5/day default).
+- Codex's journal and stretches.
+
+**Ranked plan:**
+1. Study-only morning recall ✓
+2. Evidence foundation: journal ✓ and course/topic context
+3. Observations: Codex, per image, dry-run first
+4. Nightly day record + 1–3 morning questions
+5. Exam coverage → one next action
+6. Where-was-I line
+7. LeetCode solve drafts
+8. Misconception notebook
+9. Ask the coach
+10. Weekly: one testable adjustment
+
+**Later:**
+- cloud-proposed labels (never into trusted `screenMemory`)
+- stuck helper
+- iPad handwriting
+
+**Cut:**
+- health/medication coaching
+- hidden mastery scores
+- lecture/voice capture
+- the coach changing plans on its own
+
 ## What the user wants (their words, paraphrased)
 
 A coach that watches everything on the screen, keeps notes, tracks categories and time (already done), and puts it together into a real understanding of what they did today and when. Next day they can talk it through with it, get quizzed, and recall what they learned. Long term it notices strategic mistakes: time going to the wrong things given their goals (exams, quant + SWE interviews). Maximize intelligence: they have about $1,000 of xAI (Grok) credits and are open to a Claude API key too.
