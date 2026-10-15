@@ -146,3 +146,5 @@ User-approved scope: local screenshot evidence for review, clearer corrections, 
 ## Explicit coach upload approval — 2026-10-15 (Codex)
 
 - User answered the direct scope question: “Enable new observations and queued previews”. Enabled persistent automatic episode processing including queued previews, retaining private/ignored/Focus/incognito/unknown/detected-secret exclusions and shared $5 daily budget. First concrete payload already reviewed by Claude. Optional local dry-run override retained. Claude coordinates the clean-main install and first live ledger check.
+
+- Final whole-app typecheck passed; live commit100a8ea installed by Claude. Hidden QA found an AppKit recursive constraint crash in solve-card galleries while recall galleries rendered. Replaced the optional native picker with explicit confidence buttons and bounded the glass card height to avoid hosting intrinsic-size feedback; retest pending.

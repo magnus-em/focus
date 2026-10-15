@@ -129,9 +129,16 @@ struct LeetCodeSolveDraftCard: View {
                 .font(.system(size:12)).foregroundStyle(Color.secondaryText)
             Text(minutes.map { "\($0) min from your LeetCode stopwatch" } ?? "Solve time: unknown")
                 .font(.system(size:12)).foregroundStyle(Color.secondaryText)
-            Picker("Confidence",selection:$confidence) {
-                Text("Choose…").tag(Optional<Confidence>.none)
-                ForEach(Confidence.allCases,id:\.self) { Text($0.rawValue).tag(Optional($0)) }
+            Text("How did it feel?").font(.system(size:12)).foregroundStyle(Color.secondaryText)
+            HStack(spacing:8) {
+                ForEach(Confidence.allCases,id:\.self) { choice in
+                    Button { confidence = choice } label: {
+                        Text(choice.rawValue).frame(maxWidth:.infinity,minHeight:36)
+                    }
+                    .buttonStyle(.plain)
+                    .background(confidence == choice ? categoryColor("SWE").opacity(0.2) : Color.primary.opacity(0.06),in:Capsule())
+                    .accessibilityAddTraits(confidence == choice ? .isSelected : [])
+                }
             }
             Toggle("Used hints or AI",isOn:$usedHelp)
             if let error { Text(error).font(.system(size:12)).foregroundStyle(.orange) }
@@ -148,7 +155,7 @@ struct LeetCodeSolveDraftCard: View {
             }
             .controlSize(.large)
         }
-        .font(.system(size:13)).padding(16).frame(width:340).modifier(SolveDraftGlass()).focusEffectDisabled()
+        .font(.system(size:13)).padding(16).frame(width:340,height:410,alignment:.topLeading).modifier(SolveDraftGlass()).focusEffectDisabled()
     }
 }
 
