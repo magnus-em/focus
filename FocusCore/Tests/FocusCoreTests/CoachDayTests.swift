@@ -67,4 +67,29 @@ final class CoachDayTests: XCTestCase {
         XCTAssertEqual(CoachDay.load(at(12, 0), from: dir, calendar: calendar), record)
         XCTAssertNil(CoachDay.load(at(12, 0, day: 15), from: dir, calendar: calendar))
     }
+
+    func testObservationLinesMergeSameTopicRuns() {
+        func rec(_ h: Int, _ m: Int, topic: String, concepts: [String], questions: [String] = []) -> CoachEpisode.Record {
+            let row = ScreenJournal.Row(at: at(h, m), end: at(h, m).addingTimeInterval(15), app: "ChatGPT",
+                                        bundle: "com.openai.chat", windowID: "1:2", title: "Plan MATH 244 midterm prep",
+                                        url: nil, category: "Math", trackedCategory: "Math", active: true, idleSeconds: 0,
+                                        privacy: .notBrowser, evidenceImageID: nil, text: "x")
+            let u = CoachEpisode.Understanding(topic: topic, course: "MATH 244", activity: "solving", concepts: concepts,
+                                               summary: "Worked a problem.", notes: [], questions: questions,
+                                               transcription: nil, diagram: false, unreadable: false, struggle: nil,
+                                               confidence: .high)
+            return CoachEpisode.Record(source: row, understanding: u, model: "grok-4.3", usage: [], needsReview: false)
+        }
+        let lines = CoachDay.observationLines([
+            rec(12, 20, topic: "Inclusion–exclusion", concepts: ["empty boxes"], questions: ["Why (b) and not (c)?"]),
+            rec(12, 24, topic: "Inclusion–exclusion", concepts: ["empty boxes", "signs"]),
+            rec(12, 50, topic: "Inclusion–exclusion", concepts: ["union bound"]),
+            rec(12, 52, topic: "Union bound", concepts: ["complements"]),
+        ], calendar: calendar)
+        XCTAssertEqual(lines.count, 3)
+        XCTAssertTrue(lines[0].hasPrefix("- 12:20–12:24 ChatGPT · MATH 244 · solving · Inclusion–exclusion"))
+        XCTAssertTrue(lines[0].contains("concepts: empty boxes, signs"))
+        XCTAssertTrue(lines[0].contains("asked: Why (b) and not (c)?"))
+        XCTAssertTrue(lines[2].contains("Union bound"))
+    }
 }

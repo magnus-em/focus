@@ -228,9 +228,22 @@ final class CoachDayWorker: ObservableObject {
             images.append(data)
             labels.append("\(clock.string(from: e.at)) \(e.bundle.split(separator: ".").last ?? ""): \(e.title)")
         }
+        let observations = await Task.detached { Self.episodes(for: day) }.value
         let pack = CoachDay.Pack(day: day, commitment: days?.record(for: day)?.commitmentText, sessions: sessions,
-                                 blocks: blocks, imageLabels: labels)
+                                 blocks: blocks, imageLabels: labels,
+                                 observations: CoachDay.observationLines(observations))
         return (pack, images)
+    }
+
+    /// The day's episode records (`Focus/episodes/DATE.jsonl`, written by the episode worker).
+    nonisolated private static func episodes(for day: Date) -> [CoachEpisode.Record] {
+        let file = journalDirectory.deletingLastPathComponent()
+            .appendingPathComponent("episodes/\(CoachDay.dayKey(day)).jsonl")
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return text.split(separator: "\n").compactMap { try? decoder.decode(CoachEpisode.Record.self, from: Data($0.utf8)) }
+            .filter { $0.source.privacy == .notBrowser || $0.source.privacy == .regular }
     }
 
     /// Privacy facts from the day's journal (metadata only; text isn't read).

@@ -7,7 +7,7 @@ import Foundation
 /// real data with grok-4.7 (reasoning low): about a minute and $0.08, with
 /// questions taken from what was actually on screen.
 public enum CoachDay {
-    public static let promptVersion = 2
+    public static let promptVersion = 3
 
     public struct Entry: Codable, Equatable, Sendable {
         public var start: String
@@ -153,13 +153,17 @@ public enum CoachDay {
         public var blocks: [Block]
         /// One line per attached screenshot, in order: "14:05 Preview: midterm1_review.pdf".
         public var imageLabels: [String]
+        /// The vision model's reading of each screen change (see `observationLines`).
+        public var observations: [String]
 
-        public init(day: Date, commitment: String?, sessions: [Session], blocks: [Block], imageLabels: [String]) {
+        public init(day: Date, commitment: String?, sessions: [Session], blocks: [Block], imageLabels: [String],
+                    observations: [String] = []) {
             self.day = day
             self.commitment = commitment
             self.sessions = sessions
             self.blocks = blocks
             self.imageLabels = imageLabels
+            self.observations = observations
         }
     }
 
@@ -236,7 +240,7 @@ public enum CoachDay {
         }
         let images = pack.imageLabels.enumerated().map { "Image \($0.offset + 1): \($0.element)" }
         return evidence(dayName: dayName.string(from: pack.day), commitment: pack.commitment, totals: totals,
-                        timeline: timeline, blocks: blocks, images: images) + """
+                        timeline: timeline, blocks: blocks, images: images, observations: pack.observations) + """
 
         Write: a one-sentence headline; a timeline of the whole waking day (merge to roughly 15–30 entries, \
         specific, times as HH:MM); per course or subject studied, the topics, a 3–6 sentence digest of what was \
@@ -254,7 +258,7 @@ public enum CoachDay {
     }
 
     private static func evidence(dayName: String, commitment: String?, totals: String, timeline: [String],
-                                 blocks: [String], images: [String]) -> String {
+                                 blocks: [String], images: [String], observations: [String]) -> String {
         """
         Day: \(dayName)
         Morning commitment: \(commitment?.isEmpty == false ? commitment! : "(none)")
@@ -268,9 +272,48 @@ public enum CoachDay {
         "unverified browser window" means a browser window whose privacy couldn't be confirmed, so its title is withheld):
         \(blocks.isEmpty ? "(none)" : blocks.joined(separator: "\n"))
 
+        Observations (a vision model read the screenshot and text at each screen change; more reliable than the \
+        on-device notes, but still not the student's own words):
+        \(observations.isEmpty ? "(none)" : observations.joined(separator: "\n"))
+
         Screenshots attached, in order:
         \(images.isEmpty ? "(none)" : images.joined(separator: "\n"))
         """
+    }
+
+    /// One line per stretch of the same topic: consecutive observations with
+    /// the same topic less than 10 minutes apart are merged.
+    public static func observationLines(_ records: [CoachEpisode.Record], calendar: Calendar = .current,
+                                        limit: Int = 150) -> [String] {
+        let clock = DateFormatter()
+        clock.calendar = calendar
+        clock.timeZone = calendar.timeZone
+        clock.dateFormat = "HH:mm"
+        struct Run { var first: CoachEpisode.Record; var end: Date; var concepts: [String]; var questions: [String] }
+        var runs: [Run] = []
+        for r in records.sorted(by: { $0.source.at < $1.source.at }) {
+            let u = r.understanding
+            if var last = runs.last, last.first.understanding.topic == u.topic, last.first.source.app == r.source.app,
+               r.source.at.timeIntervalSince(last.end) < 600 {
+                last.end = max(last.end, r.source.end)
+                last.concepts += u.concepts.filter { !last.concepts.contains($0) }
+                last.questions += u.questions.filter { !last.questions.contains($0) }
+                runs[runs.count - 1] = last
+            } else {
+                runs.append(Run(first: r, end: r.source.end, concepts: u.concepts, questions: u.questions))
+            }
+        }
+        return runs.suffix(limit).map { run in
+            let u = run.first.understanding
+            var line = "- \(clock.string(from: run.first.source.at))–\(clock.string(from: run.end)) \(run.first.source.app)"
+                + " · \(u.course ?? "no course") · \(u.activity) · \(u.topic)"
+            if !run.concepts.isEmpty { line += " — concepts: " + run.concepts.prefix(8).joined(separator: ", ") }
+            if !run.questions.isEmpty { line += " — asked: " + run.questions.prefix(4).joined(separator: "; ") }
+            if let s = u.struggle, !s.isEmpty { line += " — struggle: \(s)" }
+            if u.unreadable { line += " — (partly unreadable)" }
+            line += " — " + String(u.summary.prefix(240))
+            return line
+        }
     }
 
     /// The model's JSON, tidied: blank questions dropped, lists capped.
