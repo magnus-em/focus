@@ -354,6 +354,7 @@ struct YesterdayRecallView: View {
     @State private var journalStatus: String?
     @StateObject private var dictation = Dictation()
     @ObservedObject private var screen = ScreenWatcher.shared
+    @ObservedObject private var coach = CoachDayWorker.shared
     @State private var showFullRecollection = false
     @FocusState private var focused: Bool
 
@@ -415,6 +416,86 @@ struct YesterdayRecallView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
     }
 
+    private var record: CoachDay.Record? { coach.record(for: day) }
+
+    /// The coach's topics per course; minutes come from the screen groups.
+    private func coachCues(_ study: [CoachDay.Study]) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("FROM YOUR STUDY LOG")
+                .font(.system(size: 8.5, weight: .semibold))
+                .tracking(1)
+                .foregroundStyle(.secondary)
+            ForEach(Array(study.enumerated()), id: \.offset) { _, s in
+                HStack(alignment: .top, spacing: 6) {
+                    Circle().fill(categoryColor(s.category)).frame(width: 5, height: 5).padding(.top, 5)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(s.course ?? s.category).font(.system(size: 11, weight: .semibold))
+                        if !s.topics.isEmpty {
+                            Text(s.topics.joined(separator: ", "))
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(3)
+                        }
+                    }
+                    Spacer()
+                    if let m = groups.first(where: { $0.category == s.category })?.minutes {
+                        Text(minutesLabel(m))
+                            .font(.system(size: 10).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 8.5, weight: .semibold))
+            .tracking(1)
+            .foregroundStyle(.secondary)
+    }
+
+    /// Digest per course, the morning questions, and what the coach noticed.
+    private func coachReveal(_ r: CoachDay.Record) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !r.content.study.isEmpty {
+                sectionLabel("WHAT YOU STUDIED")
+                ForEach(Array(r.content.study.enumerated()), id: \.offset) { _, s in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(s.course ?? s.category).font(.system(size: 11.5, weight: .bold))
+                        Text(s.digest)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.primary.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !s.shaky.isEmpty {
+                            Text("Looked shaky: " + s.shaky.joined(separator: " "))
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+            if !r.content.questions.isEmpty {
+                sectionLabel("\(weekday.uppercased())'S QUESTIONS").padding(.top, 4)
+                ForEach(Array(r.content.questions.enumerated()), id: \.offset) { i, q in
+                    CoachQuestionCard(question: q, answeredKey: "coachAnswered-\(r.day)-\(i)", recall: recall)
+                }
+            }
+            if !r.content.observations.isEmpty {
+                sectionLabel("WHAT THE COACH NOTICED").padding(.top, 4)
+                ForEach(Array(r.content.observations.enumerated()), id: \.offset) { _, o in
+                    Text("• \(o)")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(.primary.opacity(0.8))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
     private func minutesLabel(_ m: Double) -> String {
         let h = Int(m) / 60, mn = Int(m) % 60
         return h > 0 ? "\(h)h \(mn)m" : "\(mn)m"
@@ -426,7 +507,10 @@ struct YesterdayRecallView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.regularMaterial)
-        .onAppear(perform: load)
+        .onAppear {
+            load()
+            coach.ensure(day)
+        }
     }
 
     private var writeStage: some View {
@@ -449,7 +533,12 @@ struct YesterdayRecallView: View {
                     .foregroundStyle(.indigo)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if !groups.isEmpty { cueList }
+            if let study = record?.content.study, !study.isEmpty { coachCues(study) } else if !groups.isEmpty { cueList }
+            if record == nil, coach.status[CoachDay.dayKey(day)] == .working {
+                Label("Writing \(weekday)'s summary and questions…", systemImage: "sparkles")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+            }
             TextEditor(text: $text)
                 .font(.system(size: 12))
                 .scrollContentBackground(.hidden)
@@ -566,7 +655,10 @@ struct YesterdayRecallView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    if !groups.isEmpty {
+                    if let record {
+                        coachReveal(record)
+                        sectionLabel("AS TRACKED").padding(.top, 6)
+                    } else if !groups.isEmpty {
                         Text("WHAT YOU STUDIED")
                             .font(.system(size: 8.5, weight: .semibold))
                             .tracking(1)
@@ -657,6 +749,76 @@ struct YesterdayRecallView: View {
             .padding(.bottom, 28)
         }
         .padding(.horizontal, 16)
+    }
+}
+
+/// One morning question: answer first, then see the answer and its source,
+/// then grade it. Grading keeps it as a recall card with this first attempt,
+/// so it comes back on the spacing schedule.
+private struct CoachQuestionCard: View {
+    let question: CoachDay.Question
+    let answeredKey: String
+    @ObservedObject var recall: RecallStore
+
+    @State private var response = ""
+    @State private var shown = false
+    @State private var shownAt = Date()
+    @State private var openedAt = Date()
+    @State private var result: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(question.question)
+                .font(.system(size: 11, weight: .medium))
+                .fixedSize(horizontal: false, vertical: true)
+            if let done = result ?? UserDefaults.standard.string(forKey: answeredKey) {
+                Text(done).font(.system(size: 10)).foregroundStyle(.secondary)
+            } else if !shown {
+                TextField("Your answer, from memory", text: $response, axis: .vertical)
+                    .font(.system(size: 10.5))
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...4)
+                Button("Check") {
+                    shownAt = Date()
+                    withAnimation(.easeOut(duration: 0.15)) { shown = true }
+                }
+                .controlSize(.small)
+            } else {
+                Text(question.answer)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(question.source)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 6) {
+                    Button("Missed") { grade(.forgot) }
+                    Button("Partly") { grade(.partial) }
+                    Button("Got it") { grade(.got) }
+                    Spacer()
+                    Button("Skip") { finish("Skipped") }
+                }
+                .controlSize(.small)
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
+        .onAppear { openedAt = Date() }
+    }
+
+    private func grade(_ g: RecallGrade) {
+        let item = recall.addItem(course: question.course ?? "General", prompt: question.question, answer: question.answer,
+                                  topic: question.topic, source: question.source, byAI: true)
+        recall.record(item, response: response, grade: g, hinted: false,
+                      seconds: shownAt.timeIntervalSince(openedAt), aiScore: nil, aiFeedback: "")
+        let days = Int(item.intervalDays.rounded())
+        finish("Saved as a card · back in \(days) day\(days == 1 ? "" : "s")")
+    }
+
+    private func finish(_ text: String) {
+        UserDefaults.standard.set(text, forKey: answeredKey)
+        result = text
     }
 }
 

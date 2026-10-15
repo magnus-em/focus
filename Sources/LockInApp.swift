@@ -216,6 +216,7 @@ struct FocusApp: App {
         AwayCoach.shared = AwayCoach(timer: timer, store: store, settings: appSettings, days: days)
         ScreenCoach.shared = ScreenCoach(timer: timer, settings: appSettings, days: days)
         FocusModes.shared.start(timer: timer)
+        CoachDayWorker.shared.start(store: store, days: days, settings: appSettings)
         QuickSwitch.shared?.openGallery = { name, dark in
             switch name {
             case "dashboard", "dashboard-review", "dashboard-trends":
