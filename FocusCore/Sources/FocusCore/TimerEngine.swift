@@ -640,6 +640,10 @@ public final class FocusTimerEngine: ObservableObject {
 
     // MARK: - Private machinery
 
+    /// Active time in the current session so far, pauses excluded; read-only
+    /// for intents (Siri's daily total).
+    public var activeElapsedSeconds: TimeInterval { currentElapsedSeconds }
+
     private var currentElapsedSeconds: TimeInterval {
         var e = elapsedBeforePause
         if let resume = lastResumeTime { e += Date().timeIntervalSince(resume) }
