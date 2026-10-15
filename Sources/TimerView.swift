@@ -31,6 +31,8 @@ struct TimerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var savedFocusTotals: [String: Double] = [:]
     @State private var fixingOverlap: SessionOverlap?
+    /// Minutes today the screen showed a life category during focus blocks.
+    @State private var possibleDrift: Double = 0
 
     static let breakBlue = Color(red: 0.27, green: 0.62, blue: 0.83)
 
@@ -85,9 +87,28 @@ struct TimerView: View {
         .padding(.top, 18)
         .padding(.bottom, 6)
         .onReceive(store.$sessions) { refreshFocusTotals($0) }
+        .task {
+            while !Task.isCancelled {
+                refreshDrift()
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
         .onChange(of: settings.lifeTags) { _, _ in refreshFocusTotals(store.sessions) }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in refreshFocusTotals(store.sessions) }
         .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: detent)
+    }
+
+    /// Shown next to focus, never subtracted: the screen can mislabel, and
+    /// paper or iPad study looks like nothing on the Mac.
+    private func refreshDrift() {
+        guard settings.screenWatch else { return possibleDrift = 0 }
+        let now = Date()
+        let day = Calendar.current.startOfDay(for: now)
+        let live = [timer.currentInProgressSession].compactMap { $0 }
+            .map { WorkSession(startTime: $0.startTime, durationMinutes: now.timeIntervalSince($0.startTime) / 60,
+                               type: $0.type, label: $0.label) }
+        let today = store.sessions.filter { TimeIntegrity.end(of: $0) > day } + live
+        possibleDrift = watcher.drifts(sessions: today, from: day, to: now).reduce(0) { $0 + $1.minutes }
     }
 
     private func refreshFocusTotals(_ sessions: [WorkSession]) {
@@ -101,7 +122,15 @@ struct TimerView: View {
             + totals.keys.filter { !settings.tags.contains($0) }.sorted()
         if !labels.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Focus today").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                HStack {
+                    Text("Focus today").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                    Spacer()
+                    if possibleDrift >= 1 {
+                        Text("\(hm(possibleDrift)) possibly off-task")
+                            .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                            .help("The screen showed Leisure, Reading or Admin during focus blocks. Not taken off your focus time: the screen can be wrong, and work on paper or the iPad doesn't show here.")
+                    }
+                }
                 FlowLayout(spacing: 8) {
                     ForEach(labels, id: \.self) { label in
                         HStack(spacing: 6) {
