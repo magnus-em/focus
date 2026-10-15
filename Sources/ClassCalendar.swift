@@ -80,10 +80,7 @@ final class ClassCalendar: ObservableObject {
         coursePrefixes = prefixes
         exams = ahead.compactMap { e in
             let title = e.title ?? ""
-            // "PSET 5 — start after exam" mentions an exam; it isn't one.
-            guard title.range(of: #"(?i)\b(exam|midterm|final)\b"#, options: .regularExpression) != nil,
-                  title.range(of: #"(?i)\b(review session|office hours|pset|problem set|homework|hw|due|after (the )?exam|study|prep)\b"#,
-                              options: .regularExpression) == nil else { return nil }
+            guard Self.isExam(title) else { return nil }
             var category = Self.category(for: title)
             if category == nil, let r = title.range(of: #"\b\d{3,4}\b"#, options: .regularExpression),
                let letters = prefixes[String(title[r])] {
@@ -97,6 +94,27 @@ final class ClassCalendar: ObservableObject {
         exams = exams.filter { seen.insert($0.id).inserted }
         status = today.isEmpty ? "No classes on your calendar today"
             : "\(today.count) class\(today.count == 1 ? "" : "es") today: " + today.map { $0.title ?? "" }.joined(separator: ", ")
+    }
+
+    /// "PSET 5 — start after exam" mentions an exam; it isn't one.
+    nonisolated static func isExam(_ title: String) -> Bool {
+        title.range(of: #"(?i)\b(exam|midterm|final)\b"#, options: .regularExpression) != nil
+            && title.range(of: #"(?i)\b(review session|office hours|pset|problem set|homework|hw|due|after (the )?exam|study|prep)\b"#,
+                            options: .regularExpression) == nil
+    }
+
+    /// Exams that took place on `day` (for the morning-after debrief).
+    func exams(on day: Date) -> [Exam] {
+        guard authorized else { return [] }
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: day)
+        let events = store.events(matching: store.predicateForEvents(
+            withStart: start, end: cal.date(byAdding: .day, value: 1, to: start)!, calendars: nil))
+        var seen = Set<String>()
+        return events.filter { !$0.isAllDay && Self.isExam($0.title ?? "") }
+            .map { Exam(title: $0.title ?? "", date: $0.startDate, category: Self.category(for: $0.title ?? "")) }
+            .filter { seen.insert($0.id).inserted }
+            .sorted { $0.date < $1.date }
     }
 
     nonisolated static func category(for title: String) -> String? {

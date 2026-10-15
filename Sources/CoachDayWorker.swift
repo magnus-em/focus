@@ -13,6 +13,10 @@ final class CoachDayWorker: ObservableObject {
 
     static let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Focus/days", isDirectory: true)
+    static let calibrationURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Focus/coach/calibration.jsonl")
+    static let examsURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Focus/coach/exams.jsonl")
     nonisolated private static let journalDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Focus/journal", isDirectory: true)
     private static let evidenceDirectory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

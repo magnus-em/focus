@@ -486,6 +486,9 @@ struct YesterdayRecallView: View {
                 ForEach(Array(r.content.questions.enumerated()), id: \.offset) { i, q in
                     CoachQuestionCard(question: q, answeredKey: "coachAnswered-\(r.day)-\(i)", recall: recall)
                 }
+                if let line = CoachLog.sureSummary(CoachLog.read(CoachLog.Calibration.self, from: CoachDayWorker.calibrationURL)) {
+                    Text(line).font(.system(size: 10)).foregroundStyle(.secondary)
+                }
             }
             if !r.content.observations.isEmpty {
                 sectionLabel("WHAT THE COACH NOTICED").padding(.top, 4)
@@ -658,6 +661,9 @@ struct YesterdayRecallView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
+                    ForEach(ClassCalendar.shared.exams(on: day)) { exam in
+                        ExamDebriefCard(exam: exam)
+                    }
                     if let record {
                         coachReveal(record)
                         sectionLabel("AS TRACKED").padding(.top, 6)
@@ -787,6 +793,56 @@ extension CoachDay.Record {
     }
 }
 
+/// The morning after an exam: how it went, what surprised you, what you'd
+/// prepare differently. Thirty seconds; the weekly strategy compares it with
+/// the logged prep.
+private struct ExamDebriefCard: View {
+    let exam: ClassCalendar.Exam
+    @State private var rating: Int?
+    @State private var surprised = ""
+    @State private var differently = ""
+    @State private var saved = false
+    private var key: String { "examDebrief-\(exam.id)" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text("How did \(exam.title) go?").font(.system(size: 11.5, weight: .bold))
+            if saved || UserDefaults.standard.bool(forKey: key) {
+                Text("Saved. The weekly review will compare it with how you prepared.")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 4) {
+                    ForEach(1...5, id: \.self) { n in
+                        Button(["", "Rough", "Meh", "OK", "Good", "Great"][n]) { rating = n }
+                            .buttonStyle(.bordered)
+                            .tint(rating == n ? .orange : nil)
+                    }
+                }
+                .controlSize(.small)
+                TextField("What surprised you?", text: $surprised, axis: .vertical)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 10.5)).lineLimit(1...3)
+                TextField("What would you prepare differently?", text: $differently, axis: .vertical)
+                    .textFieldStyle(.roundedBorder).font(.system(size: 10.5)).lineLimit(1...3)
+                HStack {
+                    Spacer()
+                    Button("Save") {
+                        try? CoachLog.append(CoachLog.ExamDebrief(at: Date(), exam: exam.title, examDate: exam.date,
+                                                                  rating: rating ?? 0, surprised: surprised,
+                                                                  differently: differently),
+                                             to: CoachDayWorker.examsURL)
+                        UserDefaults.standard.set(true, forKey: key)
+                        saved = true
+                    }
+                    .controlSize(.small)
+                    .disabled(rating == nil && surprised.isEmpty && differently.isEmpty)
+                }
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.08)))
+    }
+}
+
 /// One morning question: answer first, then see the answer and its source,
 /// then grade it. Grading keeps it as a recall card with this first attempt,
 /// so it comes back on the spacing schedule.
@@ -796,6 +852,7 @@ private struct CoachQuestionCard: View {
     @ObservedObject var recall: RecallStore
 
     @State private var response = ""
+    @State private var confidence: Int?
     @State private var shown = false
     @State private var shownAt = Date()
     @State private var openedAt = Date()
@@ -813,9 +870,17 @@ private struct CoachQuestionCard: View {
                     .font(.system(size: 10.5))
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(1...4)
-                Button("Check") {
-                    shownAt = Date()
-                    withAnimation(.easeOut(duration: 0.15)) { shown = true }
+                HStack(spacing: 6) {
+                    ForEach([(1, "Not sure"), (2, "Fairly sure"), (3, "Sure")], id: \.0) { level, label in
+                        Button(label) { confidence = level }
+                            .buttonStyle(.bordered)
+                            .tint(confidence == level ? .orange : nil)
+                    }
+                    Spacer()
+                    Button("Check") {
+                        shownAt = Date()
+                        withAnimation(.easeOut(duration: 0.15)) { shown = true }
+                    }
                 }
                 .controlSize(.small)
             } else {
@@ -847,6 +912,11 @@ private struct CoachQuestionCard: View {
                                   topic: question.topic, source: question.source, byAI: true)
         recall.record(item, response: response, grade: g, hinted: false,
                       seconds: shownAt.timeIntervalSince(openedAt), aiScore: nil, aiFeedback: "")
+        if let confidence {
+            try? CoachLog.append(CoachLog.Calibration(at: Date(), course: question.course, topic: question.topic,
+                                                      confidence: confidence, grade: g.rawValue),
+                                 to: CoachDayWorker.calibrationURL)
+        }
         let days = Int(item.intervalDays.rounded())
         finish("Saved as a card · back in \(days) day\(days == 1 ? "" : "s")")
     }
