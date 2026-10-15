@@ -14,6 +14,13 @@ public enum CoachDay {
         public var end: String
         public var category: String
         public var what: String
+
+        public init(start: String, end: String, category: String, what: String) {
+            self.start = start
+            self.end = end
+            self.category = category
+            self.what = what
+        }
     }
 
     public struct Study: Codable, Equatable, Sendable {
@@ -22,6 +29,14 @@ public enum CoachDay {
         public var topics: [String]
         public var digest: String
         public var shaky: [String]
+
+        public init(course: String?, category: String, topics: [String], digest: String, shaky: [String]) {
+            self.course = course
+            self.category = category
+            self.topics = topics
+            self.digest = digest
+            self.shaky = shaky
+        }
     }
 
     public struct Question: Codable, Equatable, Sendable {
@@ -30,11 +45,24 @@ public enum CoachDay {
         public var question: String
         public var answer: String
         public var source: String
+
+        public init(course: String?, topic: String, question: String, answer: String, source: String) {
+            self.course = course
+            self.topic = topic
+            self.question = question
+            self.answer = answer
+            self.source = source
+        }
     }
 
     public struct Other: Codable, Equatable, Sendable {
         public var category: String
         public var what: String
+
+        public init(category: String, what: String) {
+            self.category = category
+            self.what = what
+        }
     }
 
     /// What the model writes.
@@ -46,6 +74,16 @@ public enum CoachDay {
         public var other: [Other]
         public var planVsActual: String?
         public var observations: [String]
+
+        public init(headline: String, timeline: [Entry], study: [Study], questions: [Question], other: [Other], planVsActual: String?, observations: [String]) {
+            self.headline = headline
+            self.timeline = timeline
+            self.study = study
+            self.questions = questions
+            self.other = other
+            self.planVsActual = planVsActual
+            self.observations = observations
+        }
     }
 
     public struct Record: Codable, Equatable, Sendable {

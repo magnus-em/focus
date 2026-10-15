@@ -346,6 +346,9 @@ struct YesterdayRecallView: View {
     let coursePrefixes: [String: String]
     let onFillGaps: () -> Void
     let onDone: () -> Void
+    /// Design gallery only: shows this record and stage and never asks the model.
+    var previewRecord: CoachDay.Record? = nil
+    var previewRevealed = false
 
     @State private var text = ""
     @State private var revealed = false
@@ -416,7 +419,7 @@ struct YesterdayRecallView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
     }
 
-    private var record: CoachDay.Record? { coach.record(for: day) }
+    private var record: CoachDay.Record? { previewRecord ?? coach.record(for: day) }
 
     /// The coach's topics per course; minutes come from the screen groups.
     private func coachCues(_ study: [CoachDay.Study]) -> some View {
@@ -509,7 +512,7 @@ struct YesterdayRecallView: View {
         .background(.regularMaterial)
         .onAppear {
             load()
-            coach.ensure(day)
+            if previewRecord == nil { coach.ensure(day) } else { revealed = previewRevealed }
         }
     }
 
@@ -749,6 +752,38 @@ struct YesterdayRecallView: View {
             .padding(.bottom, 28)
         }
         .padding(.horizontal, 16)
+    }
+}
+
+extension CoachDay.Record {
+    /// Synthetic, for the design gallery.
+    static var galleryPreview: CoachDay.Record {
+        let study = [
+            CoachDay.Study(course: "MATH 244", category: "Math",
+                           topics: ["Posets", "Chains and antichains", "Inclusion–exclusion"],
+                           digest: "You worked review problems on partial orders: checking that divisibility is an ordering, drawing its Hasse diagram, and the difference between minimal and smallest elements. Later, inclusion–exclusion for distributions with no empty box.",
+                           shaky: ["Signs in inclusion–exclusion came up twice."]),
+            CoachDay.Study(course: "CPSC 3231", category: "SWE", topics: ["Syscalls", "File descriptors"],
+                           digest: "A short review of syscall registers and why write can return fewer bytes than asked.",
+                           shaky: []),
+        ]
+        let questions = [
+            CoachDay.Question(course: "MATH 244", topic: "Posets",
+                              question: "Can a poset have several minimal elements but no smallest element? Give an example.",
+                              answer: "Yes: divisibility on {2,…,12} has minimal elements 2, 3, 5, 7, 11 and no smallest, since none divides all the others.",
+                              source: "Claude chat “Draw Hesse”, 11:16"),
+            CoachDay.Question(course: "CPSC 3231", topic: "write",
+                              question: "Why can write(fd, buf, n) return less than n, and what must the caller do?",
+                              answer: "The kernel may accept only part of the buffer; the caller loops, advancing the pointer by the bytes written.",
+                              source: "ChatGPT “Review C and systems midterm topics”, 12:01"),
+        ]
+        let content = CoachDay.Content(
+            headline: "Mostly MATH 244 review in the morning, a short systems pass, then leisure.",
+            timeline: [], study: study, questions: questions, other: [], planVsActual: nil,
+            observations: ["Most of the systems review was reading summaries rather than answering questions.",
+                           "Math work came in four separate stretches of 10–25 minutes."])
+        return CoachDay.Record(day: "2026-10-15", content: content, generatedAt: Date(), model: "grok-4.7",
+                               costUSD: 0.08, images: 6, promptVersion: CoachDay.promptVersion)
     }
 }
 

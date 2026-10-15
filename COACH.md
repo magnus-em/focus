@@ -54,6 +54,16 @@ Each image costs ~1.5–2.2k input tokens. xAI returns exact cost per call (`usa
 - lecture/voice capture
 - the coach changing plans on its own
 
+## What the learning research says, and what it means here (Claude, 10/15)
+
+- **Practice testing and spacing are the two high-utility techniques. Rereading, highlighting and summarizing are low** ([Dunlosky et al. 2013](https://www.sciencedaily.com/releases/2013/01/130110111734.htm)). So the coach's core loop is retrieval with a delay: next-morning questions that become spaced cards. 10/14's C review was mostly reading ChatGPT summaries ("a cheat sheet"), which is the low-utility kind. The coach should name that and offer to turn a summary into questions, and episodes should track practice vs passive time per course.
+- **Rereading and watching inflate confidence.** Judgments of learning are driven by fluency, and a self-test after a delay is what makes them accurate ([2024 rereading study](https://link.springer.com/article/10.1007/s11251-024-09686-4); [Saenz & Smith 2018](https://people.tamu.edu/~stevesmith/SaenzSmith2018.pdf)). So the morning questions ask "how sure?" before the answer is shown, and the coach tracks calibration per course. That is the cheapest way to find overconfidence before an exam.
+- **Exam wrappers** (a short post-exam reflection) have mixed evidence: modest benefits in some large STEM courses, none in a stricter study ([Hodges et al.](https://mdsoar.org/handle/11603/19987); [Faculty Focus summary](https://www.facultyfocus.com/?p=55596)). Keep the debrief to 30 seconds. Its real value here is data: logged prep by topic vs what the exam asked, which the weekly strategy can use.
+- **From memory, not re-checked today:**
+  - interleaving problem types helps math discrimination (Rohrer & Taylor 2007), so mix topics in questions;
+  - pretesting before learning helps even when answers are wrong (Richland, Kornell & Kao 2009), so ask 1–2 questions before a new pset topic;
+  - implementation intentions ("at 9, open pset 5 problem 3") have a medium effect (Gollwitzer & Sheeran 2006), which is what Next block already does.
+
 ## What the user wants (their words, paraphrased)
 
 A coach that watches everything on the screen, keeps notes, tracks categories and time (already done), and puts it together into a real understanding of what they did today and when. Next day they can talk it through with it, get quizzed, and recall what they learned. Long term it notices strategic mistakes: time going to the wrong things given their goals (exams, quant + SWE interviews). Maximize intelligence: they have about $1,000 of xAI (Grok) credits and are open to a Claude API key too.

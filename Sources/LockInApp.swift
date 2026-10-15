@@ -237,6 +237,13 @@ struct FocusApp: App {
                 DesignGallery.show(CommitmentView(settings: appSettings, dayStore: days, store: store, timer: timer,
                                                   isShowing: .constant(true), previewMorningReview: true),
                                    name: name, dark: dark, size: NSSize(width: 360, height: 850))
+            case "yesterday-recall", "yesterday-recall-reveal":
+                DesignGallery.show(YesterdayRecallView(
+                    recall: recall, store: store, journalShortcut: "",
+                    focusCategories: Set(appSettings.tags).subtracting(appSettings.lifeTags),
+                    coursePrefixes: ClassCalendar.shared.coursePrefixes, onFillGaps: {}, onDone: {},
+                    previewRecord: .galleryPreview, previewRevealed: name == "yesterday-recall-reveal"),
+                    name: name, dark: dark, size: NSSize(width: 360, height: 760))
             case "adderall-day":
                 DesignGallery.show(ScrollView { AdderallDayView(store: health, preview: true).padding(16) },
                                    name: name, dark: dark, size: NSSize(width: 380, height: 1000))
