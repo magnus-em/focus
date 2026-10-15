@@ -55,18 +55,25 @@ private func fmtHours(_ h: Double) -> String {
 }
 
 private enum DashboardDestination: String, CaseIterable, Identifiable {
-    case today = "Today"
-    case review = "Review"
-    case trends = "Trends"
+    case day = "Day"
+    case week = "Week"
 
-    var id: String { rawValue }
-    var symbol: String {
-        switch self {
-        case .today: return "list.bullet.rectangle"
-        case .review: return "checkmark.bubble"
-        case .trends: return "chart.xyaxis.line"
+    /// Old names still open the page that replaced them.
+    init?(name: String) {
+        switch name {
+        case "Day", "Today", "Review": self = .day
+        case "Week", "Trends": self = .week
+        default: return nil
         }
     }
+
+    var id: String { rawValue }
+    var symbol: String { self == .day ? "text.alignleft" : "calendar" }
+}
+
+private struct DayChange {
+    let text: String
+    let undo: SessionStore.ReviewUndo?
 }
 
 private final class DashboardLiveState: ObservableObject {
@@ -172,9 +179,13 @@ struct DashboardView: View {
     @StateObject private var liveState: DashboardLiveState
     @ObservedObject var browserStore: BrowserStore
 
-    @State private var destination: DashboardDestination = .today
+    @State private var destination: DashboardDestination = .day
+    @StateObject private var dayModel = DayStoryModel()
+    @State private var lastChange: DayChange?
     @State private var showTrackedLog = false
     @State private var showTimeline = false
+    @State private var showAllTime = false
+    @State private var showAccuracy = false
     @State private var dayData = DashboardDayData()
     @State private var editingEvent: DayEvent? = nil
     @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
@@ -190,7 +201,7 @@ struct DashboardView: View {
         self.dayStore = dayStore
         self.timerManager = timerManager
         self.browserStore = browserStore
-        _destination = State(initialValue: DashboardDestination(rawValue: initialDestination) ?? .today)
+        _destination = State(initialValue: DashboardDestination(name: initialDestination) ?? .day)
         _liveState = StateObject(wrappedValue: DashboardLiveState(timer: timerManager))
     }
 
@@ -266,6 +277,47 @@ struct DashboardView: View {
     private func refreshDayData(sessions: [WorkSession]? = nil, problems: [ProblemEntry]? = nil) {
         dayData = DashboardDayData(day: selectedDay, sessions: sessions ?? sessionStore.sessions,
                                    problems: problems ?? problemStore.problems)
+        refreshStory()
+    }
+
+    private var focusCategories: Set<String> { Set(settings.tags.filter { !settings.lifeTags.contains($0) }) }
+
+    private func refreshStory() {
+        dayModel.refresh(day: selectedDay, sessions: dayData.overlappingSessions, live: selectedDayLiveSessions,
+                         focus: focusCategories)
+    }
+
+    private var selectedDayFocusMinutes: Double {
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: selectedDay)!
+        return (dayData.overlappingSessions + selectedDayLiveSessions).filter(\.isFocus).reduce(0) { sum, s in
+            sum + max(0, min(end, s.startTime.addingTimeInterval(s.durationMinutes * 60))
+                .timeIntervalSince(max(selectedDay, s.startTime))) / 60
+        }
+    }
+
+    /// Past time is repainted with Undo; time inside the running block goes
+    /// through the timer, so a saved row never overlaps it.
+    private func applyFix(_ fix: DayStory.Fix, _ label: String) {
+        let saved: String? = label == "Break" ? nil : label
+        let runningStart = liveState.snapshot.isActive ? liveState.snapshot.runningStart : nil
+        let range = "\(fix.start.formatted(date: .omitted, time: .shortened))–\(fix.running ? "now" : fix.end.formatted(date: .omitted, time: .shortened))"
+        var undo: SessionStore.ReviewUndo?
+        if let runningStart, fix.end > runningStart {
+            if fix.start < runningStart {
+                undo = sessionStore.paintForReview(start: fix.start, end: runningStart, label: saved)
+            }
+            if fix.running || fix.end >= Date().addingTimeInterval(-60) {
+                timerManager.switchTo(label, at: max(fix.start, runningStart))
+            } else {
+                timerManager.carveOut(from: max(fix.start, runningStart), to: fix.end, as: saved)
+            }
+            lastChange = DayChange(text: "Logged \(range) as \(label).", undo: undo)
+        } else if let u = sessionStore.paintForReview(start: fix.start, end: fix.end, label: saved) {
+            lastChange = DayChange(text: "Logged \(range) as \(label).", undo: u)
+        } else {
+            lastChange = DayChange(text: "Couldn't change \(range). Try again, or edit it in the tracked log.", undo: nil)
+        }
+        refreshStory()
     }
 
     private func shiftSelectedDay(by days: Int) {
@@ -300,6 +352,10 @@ struct DashboardView: View {
         }
         .frame(minWidth: 740, minHeight: 520)
         .onAppear { refreshDayData() }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+            if isSelectedDayToday { refreshStory() }
+        }
+        .onChange(of: liveState.snapshot.label) { _, _ in refreshStory() }
         .onReceive(sessionStore.$sessions) { refreshDayData(sessions: $0) }
         .onReceive(problemStore.$problems) { refreshDayData(problems: $0) }
         .onChange(of: selectedDay) { _, day in
@@ -342,12 +398,18 @@ struct DashboardView: View {
         return snapshot.isOnBreak ? TimerView.breakBlue : categoryColor(snapshot.label)
     }
 
+    private var weekRangeText: String {
+        let start = Calendar.current.date(byAdding: .day, value: -6, to: weekEndDay)!
+        return "\(start.formatted(.dateTime.month(.abbreviated).day())) – \(weekEndDay.formatted(.dateTime.month(.abbreviated).day()))"
+    }
+
     private var dashboardToolbar: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(isSelectedDayToday ? "Today" : selectedDay.formatted(.dateTime.weekday(.wide)))
+                Text(destination == .week ? (Calendar.current.isDateInToday(weekEndDay) ? "This week" : "Week")
+                     : isSelectedDayToday ? "Today" : selectedDay.formatted(.dateTime.weekday(.wide)))
                     .font(.system(size: 26, weight: .semibold))
-                Text(selectedDay.formatted(.dateTime.month(.wide).day()))
+                Text(destination == .week ? weekRangeText : selectedDay.formatted(.dateTime.month(.wide).day()))
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
             }
             Spacer(minLength: 16)
@@ -529,12 +591,11 @@ struct DashboardView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 24) {
                 switch destination {
-                case .today: todayContent
-                case .review: reviewContent
-                case .trends: trendsContent
+                case .day: dayContent
+                case .week: weekContent
                 }
             }
-            .frame(maxWidth: destination == .today ? 1060 : 980)
+            .frame(maxWidth: destination == .day ? 1080 : 980)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
@@ -546,70 +607,92 @@ struct DashboardView: View {
     }
 
     @ViewBuilder
-    private var todayContent: some View {
-        DashboardFocusSummary(day: selectedDay, sessions: dayData.overlappingSessions + liveBlocks, goalHours: settings.dailyGoal,
-                              problemCount: selectedDayProblemCount, accent: accent)
-        if let commitment = selectedDayCommitmentText {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "quote.opening").foregroundStyle(accent)
-                Text(commitment).font(.system(size: 14)).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                selectedDayFulfillmentBadge
+    private var dayContent: some View {
+        if let change = lastChange {
+            HStack(spacing: 12) {
+                Image(systemName: change.undo == nil ? "exclamationmark.circle" : "checkmark.circle.fill")
+                    .foregroundStyle(change.undo == nil ? Color.attention : Color.good)
+                Text(change.text).font(.system(size: 13))
+                Spacer()
+                if let undo = change.undo {
+                    Button("Undo") {
+                        lastChange = sessionStore.undoReview(undo) ? nil
+                            : DayChange(text: "Couldn't undo: the log changed since.", undo: nil)
+                        refreshStory()
+                    }
+                    .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.accentColor)
+                }
+                Button { lastChange = nil } label: { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)) }
+                    .buttonStyle(.plain).foregroundStyle(Color.secondaryText).help("Dismiss").accessibilityLabel("Dismiss")
             }
-            .padding(16)
-            .background(RoundedRectangle(cornerRadius: 18).fill(.background.secondary))
+            .padding(.horizontal, 16).frame(minHeight: 44)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.background.secondary))
         }
-        NextBlockSummary(day: selectedDay)
-        ScreenActivitySection(watcher: screenWatcher, day: selectedDay, sessions: selectedDaySessions)
-        DisclosureGroup("Your day timeline", isExpanded: $showTimeline) {
-            if showTimeline { dayTimelineSection.padding(.top, 12) }
+        DayStoryPage(model: dayModel, day: selectedDay, focusMinutes: selectedDayFocusMinutes,
+                     goalHours: Double(settings.dailyGoal), commitment: selectedDayCommitmentText,
+                     categories: settings.tags + ["Break"], apply: applyFix,
+                     openCoach: { CoachChatWindow.shared.open() })
+        if isSelectedDayToday { NextBlockSummary(day: selectedDay) }
+        DisclosureGroup("What the screen saw, minute by minute", isExpanded: $showTimeline) {
+            if showTimeline {
+                VStack(alignment: .leading, spacing: 24) {
+                    ScreenTimelineSection(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
+                    ScreenActivitySection(watcher: screenWatcher, day: selectedDay, sessions: selectedDaySessions)
+                    dayTimelineSection
+                }
+                .padding(.top, 12)
+            }
         }
         .font(.system(size: 15, weight: .semibold))
+    }
+
+    @ViewBuilder
+    private var weekContent: some View {
+        WeekPage(endDay: weekEndDay, sessions: liveSessions, problems: problemStore.problems,
+                 focus: focusCategories, settings: settings,
+                 onSelectDay: { selectedDay = $0; destination = .day })
         ExamRadarSection(sessions: liveSessions)
-    }
-
-    @ViewBuilder
-    private var reviewContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Make the log yours").font(.system(size: 26, weight: .semibold))
-            Text("Check the evidence, correct a category, or leave an uncertain stretch for later.")
-                .font(.system(size: 14)).foregroundStyle(Color.secondaryText)
-        }
-        TrustScorecardView(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
-        ScreenReviewSection(
-            watcher: screenWatcher, day: selectedDay, sessions: reviewSessions,
-            runningStart: liveState.snapshot.isActive ? liveState.snapshot.runningStart : nil,
-            paint: { a, b, label in sessionStore.paint(start: a, end: b, label: label == "Break" ? nil : label) }
-        )
-        ScreenTimelineSection(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
-        DistractionSection(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
-        DashboardDeferredSection { dayTimelineSection }
-        DashboardDeferredSection { browserSection }
-    }
-
-    @ViewBuilder
-    private var trendsContent: some View {
-        DayRingSection(store: sessionStore, watcher: screenWatcher, settings: settings,
-                       day: selectedDay, sessions: selectedDaySessions)
-        InsightsSection(watcher: screenWatcher, sessions: sessionStore.sessions)
         WhereTimeWentSection(store: sessionStore, settings: settings, live: liveBlocks,
                             endDay: weekEndDay, selectedDay: selectedDay,
-                            onSelectDay: { selectedDay = $0; destination = .today })
-        DashboardDeferredSection { weeklySection }
-        DashboardDeferredSection { focusSplitSection }
-        DashboardDeferredSection { problemProgressSection }
-        DashboardDeferredSection { heatmapSection }
-        DashboardDeferredSection { homeworkHeatmapSection }
-        DashboardDeferredSection { narrativeInsightsSection }
-        DashboardDeferredSection { commitmentHistorySection }
-        DashboardDeferredSection { awardsSection }
-        DashboardDeferredSection {
-            HStack(alignment: .top, spacing: 16) {
-                insightsSection
-                weakAreasSection
+                            onSelectDay: { selectedDay = $0; destination = .day })
+        InsightsSection(watcher: screenWatcher, sessions: sessionStore.sessions)
+        DisclosureGroup("Tracking accuracy", isExpanded: $showAccuracy) {
+            if showAccuracy {
+                VStack(alignment: .leading, spacing: 24) {
+                    TrustScorecardView(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
+                    ScreenReviewSection(
+                        watcher: screenWatcher, day: selectedDay, sessions: reviewSessions,
+                        runningStart: liveState.snapshot.isActive ? liveState.snapshot.runningStart : nil,
+                        paint: { a, b, label in sessionStore.paint(start: a, end: b, label: label == "Break" ? nil : label) }
+                    )
+                }
+                .padding(.top, 12)
             }
         }
-        DashboardDeferredSection { lifetimeSection }
+        .font(.system(size: 15, weight: .semibold))
+        DisclosureGroup("Older charts", isExpanded: $showAllTime) {
+            if showAllTime {
+                VStack(alignment: .leading, spacing: 24) {
+                    DistractionSection(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
+                    weeklySection
+                    focusSplitSection
+                    problemProgressSection
+                    heatmapSection
+                    homeworkHeatmapSection
+                    narrativeInsightsSection
+                    commitmentHistorySection
+                    awardsSection
+                    HStack(alignment: .top, spacing: 16) {
+                        insightsSection
+                        weakAreasSection
+                    }
+                    browserSection
+                    lifetimeSection
+                }
+                .padding(.top, 12)
+            }
+        }
+        .font(.system(size: 15, weight: .semibold))
     }
 
     // MARK: - 18-week heatmap
@@ -2787,7 +2870,7 @@ struct ExamRadarSection: View {
 // MARK: - Insights
 
 /// When you work best (focus by hour of day and how often you drift then,
-/// last 4 weeks) and, with a Claude key, a weekly letter written from it.
+/// last 4 weeks) and a weekly letter written from it by the cloud coach (or Claude).
 struct InsightsSection: View {
     @ObservedObject var watcher: ScreenWatcher
     let sessions: [WorkSession]
@@ -2885,7 +2968,7 @@ struct InsightsSection: View {
                 Text("This week's letter").font(.system(size: 13, weight: .semibold))
                 Text(parts[1]).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }
-        } else if RecallCoach.isConfigured {
+        } else if Coach.client != nil || RecallCoach.isConfigured {
             HStack {
                 Button(writing ? "Writing…" : "Write this week's letter") { Task { await write() } }
                     .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.indigo)
@@ -2893,7 +2976,7 @@ struct InsightsSection: View {
                 if !error.isEmpty { Text(error).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1) }
             }
         } else {
-            Text("Add a Claude key in Settings → Recall for a weekly letter written from these numbers.")
+            Text("Turn on the cloud coach in Settings → Coach for a weekly letter written from your week.")
                 .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
         }
     }
@@ -2917,11 +3000,41 @@ struct InsightsSection: View {
         What the screen saw them work on: \(uniqueTopics.joined(separator: "; "))
         """
         do {
-            let text = try await RecallCoach.weeklyLetter(facts)
+            let text: String
+            if let client = Coach.client {
+                let days = CoachDayWorker.shared.recentRecords(days: 7).reversed().map { r in
+                    "\(r.day): \(r.content.headline)" + r.content.study.map { " [\($0.course ?? $0.category): \($0.topics.joined(separator: ", "))\($0.shaky.isEmpty ? "" : "; shaky: " + $0.shaky.joined(separator: "; "))]" }.joined()
+                }
+                text = try await Self.coachLetter(client: client, facts: facts + "\nThe coach's day records:\n" + days.joined(separator: "\n"))
+            } else {
+                text = try await RecallCoach.weeklyLetter(facts)
+            }
             letterData = weekKey + "\u{1F}" + text
             error = ""
         } catch {
-            self.error = "Couldn't write it: \(error.localizedDescription)"
+            self.error = "Couldn't write it: \(CoachDayWorker.describe(error))"
         }
+    }
+
+    private static func coachLetter(client: XAIClient, facts: String) async throws -> String {
+        let system = """
+        Write a short weekly letter (150–250 words) to a Yale CS student preparing for quant and SWE interviews, \
+        from their own tracking data. Plain, warm, specific; no headings, no bullet lists, no flattery. \
+        Say what went well with numbers, the one pattern most worth changing (which course or goal got too little, \
+        practice vs. reading, when they drift), and one concrete plan for next week. Address them as "you". \
+        Use only the facts given; don't invent courses, exams or numbers.
+        """
+        let schema: [String: Any] = [
+            "type": "object", "additionalProperties": false,
+            "properties": ["letter": ["type": "string"]], "required": ["letter"],
+        ]
+        let model = XAIClient.Model.strong
+        let estimate = XAIClient.estimateUSD(model: model, text: system + facts, images: 0, maxOutputTokens: 2000,
+                                             reasoningEffort: "low")
+        let reply = try await Coach.budget.run(estimateUSD: estimate, model: model, purpose: "weekly-letter") {
+            try await client.complete(model: model, system: system, text: facts, schema: schema, reasoningEffort: "low",
+                                      maxOutputTokens: 2000, timeout: 240)
+        }
+        return ((try? JSONSerialization.jsonObject(with: reply.json)) as? [String: Any])?["letter"] as? String ?? ""
     }
 }

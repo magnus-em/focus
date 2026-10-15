@@ -219,11 +219,11 @@ struct FocusApp: App {
         CoachDayWorker.shared.start(store: store, days: days, settings: appSettings)
         QuickSwitch.shared?.openGallery = { name, dark in
             switch name {
-            case "dashboard", "dashboard-review", "dashboard-trends":
+            case "dashboard", "dashboard-review", "dashboard-trends", "dashboard-week":
                 DesignGallery.show(
                     DashboardView(sessionStore: store, problemStore: problems, homeworkStore: homework, settings: appSettings,
                                   dayStore: days, timerManager: timer, browserStore: browser,
-                                  initialDestination: name == "dashboard-review" ? "Review" : name == "dashboard-trends" ? "Trends" : "Today"),
+                                  initialDestination: ["dashboard-trends", "dashboard-week"].contains(name) ? "Week" : "Day"),
                     name: name, dark: dark, size: NSSize(width: 1100, height: 900))
             case "card":
                 let m = AwayPromptModel(icon: "eye", title: "Looks like Math", subtitle: "since 8:41 PM · 1m on screen",
@@ -478,6 +478,8 @@ struct PopoverContent: View {
         let lcBadge = lc.activeProblem.map { "#\($0.number)" } ?? "\(lc.todayCount)/\(lc.dailyGoal)"
         return [
             .init(title: "Settings", icon: "gearshape") { selectedTab = 4 },
+            .init(title: "Problems", icon: "list.bullet.rectangle") { selectedTab = 2 },
+            .init(title: "Notes", icon: "square.and.pencil") { selectedTab = 3 },
             .init(title: "LeetCode", icon: "chevron.left.forwardslash.chevron.right", badge: lcBadge, divider: true, action: openLeetCode),
             .init(title: "Practice", icon: "scope",
                   badge: practiceStore.isActive ? practiceElapsedShort : (dueReviewBadge > 0 ? "\(dueReviewBadge) due" : nil),
@@ -489,11 +491,10 @@ struct PopoverContent: View {
             .init(title: "Dashboard", icon: "rectangle.grid.2x2", action: openDashboard),
             .init(title: "End Day", icon: "moon", divider: true) {
                 withAnimation(.spring(response: 0.55, dampingFraction: 0.85)) { dayStore.endDay() }
-                if let open = QuickSwitch.shared?.openReview {
-                    open()
-                } else if dayStore.todayCommitmentNeedsReview, let r = dayStore.todayRecord {
+                if dayStore.todayCommitmentNeedsReview, let r = dayStore.todayRecord {
                     reviewTarget = r
                 }
+                openDashboard()
             },
             .init(title: "Quit Focus", icon: "power") { NSApplication.shared.terminate(nil) },
         ]
@@ -684,10 +685,7 @@ struct PageBar: View {
     @Namespace private var selectionNamespace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let pages: [(tag: Int, title: String, icon: String)] = [
-        (0, "Now", "timer"), (1, "Stats", "chart.bar"), (2, "Problems", "list.bullet.rectangle"),
-        (3, "Notes", "square.and.pencil"), (5, "Health", "heart"),
-    ]
+    private let pages: [(tag: Int, title: String, icon: String)] = [(0, "Now", "timer"), (5, "Health", "heart")]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -704,12 +702,12 @@ struct PageBar: View {
                     }
                 }
             } label: {
-                item("More", "ellipsis.circle", on: selected == 4)
+                item("More", "ellipsis.circle", on: ![0, 5].contains(selected))
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
-            .help("Settings, LeetCode, Practice, Recall, Math Sprint, Dashboard, End Day")
+            .help("Settings, Problems, Notes, LeetCode, Practice, Recall, Math Sprint, Dashboard, End Day")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)

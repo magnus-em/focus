@@ -114,7 +114,7 @@ struct WhereTimeWentSection: View {
 
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("WHERE TIME WENT").font(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(.secondary)
+                Text("Where time went").font(.system(size: 15, weight: .semibold))
                 Spacer()
                 Text("\(week.from.formatted(.dateTime.month(.abbreviated).day())) – \(week.days.last!.formatted(.dateTime.month(.abbreviated).day()))")
                     .font(.system(size: 10, weight: .medium))

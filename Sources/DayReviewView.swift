@@ -393,10 +393,8 @@ struct YesterdayRecallView: View {
     /// Subjects and topics only, as cues: the bullets would give the answers away.
     private var cueList: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("FROM YOUR STUDY LOG")
-                .font(.system(size: 8.5, weight: .semibold))
-                .tracking(1)
-                .foregroundStyle(.secondary)
+            Text("From your study log")
+                .font(.system(size: 13, weight: .semibold))
             ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
                 HStack(alignment: .top, spacing: 6) {
                     Circle().fill(categoryColor(g.category)).frame(width: 5, height: 5).padding(.top, 5)
@@ -425,10 +423,8 @@ struct YesterdayRecallView: View {
     /// The coach's topics per course; minutes come from the screen groups.
     private func coachCues(_ study: [CoachDay.Study]) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("FROM YOUR STUDY LOG")
-                .font(.system(size: 8.5, weight: .semibold))
-                .tracking(1)
-                .foregroundStyle(.secondary)
+            Text("From your study log")
+                .font(.system(size: 13, weight: .semibold))
             ForEach(Array(study.enumerated()), id: \.offset) { _, s in
                 HStack(alignment: .top, spacing: 6) {
                     Circle().fill(categoryColor(s.category)).frame(width: 5, height: 5).padding(.top, 5)
@@ -456,16 +452,14 @@ struct YesterdayRecallView: View {
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 8.5, weight: .semibold))
-            .tracking(1)
-            .foregroundStyle(.secondary)
+            .font(.system(size: 13, weight: .semibold))
     }
 
     /// Digest per course, the morning questions, and what the coach noticed.
     private func coachReveal(_ r: CoachDay.Record) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if !r.content.study.isEmpty {
-                sectionLabel("WHAT YOU STUDIED")
+                sectionLabel("What you studied")
                 ForEach(Array(r.content.study.enumerated()), id: \.offset) { _, s in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(s.course ?? s.category).font(.system(size: 11.5, weight: .bold))
@@ -487,7 +481,7 @@ struct YesterdayRecallView: View {
                 }
             }
             if !r.content.questions.isEmpty {
-                sectionLabel("\(weekday.uppercased())'S QUESTIONS").padding(.top, 4)
+                sectionLabel("\(weekday)'s questions").padding(.top, 4)
                 ForEach(Array(r.content.questions.enumerated()), id: \.offset) { i, q in
                     CoachQuestionCard(question: q, answeredKey: "coachAnswered-\(r.day)-\(i)", recall: recall)
                 }
@@ -496,7 +490,7 @@ struct YesterdayRecallView: View {
                 }
             }
             if !r.content.observations.isEmpty {
-                sectionLabel("WHAT THE COACH NOTICED").padding(.top, 4)
+                sectionLabel("What the coach noticed").padding(.top, 4)
                 ForEach(Array(r.content.observations.enumerated()), id: \.offset) { _, o in
                     Text("• \(o)")
                         .font(.system(size: 10.5))
@@ -662,10 +656,8 @@ struct YesterdayRecallView: View {
                 .frame(height: 14)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("YOU REMEMBERED")
-                    .font(.system(size: 8.5, weight: .semibold))
-                    .tracking(1)
-                    .foregroundStyle(.secondary)
+                Text("You remembered")
+                    .font(.system(size: 13, weight: .semibold))
                 Text(text)
                     .font(.system(size: 11))
                     .lineLimit(showFullRecollection ? nil : 3)
@@ -688,12 +680,10 @@ struct YesterdayRecallView: View {
                     }
                     if let record {
                         coachReveal(record)
-                        sectionLabel("AS TRACKED").padding(.top, 6)
+                        sectionLabel("As tracked").padding(.top, 6)
                     } else if !groups.isEmpty {
-                        Text("WHAT YOU STUDIED")
-                            .font(.system(size: 8.5, weight: .semibold))
-                            .tracking(1)
-                            .foregroundStyle(.secondary)
+                        Text("What you studied")
+                            .font(.system(size: 13, weight: .semibold))
                         ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
                             Text("\(g.label) · \(minutesLabel(g.minutes))")
                                 .font(.system(size: 11.5, weight: .bold))
@@ -720,10 +710,8 @@ struct YesterdayRecallView: View {
                                 }
                             }
                         }
-                        Text("AS TRACKED")
-                            .font(.system(size: 8.5, weight: .semibold))
-                            .tracking(1)
-                            .foregroundStyle(.secondary)
+                        Text("As tracked")
+                            .font(.system(size: 13, weight: .semibold))
                             .padding(.top, 6)
                     }
                     ForEach(blocks) { s in

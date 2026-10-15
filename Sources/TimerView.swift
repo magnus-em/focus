@@ -35,6 +35,7 @@ struct TimerView: View {
     @State private var whereWasI: WhereWasI.Line?
     /// Minutes today the screen showed a life category during focus blocks.
     @State private var possibleDrift: Double = 0
+    @StateObject private var story = DayStoryModel()
 
     static let breakBlue = Color(red: 0.27, green: 0.62, blue: 0.83)
 
@@ -93,6 +94,7 @@ struct TimerView: View {
         .task {
             while !Task.isCancelled {
                 refreshDrift()
+                refreshStory()
                 try? await Task.sleep(for: .seconds(60))
             }
         }
@@ -116,6 +118,15 @@ struct TimerView: View {
                                type: $0.type, label: $0.label) }
         let today = store.sessions.filter { TimeIntegrity.end(of: $0) > day } + live
         possibleDrift = watcher.drifts(sessions: today, from: day, to: now).reduce(0) { $0 + $1.minutes }
+    }
+
+    private func refreshStory() {
+        let day = Calendar.current.startOfDay(for: Date())
+        let live = [timer.currentInProgressSession, timer.currentInProgressBreak].compactMap { $0 }
+            .map { WorkSession(startTime: $0.startTime, durationMinutes: Date().timeIntervalSince($0.startTime) / 60,
+                               type: $0.type, label: $0.label) }
+        story.refresh(day: day, sessions: store.sessions.filter { TimeIntegrity.end(of: $0) > day }, live: live,
+                      focus: Set(settings.tags.filter { !settings.lifeTags.contains($0) }))
     }
 
     private func refreshFocusTotals(_ sessions: [WorkSession]) {
@@ -348,7 +359,23 @@ struct TimerView: View {
         case storage(String)
         case sync(String)
         case overlap(SessionOverlap)
+        case fix(DayStory.Fix)
         case yesterday(Double)
+    }
+
+    /// Today's most important fix from the day story: a class tracked as
+    /// something else, or a gap of 20 minutes or more. The running block's
+    /// screen disagreement already has its own line.
+    private var todayFix: DayStory.Fix? {
+        let dismissed = Set(UserDefaults.standard.stringArray(forKey: DayStoryPage.dismissedKey) ?? [])
+        return story.story?.fixes.first { f in
+            guard !dismissed.contains(f.id), !f.running else { return false }
+            switch f.kind {
+            case .calendar: return true
+            case .untracked: return f.minutes >= 20
+            case .screenDiffers: return false
+            }
+        }
     }
 
     /// At most one, most urgent first. Yesterday's holes only in the morning:
@@ -366,6 +393,7 @@ struct TimerView: View {
         if syncMonitor.health == .failing { return .sync("iCloud sync is failing. See Settings.") }
         if syncMonitor.health == .stale { return .sync("iCloud hasn't synced in 3 days.") }
         if let o = store.overlaps.first { return .overlap(o) }
+        if let f = todayFix { return .fix(f) }
         let holes = store.untrackedMinutes(on: store.reviewWindow().from)
         if holes >= 15, Calendar.current.component(.hour, from: now) < 12 { return .yesterday(holes) }
         return nil
@@ -389,11 +417,23 @@ struct TimerView: View {
                      arrowEdge: .bottom) {
                 if let o = fixingOverlap { OverlapFixView(overlap: o, store: store) }
             }
+        case .fix(let f):
+            attentionRow(color: .orange, icon: "exclamationmark.circle", text: fixText(f), action: "Review") {
+                if let url = URL(string: "focus://dashboard") { NSWorkspace.shared.open(url) }
+            }
         case .yesterday(let m):
             attentionRow(color: .orange, icon: "clock.badge.questionmark", text: "Fill in \(hm(m)) from yesterday",
                          action: "Review") { showDayReview = true }
         case nil:
             EmptyView()
+        }
+    }
+
+    private func fixText(_ f: DayStory.Fix) -> String {
+        switch f.kind {
+        case .calendar(let event): return "\(f.tracked ?? "Tracked") ran through \(event)"
+        case .untracked: return "\(hm(f.minutes)) not logged at \(clock(f.start))"
+        case .screenDiffers(let seen): return "Screen showed \(seen) at \(clock(f.start))"
         }
     }
 
@@ -530,7 +570,40 @@ struct TimerView: View {
     /// Content cards are lighter than the control well, so the two don't read as one.
     private var cardFill: Color { scheme == .dark ? .white.opacity(0.07) : .white.opacity(0.5) }
 
+    @ViewBuilder
     private var todayLog: some View {
+        if let s = story.story, s.hasCoach {
+            storyLog(s)
+        } else {
+            trackedLog
+        }
+    }
+
+    /// The last few stretches of today's story, each with what it was about.
+    private func storyLog(_ s: DayStory.Story) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(s.blocks.filter { !$0.quiet && $0.category != nil }.suffix(4).reversed())) { b in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(clock(b.start)).font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
+                        .frame(width: 62, alignment: .leading)
+                    Circle().fill(b.category == "Break" ? Self.breakBlue : categoryColor(b.category ?? "")).frame(width: 8, height: 8)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(b.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(b.running ? "now" : hm(b.end.timeIntervalSince(b.start) / 60))
+                                .font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
+                        }
+                        if let line = b.moments.last?.text, !line.isEmpty {
+                            Text(line).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var trackedLog: some View {
         VStack(alignment: .leading, spacing: 0) {
             let blocks = Array(merged(todayBlocks).reversed().prefix(4))
             ForEach(blocks, id: \.start) { b in
