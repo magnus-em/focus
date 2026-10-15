@@ -132,11 +132,12 @@ class SessionStore: ObservableObject {
     }
 
     /// `keep` nil: merge a block saved twice. Otherwise `keep` takes the
-    /// stretch both cover. Only the two blocks shown change, in one save;
-    /// reversible with `undoReview`.
-    func fixOverlap(_ o: SessionOverlap, keep: WorkSession?) -> ReviewUndo? {
+    /// stretch both cover; with `removing`, that block goes entirely. Only
+    /// the blocks shown change, in one save; reversible with `undoReview`.
+    func fixOverlap(_ o: SessionOverlap, keep: WorkSession?, removing: WorkSession? = nil) -> ReviewUndo? {
         guard !context.hasChanges else { return nil }
-        let edits = keep.map { TimeIntegrity.resolve(o, keep: $0.id) } ?? TimeIntegrity.merge(o)
+        let edits = removing.map(TimeIntegrity.remove)
+            ?? keep.map { TimeIntegrity.resolve(o, keep: $0.id) } ?? TimeIntegrity.merge(o)
         let span = o.union
         do {
             // The popover shows a snapshot; a sync or edit since then means

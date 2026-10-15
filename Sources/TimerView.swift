@@ -744,6 +744,15 @@ struct OverlapFixView: View {
                     Button("Leave as is") { store.leaveOverlap(overlap) }
                 }
             }
+            if undo == nil, let wide = [overlap.first, overlap.second]
+                .map({ ($0, TimeIntegrity.overlapCount($0, in: store.overlaps)) })
+                .filter({ $0.1 >= 3 }).max(by: { $0.1 < $1.1 }) {
+                Divider()
+                Text("\(title(wide.0)) \(Self.day(wide.0.startTime))\(clock(wide.0.startTime))–\(clock(TimeIntegrity.end(of: wide.0))) overlaps \(wide.1) blocks.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Remove that \(title(wide.0)) block") { apply(keep: nil, removing: wide.0) }
+            }
             if failed {
                 Text("Couldn't change it: the log changed since, or saving failed.")
                     .font(.system(size: 11)).foregroundStyle(.red)
@@ -753,7 +762,7 @@ struct OverlapFixView: View {
         .frame(width: 300, alignment: .leading)
     }
 
-    private func apply(keep: WorkSession?) {
-        if let u = store.fixOverlap(overlap, keep: keep) { undo = u } else { failed = true }
+    private func apply(keep: WorkSession?, removing: WorkSession? = nil) {
+        if let u = store.fixOverlap(overlap, keep: keep, removing: removing) { undo = u } else { failed = true }
     }
 }

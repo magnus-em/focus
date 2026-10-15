@@ -234,3 +234,21 @@ final class BackdatedStopTests: XCTestCase {
                                            stale: false, shared: true), at(40))
     }
 }
+
+final class WideOverlapTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    private func at(_ min: Double) -> Date { t0.addingTimeInterval(min * 60) }
+    private func block(_ label: String, _ from: Double, _ to: Double) -> WorkSession {
+        WorkSession(startTime: at(from), durationMinutes: to - from, type: .work, label: label)
+    }
+
+    // 10/14: one Class block from 12:42 to 5:54 over the day's other blocks.
+    func testOneBlockOverManyIsCountedAndRemovable() {
+        let wide = block("Class", 0, 312)
+        let rows = [wide, block("Leisure", 0, 58), block("Class", 18, 58), block("Admin", 150, 218), block("Math", 280, 342)]
+        let found = TimeIntegrity.overlaps(in: rows, from: at(-1), to: at(400))
+        XCTAssertEqual(TimeIntegrity.overlapCount(wide, in: found), 4)
+        guard case .delete(let id) = TimeIntegrity.remove(wide).first else { return XCTFail() }
+        XCTAssertEqual(id, wide.id)
+    }
+}

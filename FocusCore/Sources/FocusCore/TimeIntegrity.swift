@@ -40,6 +40,16 @@ public enum TimeIntegrity {
          .delete(o.second.id)]
     }
 
+    /// A block that overlaps several others is usually one a device saved
+    /// after missing the switches (10/14: the iPhone's Class 12:42 → 5:54 over
+    /// ten blocks). Removing it is one fix instead of ten.
+    public static func remove(_ block: WorkSession) -> [OverlapEdit] { [.delete(block.id)] }
+
+    /// How many overlaps in `overlaps` involve `block`.
+    public static func overlapCount(_ block: WorkSession, in overlaps: [SessionOverlap]) -> Int {
+        overlaps.filter { $0.first.id == block.id || $0.second.id == block.id }.count
+    }
+
     /// `keep` takes the stretch both cover; only the other block changes:
     /// it's cut around that stretch, keeping whatever lies outside it.
     public static func resolve(_ o: SessionOverlap, keep: UUID) -> [OverlapEdit] {
