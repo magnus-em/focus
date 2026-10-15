@@ -474,10 +474,14 @@ struct YesterdayRecallView: View {
                             .foregroundStyle(.primary.opacity(0.85))
                             .fixedSize(horizontal: false, vertical: true)
                         if !s.shaky.isEmpty {
-                            Text("Looked shaky: " + s.shaky.joined(separator: " "))
-                                .font(.system(size: 10.5))
-                                .foregroundStyle(.orange)
-                                .fixedSize(horizontal: false, vertical: true)
+                            Label {
+                                Text("Looked shaky: " + s.shaky.joined(separator: " "))
+                                    .foregroundStyle(Color.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } icon: {
+                                Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
+                            }
+                            .font(.system(size: 10.5))
                         }
                     }
                 }
