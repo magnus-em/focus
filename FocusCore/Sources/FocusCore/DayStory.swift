@@ -230,11 +230,17 @@ public enum DayStory {
                               course: isAdmin ? nil : resolved.map { canonical($0, known: known) },
                               moment: run.moment, evidence: true))
         }
+        let missed = missedClasses(events: events, tracked: tracked, screen: screen, dayEnd: dayEnd)
+        let flagged = missed.compactMap { f -> CalendarEvent? in
+            guard case .calendar(let title) = f.kind else { return nil }
+            return events.first { $0.title == title && $0.start <= f.start && f.end <= $0.end }
+        }
+        let notes = record == nil && observations.isEmpty ? notes : []
         let covered = items.map { ($0.start, $0.end) }
         for t in tracked {
             for piece in subtract((t.start, t.end), covered) where piece.1.timeIntervalSince(piece.0) >= 60 {
-                for part in split(piece, at: events) {
-                    let event = events.first { $0.start <= part.0 && part.1 <= $0.end && part.1 > $0.start }
+                for part in split(piece, at: flagged) {
+                    let event = flagged.first { $0.start <= part.0 && part.1 <= $0.end && part.1 > $0.start }
                     let note = notes.filter { $0.end > part.0 && $0.start < part.1 }
                         .max { overlap(($0.start, $0.end), part) < overlap(($1.start, $1.end), part) }
                     items.append(Item(start: part.0, end: part.1, category: t.label, course: nil,
@@ -246,7 +252,7 @@ public enum DayStory {
         items.sort { $0.start != $1.start ? $0.start < $1.start : $0.end < $1.end }
         fillCourses(&items, focus: focus)
 
-        let fixes = fixList(tracked: tracked, events: events, screen: screen, items: items, focus: focus,
+        let fixes = fixList(missed: missed, tracked: tracked, events: events, screen: screen, items: items, focus: focus,
                             dayStart: dayStart, dayEnd: dayEnd)
         var blocks = group(items, focus: focus)
         for (i, b) in blocks.enumerated() {
@@ -416,17 +422,28 @@ public enum DayStory {
         return false
     }
 
-    static func fixList(tracked: [Tracked], events: [CalendarEvent], screen: [Screen], items: [Item],
-                        focus: Set<String>, dayStart: Date, dayEnd: Date) -> [Fix] {
+    /// A class or exam tracked as something else, unless the screen showed
+    /// that something else for most of it (you skipped the class and studied).
+    static func missedClasses(events: [CalendarEvent], tracked: [Tracked], screen: [Screen], dayEnd: Date) -> [Fix] {
         var fixes: [Fix] = []
+        var seen = Set<String>()
         for e in events where e.start < dayEnd {
             for t in tracked where t.label != "Class" {
                 let a = max(e.start, t.start), b = min(e.end, t.end, dayEnd)
-                guard b.timeIntervalSince(a) >= 10 * 60 else { continue }
+                guard b.timeIntervalSince(a) >= 10 * 60, seen.insert("\(a.timeIntervalSince1970)-\(b.timeIntervalSince1970)").inserted
+                else { continue }
+                let supported = screen.filter { $0.category == t.label }.reduce(0.0) { $0 + overlap(($1.start, $1.end), (a, b)) }
+                guard supported < b.timeIntervalSince(a) / 2 else { continue }
                 fixes.append(Fix(kind: .calendar(event: e.title), start: a, end: b, tracked: t.label, suggestion: "Class",
                                  running: t.running && b >= t.end))
             }
         }
+        return fixes
+    }
+
+    static func fixList(missed: [Fix], tracked: [Tracked], events: [CalendarEvent], screen: [Screen], items: [Item],
+                        focus: Set<String>, dayStart: Date, dayEnd: Date) -> [Fix] {
+        var fixes = missed
         if let first = tracked.first?.start {
             var cursor = first
             for t in tracked {
@@ -452,7 +469,8 @@ public enum DayStory {
             fixes.append(Fix(kind: .screenDiffers(seen: seen), start: c.start, end: c.end, tracked: tr, suggestion: seen,
                              running: running))
         }
-        return fixes.sorted {
+        var ids = Set<String>()
+        return fixes.filter { ids.insert($0.id).inserted }.sorted {
             let ra = rank($0.kind), rb = rank($1.kind)
             return ra != rb ? ra < rb : ($0.minutes != $1.minutes ? $0.minutes > $1.minutes : $0.start < $1.start)
         }

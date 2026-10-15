@@ -2,9 +2,23 @@
 
 Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-10-15 afternoon (Claude; Codex stopped at its usage reserve).
+Last touched: 2026-10-15 evening (Claude; Codex stopped at its usage reserve).
 
 Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
+
+## Screens: Day and Week — 10/15 (start here)
+
+The user picked direction A ("Day story") from https://claude.ai/artifact/TUGjQvhE5CH8LJ4oUzNPSH and said to keep going. Built and installed at 13b5d8a; follow-up fixes in the commit after it (see git log).
+- Model: `FocusCore/DayStory.swift` (+ `DayStoryTests`). UI: `Sources/DayStoryView.swift` (Day page, lanes, how-you-studied bar), `Sources/WeekPageView.swift` (Week page), `DashboardView.swift` (Day/Week destinations, fix handling with Undo, Tracking accuracy + Older charts disclosures, weekly letter via the cloud coach). Popover (`TimerView.swift`, `LockInApp.swift`): tabs Now · Health · More; Details shows the story's last stretches; attention line takes today's top fix; End Day opens the Day page.
+- Coach inputs fixed by a side session at 6cafd81/1b305cb: running block passed to mid-day records, `askedByUser` vs `onScreenPrompts`, `CoachCourse` course attribution. DayStory uses both.
+- Shots: before `.shots/ia-before/`, after `.shots/ia-after-1/` (taken before the duplicate-fix bug was fixed; retake).
+- **Not done yet:**
+  1. The DESIGN.md review loop: retake `SHOTS_WAIT=8 scripts/shots.sh ia-after-2 dashboard dashboard-week popover-0s popover-0l`, have a fresh reviewer score against DESIGN.md, fix to 85+. Known issues: fix rows are tall (pill buttons); the Day page has no hover on the lanes; Week's courses table uses fixed column widths.
+  2. Today's record only refreshes on demand: build "rewrite today's record after every 2 active hours, max 4/day" in `CoachDayWorker.ensure` (about 6¢ each, inside the $5 cap).
+  3. Morning sheet: the correction already lives in the commitment sheet; consider feeding it DayStory's calendar and gap fixes.
+  4. Per-stretch screenshots on click (today only the whole-day snapshot zoom under "What the screen saw").
+  5. Course pages (direction C) once course attribution has held up for a few weeks.
+- Real data on 10/15 showed: Math ran through MATH 244 Midterm 1 (1:05–2:20, per the Canvas announcement) and 2:10–2:53 was unlogged. Both now show as fixes on the Day page; the user hasn't acted on them.
 
 ## Adderall daily tracking — 10/15
 

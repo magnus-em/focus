@@ -154,6 +154,18 @@ final class DayStoryTests: XCTestCase {
         XCTAssertTrue(s.fixes.isEmpty)
     }
 
+    func testAClassSkippedForStudyIsNoFixAndDuplicatesCollapse() {
+        let tracked: [DayStory.Tracked] = [.init(start: at(10, 0), end: at(12, 0), label: "Math"),
+                                           .init(start: at(10, 0), end: at(12, 0), label: "Math")]
+        let events: [DayStory.CalendarEvent] = [.init(start: at(10, 30), end: at(11, 0), title: "AI Apps"),
+                                                .init(start: at(11, 15), end: at(11, 45), title: "MATH 244 Midterm 1")]
+        let s = DayStory.build(day: day, now: at(13, 0), tracked: tracked, record: nil, observations: [], events: events,
+                               screen: [.init(start: at(10, 0), end: at(11, 10), category: "Math")],
+                               focus: focus, calendar: calendar)
+        XCTAssertEqual(s.fixes.map(\.kind), [.calendar(event: "MATH 244 Midterm 1")])
+        XCTAssertNil(s.blocks.first { $0.event == "AI Apps" }, "an unflagged class doesn't split the story")
+    }
+
     func testCourseNumbersFromTheNewCatalogMatchTheRecordsName() {
         XCTAssertEqual(DayStory.canonical("CPSC 3231", known: ["CPSC 323"]), "CPSC 323")
         XCTAssertEqual(DayStory.canonical("MATH 244", known: ["CPSC 323"]), "MATH 244")

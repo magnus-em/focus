@@ -15,10 +15,20 @@ floating layer, sentence-case titles (no shouty uppercase section labels),
 generous whitespace, continuous corners, soft capsules. Mock: "A+B" board in
 the directions artifact below.
 
+## Dashboard direction (picked 2026-10-15)
+
+**A, Day story**: the Dashboard has two pages. Day reads like a journal:
+the coach's headline, three facts, calendar/you/screen lanes, the day in
+blocks with fixes on the row they're about, and a side column for what was
+learned. Week holds courses against exams and goals, days to fix, and the
+older charts collapsed. Review and Trends are no longer tabs; the popover
+lost its Stats tab. Mocks and the three directions:
+https://claude.ai/artifact/TUGjQvhE5CH8LJ4oUzNPSH
+
 ## Principles
 
 1. **One hero per surface.** Popover: what's running and for how long.
-   Dashboard: today's story (timeline, activity log, focus vs goal). Everything
+   Dashboard: the day's story (headline, blocks, fixes). Everything
    else is secondary and visually quieter.
 2. **Glass is for the floating layer only** (Apple, Liquid Glass): the popover
    panel itself (a Maps-style sheet), the Now Playing bar, corner cards,
