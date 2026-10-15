@@ -97,6 +97,10 @@ struct SettingsView: View {
                     .onAppear { probeSync() }
                 }
 
+                SettingsCard("Coach") {
+                    CoachSettings()
+                }
+
                 SettingsCard("Commitment") {
                     ToggleRow(label: "Daily commitment prompt", isOn: $settings.commitmentEnabled)
                     if settings.commitmentEnabled {
@@ -999,6 +1003,35 @@ private struct CategoriesEditor: View {
 
     private func hours(_ m: Double) -> String {
         m >= 60 ? "\(Int(m / 60))h" : m > 0 ? "\(Int(m))m" : ""
+    }
+}
+
+private struct CoachSettings: View {
+    @AppStorage(Coach.enabledKey) private var enabled = false
+    @AppStorage(Coach.capKey) private var cap = 5.0
+    @State private var spent: Double?
+    @State private var hasKey = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ToggleRow(label: "Cloud coach (xAI Grok)", isOn: $enabled)
+            Text(Coach.consent)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Stepper(value: $cap, in: 1...20, step: 1) {
+                Text("Daily limit $\(Int(cap))").font(.system(size: 12, weight: .medium))
+            }
+            Text(!hasKey ? "No xAI key in the Keychain (service \(XAIKey.service))."
+                 : spent.map { String(format: "Spent today: $%.2f", $0) } ?? "")
+                .font(.system(size: 10.5))
+                .foregroundStyle(Color.secondaryText)
+        }
+        .task {
+            hasKey = XAIKey.load() != nil
+            spent = await Coach.budget.spent()
+        }
+        .onChange(of: cap) { Task { await Coach.budget.setCap(cap) } }
     }
 }
 

@@ -48,7 +48,43 @@ final class CoachDayWorker: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 90) { [weak self] in self?.tick() }
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 90_000_000_000)
+            await self?.backfill()
+        }
+    }
+
+    /// Yesterday, then the five days before it, one at a time, so the chat and
+    /// the weekly review have history. Days with nothing logged are skipped.
+    private func backfill() async {
+        guard Calendar.current.component(.hour, from: Date()) >= 4 else { return }
+        for offset in 1...6 {
+            guard let day = Calendar.current.date(byAdding: .day, value: -offset, to: Calendar.current.startOfDay(for: Date())),
+                  let client = Coach.client else { return }
+            load(day)
+            let key = CoachDay.dayKey(day)
+            guard records[key] == nil, status[key] != .working,
+                  Date().timeIntervalSince(lastAttempt[key] ?? .distantPast) > 3600 else { continue }
+            lastAttempt[key] = Date()
+            status[key] = .working
+            await generate(day, client: client)
+            if case .failed(let why) = status[key], why.contains("budget") { return }
+        }
+    }
+
+    func recentRecords(days: Int) -> [CoachDay.Record] {
+        (1...days).compactMap { offset in
+            Calendar.current.date(byAdding: .day, value: -offset, to: Calendar.current.startOfDay(for: Date()))
+        }.compactMap { day in
+            load(day)
+            return record(for: day)
+        }
+    }
+
+    /// Today's evidence so far as text (no screenshots), for the chat.
+    func todayEvidence() async -> String? {
+        guard let (pack, _) = await buildPack(Date(), includeImages: false) else { return nil }
+        return CoachDay.evidence(pack)
     }
 
     private func tick() {
@@ -106,7 +142,7 @@ final class CoachDayWorker: ObservableObject {
         }
     }
 
-    private static func describe(_ error: Error) -> String {
+    static func describe(_ error: Error) -> String {
         switch error {
         case XAIClient.Failure.overBudget(let spent, let cap):
             return String(format: "Today's cloud budget is used up ($%.2f of $%.2f).", spent, cap)
@@ -128,7 +164,7 @@ final class CoachDayWorker: ObservableObject {
         var eligibleImages: Set<UUID> = []
     }
 
-    private func buildPack(_ day: Date) async -> (CoachDay.Pack, [Data])? {
+    private func buildPack(_ day: Date, includeImages: Bool = true) async -> (CoachDay.Pack, [Data])? {
         guard let store, let settings else { return nil }
         let cal = Calendar.current
         let start = cal.startOfDay(for: day)
@@ -177,7 +213,8 @@ final class CoachDayWorker: ObservableObject {
         let clock = DateFormatter()
         clock.dateFormat = "HH:mm"
         var seen = Set<String>()
-        let candidates = await ScreenEvidenceStore.shared.entries(from: start, to: end).sorted { $0.at < $1.at }.filter { e in
+        let candidates = (includeImages ? await ScreenEvidenceStore.shared.entries(from: start, to: end) : [])
+            .sorted { $0.at < $1.at }.filter { e in
             guard let t = tracked(e.at, e.at.addingTimeInterval(15)), focus.contains(t),
                   !Self.browsers.contains(e.bundle) || facts.eligibleImages.contains(e.id) else { return false }
             return seen.insert(String(e.title.prefix(30))).inserted

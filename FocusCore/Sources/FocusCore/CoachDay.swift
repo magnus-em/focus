@@ -235,9 +235,29 @@ public enum CoachDay {
             return line
         }
         let images = pack.imageLabels.enumerated().map { "Image \($0.offset + 1): \($0.element)" }
-        return """
-        Day: \(dayName.string(from: pack.day))
-        Morning commitment: \(pack.commitment?.isEmpty == false ? pack.commitment! : "(none)")
+        return evidence(dayName: dayName.string(from: pack.day), commitment: pack.commitment, totals: totals,
+                        timeline: timeline, blocks: blocks, images: images) + """
+
+        Write: a one-sentence headline; a timeline of the whole waking day (merge to roughly 15–30 entries, \
+        specific, times as HH:MM); per course or subject studied, the topics, a 3–6 sentence digest of what was \
+        actually covered, and what looked shaky (repeated questions, confusion); 3 retrieval questions for \
+        tomorrow morning from the study material (the most useful ideas that are easiest to forget first); the \
+        rest of the day by category in one line each; plan vs actual if there was a commitment; 2–4 honest \
+        observations about how time was used (passive review vs practice, fragmentation, drift), without moralizing.
+        """
+    }
+
+    /// The day's evidence as text, without instructions (also the chat's "today so far").
+    public static func evidence(_ pack: Pack, calendar: Calendar = .current) -> String {
+        let full = prompt(pack, calendar: calendar)
+        return full.components(separatedBy: "\n\nWrite: ").first ?? full
+    }
+
+    private static func evidence(dayName: String, commitment: String?, totals: String, timeline: [String],
+                                 blocks: [String], images: [String]) -> String {
+        """
+        Day: \(dayName)
+        Morning commitment: \(commitment?.isEmpty == false ? commitment! : "(none)")
 
         Tracked minutes by category: \(totals.isEmpty ? "(nothing tracked)" : totals)
 
@@ -250,13 +270,6 @@ public enum CoachDay {
 
         Screenshots attached, in order:
         \(images.isEmpty ? "(none)" : images.joined(separator: "\n"))
-
-        Write: a one-sentence headline; a timeline of the whole waking day (merge to roughly 15–30 entries, \
-        specific, times as HH:MM); per course or subject studied, the topics, a 3–6 sentence digest of what was \
-        actually covered, and what looked shaky (repeated questions, confusion); 3 retrieval questions for \
-        tomorrow morning from the study material (the most useful ideas that are easiest to forget first); the \
-        rest of the day by category in one line each; plan vs actual if there was a commitment; 2–4 honest \
-        observations about how time was used (passive review vs practice, fragmentation, drift), without moralizing.
         """
     }
 

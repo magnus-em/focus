@@ -130,6 +130,7 @@ final class QuickSwitch {
         case "toggle": toggle()
         case "switcher": showSwitcher()
         case "recall": openRecall?()
+        case "coach": Task { @MainActor in CoachChatWindow.shared.open() }
         case "review": openReview?()
         case "gallery":
             Task { @MainActor in
@@ -257,6 +258,9 @@ private struct SwitcherView: View {
         }
         out.append(Item(title: "Dashboard", color: nil, icon: "rectangle.grid.2x2") { quick.openDashboard?() })
         out.append(Item(title: "Recall", color: nil, icon: "brain.head.profile", hint: "⌃⌥⌘;") { quick.openRecall?() })
+        out.append(Item(title: "Ask the coach", color: nil, icon: "bubble.left.and.text.bubble.right") {
+            Task { @MainActor in CoachChatWindow.shared.open() }
+        })
         out.append(Item(title: "End day", detail: "review", color: nil, icon: "moon") { quick.openReview?() })
         return out
     }

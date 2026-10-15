@@ -358,6 +358,7 @@ struct YesterdayRecallView: View {
     @StateObject private var dictation = Dictation()
     @ObservedObject private var screen = ScreenWatcher.shared
     @ObservedObject private var coach = CoachDayWorker.shared
+    @AppStorage(Coach.enabledKey) private var coachEnabled = false
     @State private var showFullRecollection = false
     @FocusState private var focused: Bool
 
@@ -540,6 +541,23 @@ struct YesterdayRecallView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let study = record?.content.study, !study.isEmpty { coachCues(study) } else if !groups.isEmpty { cueList }
+            if record == nil, !coachEnabled, previewRecord == nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Turn on the cloud coach for a summary of \(weekday) and questions about it.")
+                        .font(.system(size: 10.5, weight: .medium))
+                    Text(Coach.consent)
+                        .font(.system(size: 9.5))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Turn on") {
+                        coachEnabled = true
+                        coach.ensure(day)
+                    }
+                    .controlSize(.small)
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
+            }
             if record == nil, coach.status[CoachDay.dayKey(day)] == .working {
                 Label("Writing \(weekday)'s summary and questions…", systemImage: "sparkles")
                     .font(.system(size: 10.5))
@@ -746,6 +764,10 @@ struct YesterdayRecallView: View {
             HStack {
                 if untracked >= 15 {
                     Button("Fill \(Int(untracked) / 60)h \(Int(untracked) % 60)m untracked") { onFillGaps() }
+                        .controlSize(.small)
+                }
+                if record != nil {
+                    Button("Talk it through") { CoachChatWindow.shared.open() }
                         .controlSize(.small)
                 }
                 Spacer()
