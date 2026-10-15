@@ -19,8 +19,7 @@ final class CoachEpisodeStore: ObservableObject {
     private var checkpoint: CoachEpisode.Checkpoint?
     private var previousText: String?
     private var started = false
-    // Sending stays locked until the first outgoing payload is reviewed.
-    var dryRun: Bool { true }
+    var dryRun: Bool { UserDefaults.standard.object(forKey: Self.dryRunKey) as? Bool ?? false }
 
     init(root: URL? = nil) {
         let root = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Focus")
@@ -31,11 +30,7 @@ final class CoachEpisodeStore: ObservableObject {
                                            previewsDirectory: root.appendingPathComponent("coach/preview"))
         } catch { queue = nil; lastError = "Episode queue unavailable: \(error.localizedDescription)" }
     }
-    func startDryRun() {
-        guard dryRun else { return }
-        start()
-    }
-    private func start() {
+    func start() {
         guard !started, let queue else { return }
         started = true
         Task {
@@ -127,6 +122,7 @@ final class CoachEpisodeStore: ObservableObject {
                         status = "Dry run: payload ready, nothing sent"
                         continue
                     }
+                    guard Coach.enabled else { status = "Cloud coach is turned off"; return }
                     guard let client = Coach.client else { status = "Add an xAI key to enable understanding"; return }
                     try await queue.set(job.id, phase: .inFlight)
                     guard !Task.isCancelled, token == generation, allowed(source.row) else { return }

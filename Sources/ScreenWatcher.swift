@@ -199,7 +199,7 @@ final class ScreenWatcher: ObservableObject {
 
     func start(settings: AppSettings) {
         self.settings = settings
-        CoachEpisodeStore.shared.startDryRun()
+        CoachEpisodeStore.shared.start()
         guard tick == nil else { return }
         watchSetting = settings.$screenWatch.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] enabled in
             if !enabled { self?.resetEvidence(); ScreenJournalStore.shared.invalidate() }

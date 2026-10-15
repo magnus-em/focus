@@ -142,3 +142,7 @@ User-approved scope: local screenshot evidence for review, clearer corrections, 
 
 - Deterministic candidate from official problem/submission URL + standalone Accepted result + runtime/memory/result context; excludes private/unknown browser rows and mismatched hashes. Binds URL at capture rather than after OCR/model delay. Confirmation only: confidence and help fields, actual stopwatch at observation or unknown; catalog slug match and per-day dedupe. Native card never steals focus and yields to existing coach/away cards. No API.
 - Problem save now returns success and rolls back errors, so confirmation doesn't claim a save or clear the stopwatch on failure. Core detector/timing tests pass; full app source typecheck passed (two existing unused-value warnings). Isolated CloudKit-disabled ProblemStore persistence check passed (explicit insert, SWE/canonical URL, nil unknown time preserved, reload/delete). Synthetic light/dark UI review pending. Galleries added without touching Claude's recall/day code.
+
+## Explicit coach upload approval — 2026-10-15 (Codex)
+
+- User answered the direct scope question: “Enable new observations and queued previews”. Enabled persistent automatic episode processing including queued previews, retaining private/ignored/Focus/incognito/unknown/detected-secret exclusions and shared $5 daily budget. First concrete payload already reviewed by Claude. Optional local dry-run override retained. Claude coordinates the clean-main install and first live ledger check.
