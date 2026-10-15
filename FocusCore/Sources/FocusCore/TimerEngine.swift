@@ -489,13 +489,19 @@ public final class FocusTimerEngine: ObservableObject {
     /// Set after sleep/suspension or a checkpoint restore; cleared once the
     /// shared state is applied again or a session is begun here.
     private var knowledgeStale = false
+    /// Asleep, or awake but with iCloud sync failing: either way this device
+    /// may have missed switches and stops (10/14: the iPhone, with iCloud
+    /// waiting on terms all afternoon, saved Class 12:42 → 5:54 PM when it
+    /// finally reached the Mac over the local network).
+    private var knowledgeUnreliable: Bool { knowledgeStale || CloudSyncMonitor.shared.health == .failing }
     private var lastAliveAt = Date()
 
     private func closeSegmentIfReplaced(by newStart: Date?) {
         guard isActive, let start = sessionStartTime, let newStart,
               abs(newStart.timeIntervalSince(start)) > 3 else { return }
-        if knowledgeStale && SharedSessionMemory.wasShared(start) {
-            SyncLog.event("skipStaleSegment", ["start": "\(start)", "replacedBy": "\(newStart)"])
+        if knowledgeUnreliable && SharedSessionMemory.wasShared(start) {
+            SyncLog.event("skipStaleSegment", ["start": "\(start)", "replacedBy": "\(newStart)",
+                                               "syncFailing": CloudSyncMonitor.shared.health == .failing])
             return
         }
         closeSegment(at: newStart > start ? newStart : Date())
@@ -658,7 +664,7 @@ public final class FocusTimerEngine: ObservableObject {
     private func savePartialIfActive(reason: String, stoppedStart: Date? = nil, stoppedAt: Date? = nil) {
         guard let start = sessionStartTime else { return }
         guard let end = RemoteStop.savedEnd(mine: start, stoppedStart: stoppedStart, stoppedAt: stoppedAt ?? Date(),
-                                            stale: knowledgeStale, shared: SharedSessionMemory.wasShared(start)) else {
+                                            stale: knowledgeUnreliable, shared: SharedSessionMemory.wasShared(start)) else {
             SyncLog.event("skipStaleSegment", ["start": "\(start)", "stoppedStart": SyncLog.opt(stoppedStart), "reason": reason])
             return
         }
