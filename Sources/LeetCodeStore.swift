@@ -74,6 +74,7 @@ final class LeetCodeStore: ObservableObject {
     private(set) var solvedSlugs: Set<String> = []
     private(set) var latestBySlug: [String: LCAttempt] = [:]
     private var cancellables = Set<AnyCancellable>()
+    private var solveDrafts: LeetCodeSolveDraftStore?
 
     init(catalog: LeetCodeCatalog, problemStore: ProblemStore, settings: AppSettings) {
         self.catalog = catalog
@@ -107,6 +108,7 @@ final class LeetCodeStore: ObservableObject {
                 self?.scheduleNudge()
             }
             .store(in: &cancellables)
+        solveDrafts = LeetCodeSolveDraftStore(store: self)
     }
 
     private func recompute(from problems: [ProblemEntry]) {
@@ -159,15 +161,16 @@ final class LeetCodeStore: ObservableObject {
 
     // MARK: - Logging
 
-    func log(_ p: LCProblem, confidence: Confidence, minutes: Int?, usedHelp: Bool, notes: String) {
+    @discardableResult
+    func log(_ p: LCProblem, confidence: Confidence, minutes: Int?, usedHelp: Bool, notes: String, at date: Date = Date()) -> Bool {
         let milestonesBefore = Set(milestones.filter(\.unlocked).map(\.id))
         let source = settings.problemSources.first { $0.localizedCaseInsensitiveContains("leetcode") } ?? "LeetCode"
-        problemStore.add(ProblemEntry(
+        guard problemStore.add(ProblemEntry(id: UUID(), date: date,
             title: p.title, domain: .swe, categories: p.categories, difficulty: p.difficulty,
             source: source, needsReview: usedHelp, confidence: confidence,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             url: p.url, solveMinutes: minutes
-        ))
+        )) else { return false }
         if activeSlug == p.slug { cancelStopwatch() }
 
         let unlocked = milestones.filter { $0.unlocked && !milestonesBefore.contains($0.id) }
@@ -178,6 +181,7 @@ final class LeetCodeStore: ObservableObject {
         } else if attempts.last?.isFirstSolve == true && p.difficulty == .hard {
             celebration = "Hard down. +\(Self.points[.hard]!) points"
         }
+        return true
     }
 
     func delete(_ a: LCAttempt) { problemStore.delete(id: a.entry.id) }

@@ -410,6 +410,7 @@ final class ScreenWatcher: ObservableObject {
             journalWindowChangedAt = capturedAt
         }
         let focusReportAtCapture = BrowserBridge.shared.focusReport
+        let browserTabAtCapture = BrowserBridge.shared.activeTab
         let windowChangedAtCapture = journalWindowChangedAt
         let skip = Self.chromeFraction(shot, bundle: bundle)
         stage = "Reading text in \(appName)"
@@ -428,7 +429,7 @@ final class ScreenWatcher: ObservableObject {
         guard canRecordSample(generation: generation, bundle: bundle) else { return }
         // The Chrome extension knows the tab's address; the picture doesn't.
         var url: String?
-        if Self.browsers.contains(bundle), let tab = BrowserBridge.shared.activeTab,
+        if Self.browsers.contains(bundle), let tab = browserTabAtCapture,
            now.timeIntervalSince(tab.at) < 300, !tab.title.isEmpty, shot.title.hasPrefix(tab.title) || tab.title.hasPrefix(shot.title) {
             url = tab.url
         }
@@ -1263,7 +1264,7 @@ final class ScreenCoach {
         let say = { [watcher] (s: String) in watcher.coachStatus = s }
         guard settings.screenSuggest else { return say("Suggestions are off") }
         guard days.isDayStarted else { return say("Day not started") }
-        guard !panel.isBusy, !(AwayCoach.shared?.isBusy ?? false) else { return say("A card is already showing") }
+        guard !panel.isBusy, !(AwayCoach.shared?.isBusy ?? false), !LeetCodeSolveDraftStore.isShowing else { return say("A card is already showing") }
         // In class you're in Class, whatever the screen shows, until the
         // calendar class is over (10/14: Class ran 1.5 h past the exam).
         if timer.isActive, !timer.isOnBreak, timer.currentLabel == "Class" {

@@ -244,6 +244,12 @@ struct FocusApp: App {
                     coursePrefixes: ClassCalendar.shared.coursePrefixes, onFillGaps: {}, onDone: {},
                     previewRecord: .galleryPreview, previewRevealed: name == "yesterday-recall-reveal"),
                     name: name, dark: dark, size: NSSize(width: 360, height: 760))
+            case "leetcode-draft", "leetcode-draft-ready":
+                DesignGallery.show(LeetCodeSolveDraftCard(title: "Longest Substring Without Repeating Characters",
+                    minutes: name == "leetcode-draft-ready" ? 18 : nil,
+                    previewConfidence: name == "leetcode-draft-ready" ? .solid : nil,
+                    confirm: { _, _ in }, dismiss: {}).padding(20),
+                    name: name, dark: dark, size: NSSize(width: 380, height: 470))
             case "adderall-day":
                 DesignGallery.show(ScrollView { AdderallDayView(store: health, preview: true).padding(16) },
                                    name: name, dark: dark, size: NSSize(width: 380, height: 1000))

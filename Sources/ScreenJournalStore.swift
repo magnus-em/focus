@@ -14,6 +14,7 @@ final class ScreenJournalStore: ObservableObject {
     private var retentionTimer: Timer?
     var token: Int { worker.token }
     var onStored: ((ScreenJournal.Row) -> Void)?
+    let didStore = PassthroughSubject<ScreenJournal.Row, Never>()
 
     init(directory: URL? = nil) {
         enabled = UserDefaults.standard.object(forKey: Self.enabledKey) as? Bool ?? true
@@ -37,6 +38,7 @@ final class ScreenJournalStore: ObservableObject {
                 guard stored, enabled, allowed(row.bundle), token == worker.token else { return }
                 lastError = nil
                 onStored?(row)
+                didStore.send(row)
             }
             catch { lastError = "Couldn't save screen text: \(error.localizedDescription)" }
         }

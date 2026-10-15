@@ -21,10 +21,11 @@ class ProblemStore: ObservableObject {
         problems = stored.map { $0.asValue }
     }
 
-    func add(_ entry: ProblemEntry) {
+    @discardableResult
+    func add(_ entry: ProblemEntry) -> Bool {
         context.insert(StoredProblem(value: entry))
-        try? context.save()
-        refresh()
+        do { try context.save(); refresh(); return true }
+        catch { context.rollback(); refresh(); return false }
     }
 
     func clearAll() {
