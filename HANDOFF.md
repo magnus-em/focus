@@ -2,7 +2,7 @@
 
 Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-10-14 (Claude Code and Codex both active).
+Last touched: 2026-10-15 afternoon (Claude; Codex stopped at its usage reserve).
 
 Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 
@@ -10,14 +10,12 @@ Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 
 - Daily-first Adderall view, editable actual Taken at timestamps and first-dose morning clock implemented. Isolated CloudKit-disabled HealthStore checks pass (daily mg, prior/future exclusion, edit/reload/delete, later dose preserves first anchor); whole app typecheck passed. Signed Mac deploy at a207e61 succeeded (373 focus sessions before/after). Hidden light/dark design review passed: daily91/92, Health88/89, timer89/90. First-dose populated clock was visually checked in synthetic daily view; actual timer had no dose logged. No dose or time entered on the user's behalf.
 
-## Coach build — 10/15
+## Coach — 10/15 (installed a1dd684)
 
-- User approved all-time full-text local journal, then supplied xAI key via Claude; current build is in-app Grok understanding, not the superseded nightly Claude-only proposal. Claude owns xAI client/recall/day model; Codex journal + segmenter first, then episode worker. See mailbox #77–82 and updated coach plan.
-- Journal/segmenter/note-title fix and Chrome privacy reports implemented; core tests + app snapshot typecheck pass. Chrome extension reload and live window privacy verification still needed. Foundation0876a85 reviewed; Claude's Chrome title/audio and OCR-column findings are corrected. Core118 tests passed. User directly approved new observations and queued previews to xAI/Grok on 2026-10-15 with the shared $5 budget, resolving the earlier delegated-approval block. Episode worker live by default, opt-in local preview via coachEpisodesDryRun. Course/Admin prompt context is added. Code review and clean-main deployment remain with Claude. Journal format contract is in CLAUDE.md and mailbox #78; read DATE*.jsonl per file, preserve original intervals, skip incognito/unknown and all image-only entries without an eligible journal row. `end` is nominal capture coverage (15s); clip to next observation/cutoff, never fill gaps.
-
-## LeetCode confirmation drafts — 10/15
-
-- Candidate detector + confidence/help confirmation card implemented;123 core tests and app typecheck pass. No real solve was logged for tests. New hidden galleries: leetcode-draft / leetcode-draft-ready. UI review/clean install pending. Claude owns day worker; before any QA deploy, automatic uploads must remain off across both workers while direct user scope choice is pending (the new CoachDayWorker currently auto-generates after90s). Do not route around the upload rejection through a day job.
+- Live: screen-text journal (all time), per-screenshot observations to grok-4.3 with grok-4.7 for diagrams/low confidence (user approved new + queued in Codex's chat), day records (grok-4.7 low; 10/09–10/14 back-filled, 10/15 partial, replaced tomorrow), morning recall with study-only cues, digest, 3 questions + "how sure?" + exam debrief, Ask the coach (`focus://coach`), where-was-I line in the popover, LeetCode solve drafts (Codex; hidden QA passed after its picker crash fix). Everything cloud is behind Settings → Coach (on, $5/day). Spend 10/15 by 1 PM ≈ $0.80.
+- User to do: reload the Chrome extension (until then every Chrome row is privacy-unknown and excluded from the cloud); rotate the xAI key (it was pasted in chat); answer the MATH 244 midterm debrief tomorrow morning.
+- Not exercised end to end: Ask the coach (built, compiled, not clicked), the morning flow with a real record (gallery only), where-was-I with real data (shows only 20+ min after leaving a subject).
+- Next (COACH.md ranking): exam coverage → next action, misconception notebook, weekly adjustment.
 
 ## Notes
 
