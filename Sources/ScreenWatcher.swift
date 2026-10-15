@@ -25,6 +25,7 @@ struct ScreenSpan: Codable, Equatable, Identifiable {
     var source: String?
     var reason: String?
     var uncertain: Bool?
+    var testMode: Bool? = nil
     var id: Date { start }
 }
 
@@ -243,6 +244,7 @@ final class ScreenWatcher: ObservableObject {
         var actual: String?
         var at: Date
         var disposition: String? = nil
+        var testMode: Bool? = nil
     }
     @Published private(set) var checks: [BlockCheck] = {
         let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -258,9 +260,16 @@ final class ScreenWatcher: ObservableObject {
         checks.last { min($0.end, a.end) > max($0.start, a.start) }
     }
 
+    private static func checkMode(_ activity: ScreenActivity) -> Bool? {
+        let modes = activity.spans.map(\.testMode)
+        guard !modes.isEmpty, let first = modes.first!, modes.allSatisfy({ $0 == first }) else { return nil }
+        return first
+    }
+
     func setCheck(_ a: ScreenActivity, right: Bool, actual: String? = nil) {
         checks.removeAll { min($0.end, a.end) > max($0.start, a.start) }
-        checks.append(BlockCheck(start: a.start, end: a.end, said: a.category, right: right, actual: actual, at: Date()))
+        checks.append(BlockCheck(start: a.start, end: a.end, said: a.category, right: right, actual: actual, at: Date(),
+                                 testMode: Self.checkMode(a)))
         checks.removeAll { $0.end < Date().addingTimeInterval(-60 * 86400) }
         if let data = try? JSONEncoder().encode(checks) { try? data.write(to: checksURL, options: .atomic) }
         let label = right ? a.category : actual
@@ -454,8 +463,9 @@ final class ScreenWatcher: ObservableObject {
         if samples.count > 240 { samples.removeFirst(samples.count - 240) }
 
         let end = s.date.addingTimeInterval(Self.interval)
+        let testMode = settings?.screenEverySwitch ?? false
         if var last = spans.last, last.bundleID == s.bundleID, last.title == s.title, last.category == s.category,
-           (last.uncertain ?? false) == s.uncertain,
+           (last.uncertain ?? false) == s.uncertain, last.testMode == testMode,
            s.date.timeIntervalSince(last.end) < Self.interval {
             last.end = end
             last.summary = s.summary
@@ -468,7 +478,7 @@ final class ScreenWatcher: ObservableObject {
             if let last = spans.last, last.end > s.date { spans[spans.count - 1].end = s.date }
             spans.append(ScreenSpan(start: s.date, end: end, app: s.app, bundleID: s.bundleID,
                                     title: s.title, summary: s.summary, category: s.category, active: s.active,
-                                    source: s.source, reason: s.reason, uncertain: s.uncertain))
+                                    source: s.source, reason: s.reason, uncertain: s.uncertain, testMode: testMode))
         }
         unsavedSamples += 1
         if unsavedSamples >= 4 { save() }
@@ -1507,6 +1517,7 @@ enum PromptLog {
         var pages: [Page]?
         /// Set on the follow-up line for the same id.
         var answer: String?
+        var testMode: Bool? = nil
     }
 
     static let url: URL = {
@@ -1529,7 +1540,8 @@ enum PromptLog {
                 Snapshot(at: $0.date, app: $0.app, title: $0.title, summary: $0.summary, category: $0.category,
                          active: $0.active, reason: $0.reason, uncertain: $0.uncertain)
             },
-            pages: pages.suffix(12).map { Page(at: $0.date, window: $0.window, text: String($0.text.prefix(1500))) }
+            pages: pages.suffix(12).map { Page(at: $0.date, window: $0.window, text: String($0.text.prefix(1500))) },
+            testMode: UserDefaults.standard.bool(forKey: "screenEverySwitch")
         ))
         return id
     }
@@ -1546,6 +1558,22 @@ enum PromptLog {
         }
         return cards.values.sorted { $0.at > $1.at }.map {
             ($0.at, $0.card ?? "", $0.subtitle ?? "", $0.reason ?? "", answers[$0.id])
+        }
+    }
+
+    static func scorecardCards(since date: Date) -> [TrustScorecard.Card] {
+        guard let raw = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var shown: [UUID: Line] = [:], answers: [UUID: String] = [:]
+        for row in raw.split(separator: "\n") {
+            guard let line = try? decoder.decode(Line.self, from: Data(row.utf8)) else { continue }
+            if let answer = line.answer { answers[line.id] = answer }
+            else if line.at >= date, ["screen", "auto-switch"].contains(line.reason ?? "") { shown[line.id] = line }
+        }
+        return shown.values.map {
+            .init(shown: $0.at, since: $0.since, answer: answers[$0.id], automatic: $0.reason == "auto-switch",
+                  mode: $0.testMode.map { $0 ? .test : .normal } ?? .unknown)
         }
     }
 

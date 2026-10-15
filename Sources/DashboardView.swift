@@ -574,6 +574,7 @@ struct DashboardView: View {
             Text("Check the evidence, correct a category, or leave an uncertain stretch for later.")
                 .font(.system(size: 14)).foregroundStyle(Color.secondaryText)
         }
+        TrustScorecardView(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
         ScreenReviewSection(
             watcher: screenWatcher, day: selectedDay, sessions: reviewSessions,
             runningStart: liveState.snapshot.isActive ? liveState.snapshot.runningStart : nil,

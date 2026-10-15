@@ -102,3 +102,9 @@ User-approved scope: local screenshot evidence for review, clearer corrections, 
 - Siri totals use calendar-day clipping, accumulated active seconds and explicit break state; paused totals stay frozen. Background app initialization registers the live engine and starts CloudSyncMonitor before container creation.
 - Health Settings reports last successful check, result and errors, with Check now. Query/save errors propagate and pending inserts roll back. Coverage fetch includes older long sessions so imported Health time only fills actual gaps.
 - Initial hidden-display design review: learned labels 94/94, morning correction 88/85, switch card 83/83 (light/dark). Fixed faint keyboard hints, distinguished Skip review/Skip stretch, and gave morning category names primary-text contrast with category dots. 63 FocusCore tests pass. Signed iOS build and iPad install at5e01162 succeeded; iPhone unavailable. Claude owns latest-main Mac deploy and second hidden screenshot check. Real Health/Siri checks remain user-driven; no claim of functional authorization/import verification. User flagged the long run; stop additional feature/review work and hand off outstanding visual check to Claude.
+
+## Overnight trust scorecard — 2026-10-14 (Codex)
+
+- Added read-only seven-day scorecard in Dashboard → Review: checked accuracy with sample count, unambiguous interval-weighted tracking agreement, card outcomes, observed-evidence detection delay and auto-switch Undo rate. Existing card-ledger copy no longer calls accepted suggestions correct labels.
+- New spans/checks/prompts record test mode; old and unmarked device data remains Earlier data, never inferred from current settings. No timer or history mutations.
+- Regression cases cover mode separation, ambiguity/clipping/deduplication, pending/unanswered outcomes and auto-switch Undo denominators. Mac is locked; screenshots deferred until unlocked.

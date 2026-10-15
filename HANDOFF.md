@@ -17,6 +17,11 @@ Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 - (Claude, 10/14) `project.yml` now has a `VirtualDisplay` framework target: build.sh's provisioning-profile step (xcodebuild, runs when `/tmp/FocusDerivedData` is missing or `Focus.entitlements` is newer) had been failing since the virtual display landed.
 - (Claude, 10/14) Live Activity now defaults to focus blocks only (iPhone Settings → Live Activity), with a small Apple Watch layout; it had been on the watch face all day because something is always tracked.
 
+## Overnight 10/14 → 10/15
+
+- Codex owns trust scorecard (#9), then next block (#6); Claude owns text log fixes (#7) and possible off-task (#11). No sync/engine edits. Plan: `agent-bus-state/planning/overnight-10-15.md`.
+- Scorecard implemented; pure tests pass. Code review requested from Claude; Mac locked, so hidden light/dark screenshots deferred until unlocked. Keep test mode on and keep old unmarked data separate.
+
 ## State
 
 - Codex morning correction pass was signed/deployed at 7fb52b0; hidden QA caught its loader attached to an empty conditional Group. The loader now has a mounted VStack; synthetic light/dark QA needs repeating before calling the feature visually verified. Atomic Undo's isolated CloudKit-disabled checks passed.

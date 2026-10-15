@@ -236,6 +236,9 @@ struct FocusApp: App {
                 DesignGallery.show(CommitmentView(settings: appSettings, dayStore: days, store: store, timer: timer,
                                                   isShowing: .constant(true), previewMorningReview: true),
                                    name: name, dark: dark, size: NSSize(width: 360, height: 850))
+            case "trust-scorecard":
+                DesignGallery.show(ScrollView { TrustScorecardView(watcher: ScreenWatcher.shared, day: Date(), sessions: [], preview: true).padding(16) },
+                                   name: name, dark: dark, size: NSSize(width: 620, height: 690))
             case "learned-labels":
                 DesignGallery.show(ScrollView { LearnedLabelReviewView(preview: true).padding(16) },
                                    name: name, dark: dark, size: NSSize(width: 360, height: 650))

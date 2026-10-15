@@ -1438,7 +1438,7 @@ struct ScreenReviewSection: View {
             if cards.isEmpty {
                 Text("No cards in the last 7 days.").font(.system(size: 13)).foregroundStyle(Color.secondaryText)
             } else {
-                Text("\(right) of \(answered.count) answered cards were right (you switched). \(cards.count - answered.count) ignored.")
+                Text("\(right) switched out of \(answered.count) answered cards. \(cards.count - answered.count) ignored.")
                     .font(.system(size: 12)).foregroundStyle(Color.secondaryText).padding(.bottom, 6)
             }
             ForEach(Array(cards.prefix(12).enumerated()), id: \.offset) { _, c in
