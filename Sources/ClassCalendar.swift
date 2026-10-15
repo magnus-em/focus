@@ -21,6 +21,8 @@ final class ClassCalendar: ObservableObject {
     }
     /// Exams, midterms and finals in the next 30 days.
     @Published private(set) var exams: [Exam] = []
+    /// Course number → subject letters from class events ("3231" → "CPSC").
+    private(set) var coursePrefixes: [String: String] = [:]
     private let store = EKEventStore()
     private var today: [EKEvent] = []
     private var loadedAt = Date.distantPast
@@ -75,6 +77,7 @@ final class ClassCalendar: ObservableObject {
                 prefixes[number] = letters
             }
         }
+        coursePrefixes = prefixes
         exams = ahead.compactMap { e in
             let title = e.title ?? ""
             // "PSET 5 — start after exam" mentions an exam; it isn't one.

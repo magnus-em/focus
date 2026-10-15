@@ -342,11 +342,15 @@ struct YesterdayRecallView: View {
     @ObservedObject var recall: RecallStore
     @ObservedObject var store: SessionStore
     let journalShortcut: String
+    let focusCategories: Set<String>
+    let coursePrefixes: [String: String]
     let onFillGaps: () -> Void
     let onDone: () -> Void
 
     @State private var text = ""
     @State private var revealed = false
+    @State private var recallBlocks: [StudyRecall.Block] = []
+    @State private var groups: [StudyRecall.Group] = []
     @State private var journalStatus: String?
     @StateObject private var dictation = Dictation()
     @ObservedObject private var screen = ScreenWatcher.shared
@@ -357,26 +361,51 @@ struct YesterdayRecallView: View {
     private var dayEnd: Date { Calendar.current.date(byAdding: .day, value: 1, to: day)! }
     private var weekday: String { day.formatted(.dateTime.weekday(.wide)) }
 
-    /// Yesterday's activity-log blocks that got notes, in order.
-    private var loggedBlocks: [(activity: ScreenActivity, notes: ScreenWatcher.ActivityNotes)] {
-        screen.activities(from: day, to: dayEnd).compactMap { a in screen.notes(for: a).map { (a, $0) } }
+    /// Read once: the watcher publishes on every snapshot.
+    private func load() {
+        let sessions = blocks
+        recallBlocks = screen.activities(from: day, to: dayEnd).map { a in
+            let n = screen.notes(for: a)
+            return StudyRecall.Block(
+                start: a.start, end: a.end, screenCategory: a.category,
+                trackedCategory: tracked(from: a.start, to: a.end, in: sessions),
+                title: n.map { StudyRecall.displayTitle($0.title, fallback: a.topTitle) } ?? a.topTitle,
+                bullets: n?.bullets ?? [], windowTitles: a.distinctTitles)
+        }
+        groups = StudyRecall.groups(recallBlocks, focus: focusCategories, coursePrefixes: coursePrefixes)
     }
 
-    /// Titles only, as cues: the bullets would give the answers away.
+    /// The tracked label covering most of a stretch.
+    private func tracked(from start: Date, to end: Date, in sessions: [WorkSession]) -> String? {
+        var overlap: [String: TimeInterval] = [:]
+        for s in sessions {
+            let o = min(end, s.startTime.addingTimeInterval(s.durationMinutes * 60)).timeIntervalSince(max(start, s.startTime))
+            if o > 0 { overlap[s.type != .work ? "Break" : (s.label ?? "Focus"), default: 0] += o }
+        }
+        return overlap.max { $0.value < $1.value }?.key
+    }
+
+    /// Subjects and topics only, as cues: the bullets would give the answers away.
     private var cueList: some View {
-        let cues = loggedBlocks.sorted { $0.activity.minutes > $1.activity.minutes }.prefix(8)
-            .sorted { $0.activity.start < $1.activity.start }
-        return VStack(alignment: .leading, spacing: 3) {
-            Text("FROM YOUR SCREEN LOG")
+        VStack(alignment: .leading, spacing: 5) {
+            Text("FROM YOUR STUDY LOG")
                 .font(.system(size: 8.5, weight: .semibold))
                 .tracking(1)
                 .foregroundStyle(.secondary)
-            ForEach(Array(cues.enumerated()), id: \.offset) { _, c in
-                HStack(spacing: 6) {
-                    Circle().fill(c.activity.category.map(categoryColor) ?? .secondary).frame(width: 5, height: 5)
-                    Text(c.notes.title).font(.system(size: 11)).lineLimit(1)
+            ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
+                HStack(alignment: .top, spacing: 6) {
+                    Circle().fill(categoryColor(g.category)).frame(width: 5, height: 5).padding(.top, 5)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(g.label).font(.system(size: 11, weight: .semibold))
+                        if !g.topics.isEmpty {
+                            Text(g.topics.joined(separator: ", "))
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
                     Spacer()
-                    Text(minutesLabel(c.activity.minutes))
+                    Text(minutesLabel(g.minutes))
                         .font(.system(size: 10).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -397,6 +426,7 @@ struct YesterdayRecallView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.regularMaterial)
+        .onAppear(perform: load)
     }
 
     private var writeStage: some View {
@@ -407,7 +437,7 @@ struct YesterdayRecallView: View {
                 .padding(.top, 18)
             Text("What did you learn \(weekday)?")
                 .font(.system(size: 17, weight: .semibold, design: .serif))
-            Text(loggedBlocks.isEmpty
+            Text(groups.isEmpty
                  ? "From memory, before you look: what you worked on, what clicked, what's still fuzzy, what stood out. Talk it through or type."
                  : "For each of these, say what you learned: the ideas, what clicked, what's still fuzzy. The notes come after.")
                 .font(.system(size: 11.5))
@@ -419,7 +449,7 @@ struct YesterdayRecallView: View {
                     .foregroundStyle(.indigo)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if !loggedBlocks.isEmpty { cueList }
+            if !groups.isEmpty { cueList }
             TextEditor(text: $text)
                 .font(.system(size: 12))
                 .scrollContentBackground(.hidden)
@@ -536,29 +566,34 @@ struct YesterdayRecallView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    if !loggedBlocks.isEmpty {
-                        Text("WHAT THE SCREEN LOG NOTED")
+                    if !groups.isEmpty {
+                        Text("WHAT YOU STUDIED")
                             .font(.system(size: 8.5, weight: .semibold))
                             .tracking(1)
                             .foregroundStyle(.secondary)
-                        ForEach(Array(loggedBlocks.enumerated()), id: \.offset) { _, b in
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(b.activity.start.formatted(date: .omitted, time: .shortened))
-                                        .font(.system(size: 10).monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                    Circle().fill(b.activity.category.map(categoryColor) ?? .secondary).frame(width: 6, height: 6)
-                                    Text(b.notes.title).font(.system(size: 11.5, weight: .semibold)).lineLimit(1)
-                                    Spacer()
-                                    Text(minutesLabel(b.activity.minutes))
-                                        .font(.system(size: 10).monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                }
-                                ForEach(Array(b.notes.bullets.enumerated()), id: \.offset) { _, line in
-                                    Text("• \(line)")
-                                        .font(.system(size: 10.5))
-                                        .foregroundStyle(.primary.opacity(0.8))
-                                        .fixedSize(horizontal: false, vertical: true)
+                        ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
+                            Text("\(g.label) · \(minutesLabel(g.minutes))")
+                                .font(.system(size: 11.5, weight: .bold))
+                                .padding(.top, 2)
+                            ForEach(g.blocks.filter { recallBlocks[$0].minutes >= 1 || !recallBlocks[$0].bullets.isEmpty }, id: \.self) { i in
+                                let b = recallBlocks[i]
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(b.start.formatted(date: .omitted, time: .shortened))
+                                            .font(.system(size: 10).monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                        Text(b.title).font(.system(size: 11.5, weight: .semibold)).lineLimit(1)
+                                        Spacer()
+                                        Text(minutesLabel(b.minutes))
+                                            .font(.system(size: 10).monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    ForEach(Array(b.bullets.enumerated()), id: \.offset) { _, line in
+                                        Text("• \(line)")
+                                            .font(.system(size: 10.5))
+                                            .foregroundStyle(.primary.opacity(0.8))
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
                                 }
                             }
                         }

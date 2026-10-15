@@ -561,6 +561,8 @@ struct PopoverContent: View {
                     recall: recallStore,
                     store: sessionStore,
                     journalShortcut: settings.journalShortcut,
+                    focusCategories: Set(settings.tags).subtracting(settings.lifeTags),
+                    coursePrefixes: ClassCalendar.shared.coursePrefixes,
                     onFillGaps: {
                         showYesterdayRecall = false
                         showDayReview = true
