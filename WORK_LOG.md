@@ -1,5 +1,12 @@
 # Focus implementation work log
 
+## Siri daily totals and Health check status — 2026-10-14
+
+- Siri totals reuse shared day clipping for saved and live work; live duration comes from Claude's fresh activeElapsedSeconds accessor. Break phase is excluded even with a sticky focus label; paused time stays frozen, and the dialog calls it paused. App initialization sets liveEngine for background intents. Invalid/future live time is ignored; saved fetch errors now fail the intent instead of reporting an empty day.
+- Four new pure-total regression cases cover midnight, frozen paused input, break/life exclusion, overnight saved work, and invalid/future live input. All 62 core tests pass.
+- Apple Health settings show last successful check, outcome/error, and Check now. Import errors no longer masquerade as empty data; pending inserts roll back on failure and concurrent imports are suppressed. Empty readable results do not assert that permission was denied or granted.
+- Signed iOS build/install and real-device checks remain pending. No Health samples or live sessions are fabricated for tests; all SwiftData integration checks use explicit in-memory CloudKit-disabled containers.
+
 ## Reading definition and time-integrity review — 2026-10-14
 
 - Reading is now educational long-form material. Updated the local model hints and deterministic checks; obvious news/feeds/shopping/forums become Leisure for model proposals, errands Admin. Contradictory old learned/held Reading labels are rejected as uncertain rather than blindly trusted. Casual curiosity alone does not establish Reading. Saved/manual blocks, user checks and learned-label storage are unchanged.
@@ -89,3 +96,9 @@ User-approved scope: local screenshot evidence for review, clearer corrections, 
 - Official Apple references: WWDC25 “Build a SwiftUI app with the new design” and “Applying Liquid Glass to custom views”. Use public glass/glassProminent, GlassEffectContainer, glassEffectID, matched geometry, symbol replacement; Reduce Motion disables custom transitions. No private Health/Maps UI dependency.
 - Today totals use cached saved sessions plus live elapsed work, exclude configured life categories/breaks, clip at calendar-day boundaries, and refresh on store/category/midnight changes. 29 tests pass, including aggregation/live/life exclusion and midnight/future clipping.
 - Isolated signed build and deployment passed, preserving 349 sessions. Round 1 review found inactive glass-control contrast; active control state fixed dark mode (90/100). Round 2 light score 84/100 prompted explicit primary foreground on the playback button. Three independent design rounds completed: dark 90/100; light 84/100 still had white prominent text because button style overrode the outer modifier. Final correction sets explicit appearance-dependent color directly on the label. Final signed release deployed successfully with 350 sessions preserved before/after. Root verified the direct-label contrast fix in light mode; final screenshots are `.shots/quick-panel-release`, expanded checks `.shots/quick-panel-final`. No further design rounds or feature work. Concurrent Claude site-blocking commit is included in the final isolated build; only Quick Panel files are committed by Codex.
+
+## Siri, Health, and review contrast — 2026-10-14 (Codex)
+
+- Siri totals use calendar-day clipping, accumulated active seconds and explicit break state; paused totals stay frozen. Background app initialization registers the live engine and starts CloudSyncMonitor before container creation.
+- Health Settings reports last successful check, result and errors, with Check now. Query/save errors propagate and pending inserts roll back. Coverage fetch includes older long sessions so imported Health time only fills actual gaps.
+- Initial hidden-display design review: learned labels 94/94, morning correction 88/85, switch card 83/83 (light/dark). Fixed faint keyboard hints, distinguished Skip review/Skip stretch, and gave morning category names primary-text contrast with category dots. 63 FocusCore tests pass. Second visual check and signed installs pending.

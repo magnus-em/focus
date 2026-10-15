@@ -4,7 +4,7 @@ import FocusCore
 
 @main
 struct FocusPadApp: App {
-    /// Shared with App Intents, which can run with no UI (and no engine).
+    /// Shared with App Intents, including background launches with no UI.
     static let sharedContainer: ModelContainer = {
         let useCloud = UserDefaults.standard.object(forKey: "cloudKitSyncEnabled") as? Bool ?? true
         do {
@@ -22,6 +22,7 @@ struct FocusPadApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        CloudSyncMonitor.shared.start()
         let c = Self.sharedContainer
         self.container = c
         FocusShortcuts.updateAppShortcutParameters()
@@ -45,6 +46,7 @@ struct FocusPadApp: App {
         _settings = StateObject(wrappedValue: s)
         let e = FocusTimerEngine(container: c, settings: s.engineSettings)
         _engine = StateObject(wrappedValue: e)
+        Self.liveEngine = e
         // Set up here, not in onAppear, so a background CloudKit wake (Mac
         // switched) updates the Lock Screen too.
         FocusLiveActivity.follow(e)

@@ -377,7 +377,7 @@ struct AwayPromptView: View {
             if let accept = model.acceptTitle {
                 Text("⌃⌥⌘↩ \(accept)  ·  ⌃⌥⌘⌫ \(model.keep ?? "Dismiss")")
                     .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Color.secondaryText)
             }
         }
         .padding(14)

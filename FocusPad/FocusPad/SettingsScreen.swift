@@ -21,6 +21,11 @@ struct SettingsScreen: View {
     @State private var manualLabel: String = ""
     @State private var manualLogged = false
     @State private var dedupResult: String = ""
+    @AppStorage(HealthImport.lastSuccessKey) private var healthLastSuccess: Double = 0
+    @AppStorage(HealthImport.lastAttemptKey) private var healthLastAttempt: Double = 0
+    @AppStorage(HealthImport.lastResultKey) private var healthLastResult = ""
+    @AppStorage(HealthImport.lastErrorKey) private var healthLastError = ""
+    @State private var checkingHealth = false
 
     var body: some View {
         Form {
@@ -207,6 +212,30 @@ struct SettingsScreen: View {
                 ))
                 Text("Nights of sleep (3h+) and workouts (10 min+) fill time you didn't track. Nothing you tracked is changed.")
                     .font(.caption).foregroundStyle(.secondary)
+                if healthLastSuccess > 0 {
+                    LabeledContent("Last successful check", value: Date(timeIntervalSince1970: healthLastSuccess).formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("No successful Health check yet.").font(.caption).foregroundStyle(.secondary)
+                }
+                if !healthLastError.isEmpty {
+                    Text("Couldn't import: \(healthLastError)").font(.caption).foregroundStyle(.orange)
+                    if healthLastAttempt > 0 {
+                        Text("Last attempted \(Date(timeIntervalSince1970: healthLastAttempt).formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } else if !healthLastResult.isEmpty {
+                    Text(healthLastResult).font(.caption).foregroundStyle(.secondary)
+                }
+                Button(checkingHealth ? "Checking Health…" : "Check now") {
+                    Task {
+                        checkingHealth = true
+                        defer { checkingHealth = false }
+                        await HealthImport.run(container: FocusPadApp.sharedContainer, tags: settings.tags,
+                                               runningSince: engine.isActive ? engine.sessionStartTime : nil, force: true)
+                    }
+                }
+                .disabled(checkingHealth || !HealthImport.enabled)
             }
 
             Section("Activity Log on the Mac") {

@@ -41,13 +41,13 @@ struct MorningCorrectionView: View {
                     HStack(alignment: .firstTextBaseline) {
                         Text("A quick look at yesterday").font(.system(size: 15, weight: .semibold))
                         Spacer(minLength: 4)
-                        Button("Skip") { skipToday() }
+                        Button("Skip review") { skipToday() }
                             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                             .frame(minHeight: 36)
                             .buttonStyle(.plain).help("Leave yesterday as it is and continue with your commitment")
                     }
                     if let candidate = queue.first {
-                        Text("\(reviewedCount + 1) of \(startingCount) · largest stretches first")
+                        Text("\(reviewedCount + 1) of \(startingCount)" + (startingCount > 1 ? " · largest stretches first" : ""))
                             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                         card(candidate)
                     } else {
@@ -111,7 +111,7 @@ struct MorningCorrectionView: View {
                     }
                     .help("Keep the time as tracked and mark this stretch as mixed, without teaching a label")
                     Button { finish(candidate, disposition: "skip", message: "Skipped; time kept", undo: nil) } label: {
-                        Text("Skip").frame(maxWidth: .infinity, minHeight: 36)
+                        Text("Skip stretch").frame(maxWidth: .infinity, minHeight: 36)
                     }
                     .help("Leave this stretch unchanged and move on")
                 }
@@ -127,9 +127,14 @@ struct MorningCorrectionView: View {
     private func comparison(_ caption: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(caption).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-            Text(label).font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(settings.tags.contains(label) ? categoryColor(label) : Color.primary)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if settings.tags.contains(label) {
+                    Circle().fill(categoryColor(label)).frame(width: 7, height: 7)
+                }
+                Text(label).font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

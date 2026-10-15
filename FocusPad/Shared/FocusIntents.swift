@@ -123,21 +123,19 @@ struct FocusTodayIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let context = ModelContext(FocusPadApp.sharedContainer)
-        let day = Calendar.current.startOfDay(for: Date())
-        let from = day.addingTimeInterval(-86400)
-        let rows = (try? context.fetch(FetchDescriptor<StoredWorkSession>(predicate: #Predicate { $0.startTime > from }))) ?? []
-        var byLabel: [String: Double] = [:]
-        for r in rows where r.isFocus {
-            let end = r.startTime.addingTimeInterval(r.durationMinutes * 60)
-            let m = max(0, end.timeIntervalSince(max(r.startTime, day))) / 60
-            if m > 0 { byLabel[r.label ?? "Focus", default: 0] += m }
-        }
+        let now = Date()
+        let rows = try context.fetch(FetchDescriptor<StoredWorkSession>(predicate: #Predicate { $0.startTime < now }))
+        var live: DailyFocusTotal.Live?
         var running = ""
         if let e = FocusPadApp.liveEngine, e.isActive, let start = e.sessionStartTime {
-            let m = Date().timeIntervalSince(start) / 60
-            running = " Right now: \(e.currentLabel.isEmpty ? "focus" : e.currentLabel), \(Self.spoken(m))."
-            if !FocusCategories.isLife(e.currentLabel) { byLabel[e.currentLabel.isEmpty ? "Focus" : e.currentLabel, default: 0] += m }
+            let active = e.activeElapsedSeconds
+            let elapsed = active.isFinite ? max(0, min(active, now.timeIntervalSince(start))) : 0
+            let label = e.isOnBreak ? "Break" : e.currentLabel.isEmpty ? "Focus" : e.currentLabel
+            running = " \(e.isRunning ? "Right now" : "Paused"): \(label), \(Self.spoken(elapsed / 60))."
+            live = .init(start: start, activeSeconds: elapsed, label: label, isBreak: e.isOnBreak)
         }
+        let life = Set(UserDefaults.standard.stringArray(forKey: FocusCategories.lifeTagsKey) ?? FocusCategories.defaultLifeTags)
+        let byLabel = DailyFocusTotal.categoryMinutes(saved: rows.map(\.asValue), live: live, on: now, through: now, lifeTags: life)
         let total = byLabel.values.reduce(0, +)
         let goal = Double(UserDefaults.standard.object(forKey: "dailyGoalHours") as? Int ?? 4) * 60
         let top = byLabel.max { $0.value < $1.value }?.key
