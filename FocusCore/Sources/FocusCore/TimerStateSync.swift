@@ -187,8 +187,10 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
         ])
     }
 
-    /// Convenience: clear the state to idle.
-    public func pushIdle() {
+    /// Clear the state to idle. `ended` is the start of the session that just
+    /// ended (kept in `startTime`; idle readers ignore it), so a peer still
+    /// holding an older session can tell where its own one stopped.
+    public func pushIdle(ended: Date? = nil) {
         push { state in
             state.phase = .idle
             state.isRunning = false
@@ -197,7 +199,7 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
             state.totalSeconds = 0
             state.label = ""
             state.breakKindsRaw = []
-            state.startTime = nil
+            state.startTime = ended
         }
     }
 
@@ -283,6 +285,28 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
 /// that was shared shouldn't save it again when it learns it was replaced:
 /// whoever replaced it knew it and already saved it. (Saving it anyway once
 /// logged a stale 2.5h "Productive Leisure" from an iPad asleep since morning.)
+/// Where a session this device holds ends when a peer says it stopped.
+/// Never past the stop, and never past the start of the session the peer
+/// ended if that began later: then ours had already been replaced by a switch
+/// we never heard about (10/14: the iPad saved Class 12:17 through 3:10 while
+/// the iPhone's Class from 12:42 was the one that ran). A gap stays visible
+/// and fillable; an overlap silently counts time twice.
+public enum RemoteStop {
+    public static func end(mine start: Date, stoppedStart: Date?, stoppedAt: Date, now: Date = Date()) -> Date {
+        var end = min(now, stoppedAt)
+        if let theirs = stoppedStart, theirs.timeIntervalSince(start) > 3 { end = min(end, theirs) }
+        return max(end, start)
+    }
+
+    /// Time on the clock between `start` and `end`, capped by the wall-clock
+    /// span: after a relaunch the pause history before it is folded into one
+    /// number, so a backdated cut once saved "start → last relaunch" (10/13:
+    /// a 30-minute Math block over a 22-minute break).
+    public static func duration(elapsed: TimeInterval, start: Date, end: Date) -> TimeInterval {
+        min(elapsed, max(0, end.timeIntervalSince(start)))
+    }
+}
+
 public enum SharedSessionMemory {
     static let key = "focusCore.timerSync.lastSharedStart"
 

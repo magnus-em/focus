@@ -96,3 +96,71 @@ final class DailyFocusCategoryTests: XCTestCase {
         XCTAssertNil(totals["SWE"])
     }
 }
+
+final class TimeIntegrityTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    private func at(_ min: Double) -> Date { t0.addingTimeInterval(min * 60) }
+    private func block(_ label: String?, _ from: Double, _ to: Double) -> WorkSession {
+        WorkSession(startTime: at(from), durationMinutes: to - from, type: label == nil ? .shortBreak : .work, label: label)
+    }
+
+    // 10/14: the iPad saved Class 12:17 → 3:10, the Mac the iPhone's Class 12:42 → 3:10.
+    func testSameCategorySavedTwiceMergesToTheUnion() {
+        let found = TimeIntegrity.overlaps(in: [block("Class", 0, 173.6), block("Class", 25, 173.5)],
+                                           from: at(-60), to: at(300))
+        XCTAssertEqual(found.count, 1)
+        XCTAssertTrue(found[0].sameLabel)
+        XCTAssertEqual(found[0].union.start, at(0))
+        XCTAssertEqual(found[0].union.end, at(173.6))
+    }
+
+    // 10/13: SWE 9:13:47 for 48.8 min and a phantom Leisure from 9:13:57.
+    func testDifferentCategoriesNeedTheUser() {
+        let found = TimeIntegrity.overlaps(in: [block("SWE", 0, 48.8), block("Leisure", 0.17, 55.6)],
+                                           from: at(-60), to: at(300))
+        XCTAssertEqual(found.count, 1)
+        XCTAssertFalse(found[0].sameLabel)
+        XCTAssertEqual(found[0].start, at(0.17))
+        XCTAssertEqual(found[0].end, at(48.8))
+    }
+
+    func testBackToBackAndSecondsOfRoundingArentOverlaps() {
+        let rows = [block("Math", 0, 30), block("Admin", 30, 40), block("SWE", 39.5, 60)]
+        XCTAssertTrue(TimeIntegrity.overlaps(in: rows, from: at(-60), to: at(300)).isEmpty)
+    }
+
+    func testOnlyBlocksTouchingTheWindowAndNewestFirst() {
+        let rows = [block("Math", 0, 30), block(nil, 10, 20), block("SWE", 600, 700), block("AI", 650, 660)]
+        let found = TimeIntegrity.overlaps(in: rows, from: at(-60), to: at(1000))
+        XCTAssertEqual(found.map(\.second.label), ["AI", nil])
+        XCTAssertTrue(TimeIntegrity.overlaps(in: rows, from: at(500), to: at(1000)).count == 1)
+    }
+}
+
+final class RemoteStopTests: XCTestCase {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    private func at(_ min: Double) -> Date { t0.addingTimeInterval(min * 60) }
+
+    // The iPad held Class from 12:17; the Mac stopped the iPhone's Class from 12:42.
+    func testOursEndsWhereTheStoppedSessionBegan() {
+        XCTAssertEqual(RemoteStop.end(mine: at(0), stoppedStart: at(25), stoppedAt: at(173), now: at(174)), at(25))
+    }
+
+    func testSameSessionEndsAtTheStopNotWhenWeHeard() {
+        XCTAssertEqual(RemoteStop.end(mine: at(0), stoppedStart: at(0), stoppedAt: at(60), now: at(240)), at(60))
+    }
+
+    func testOlderPeersWithoutAStartStillCapAtTheStop() {
+        XCTAssertEqual(RemoteStop.end(mine: at(0), stoppedStart: nil, stoppedAt: at(60), now: at(61)), at(60))
+    }
+
+    func testAPeerStoppingAnOlderSessionDoesntCutOurs() {
+        XCTAssertEqual(RemoteStop.end(mine: at(30), stoppedStart: at(0), stoppedAt: at(60), now: at(61)), at(60))
+    }
+
+    // 10/13: after a relaunch, cutting at 00:19:45 saved 30 min (to the relaunch) instead of 9.
+    func testDurationNeverExceedsTheWallClockSpan() {
+        XCTAssertEqual(RemoteStop.duration(elapsed: 30 * 60, start: at(0), end: at(8.9)), 8.9 * 60, accuracy: 0.001)
+        XCTAssertEqual(RemoteStop.duration(elapsed: 5 * 60, start: at(0), end: at(8.9)), 5 * 60)
+    }
+}

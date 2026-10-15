@@ -73,7 +73,12 @@ public final class FocusTimerEngine: ObservableObject {
     private var ticker: AnyCancellable?
     public let stateSync: TimerStateSync
     public let localBroadcast: LocalTimerBroadcast
-    @Published public private(set) var sessionStartTime: Date?
+    @Published public private(set) var sessionStartTime: Date? {
+        didSet { if let s = sessionStartTime { lastSessionStart = s } }
+    }
+    /// The most recent session's start, still known after it ends: sent with
+    /// the idle state so peers know which session was stopped.
+    private var lastSessionStart: Date?
     private var elapsedBeforePause: TimeInterval = 0
     private var lastResumeTime: Date?
     private static let checkpointKey = "focusTimerEngineCheckpoint"
@@ -288,13 +293,13 @@ public final class FocusTimerEngine: ObservableObject {
             totalSeconds: 0,
             label: "",
             breakKindsRaw: [],
-            startTime: Date?.none,
+            startTime: lastSessionStart,
             endTime: Date?.none,
             remainingSeconds: 0,
             timestamp: Date()
         )
         localBroadcast.send(msg)
-        stateSync.pushIdle()
+        stateSync.pushIdle(ended: lastSessionStart)
     }
 
     /// Apply a state message received via the instant local broadcast.
@@ -323,7 +328,7 @@ public final class FocusTimerEngine: ObservableObject {
             // reset. (Triggered by e.g. peer launching and sending a stale
             // idle broadcast, or by a CK row whose authoring device wrongly
             // wiped its state.)
-            savePartialIfActive(reason: "remoteIdleMp")
+            savePartialIfActive(reason: "remoteIdleMp", stoppedStart: msg.startTime, stoppedAt: msg.timestamp)
             ticker?.cancel(); ticker = nil
             isRunning = false
             elapsedBeforePause = 0
@@ -392,7 +397,7 @@ public final class FocusTimerEngine: ObservableObject {
             // arrives from a peer that was *just opened* (and broadcast its
             // own idle state without knowing we were running), the remote
             // never saved our session. Save partial first.
-            savePartialIfActive(reason: "remoteIdleCk")
+            savePartialIfActive(reason: "remoteIdleCk", stoppedStart: state.startTime, stoppedAt: state.updatedAt)
             ticker?.cancel(); ticker = nil
             isRunning = false
             elapsedBeforePause = 0
@@ -458,7 +463,7 @@ public final class FocusTimerEngine: ObservableObject {
     /// Save the current session as ending at `date` (if ≥ 1 min).
     private func closeSegment(at date: Date) {
         guard let start = sessionStartTime else { return }
-        let e = elapsed(until: date)
+        let e = RemoteStop.duration(elapsed: elapsed(until: date), start: start, end: date)
         guard e >= 60 else { return }
         let isWork = phase == .work
         insertSession(WorkSession(
@@ -646,9 +651,18 @@ public final class FocusTimerEngine: ObservableObject {
     /// Called from every code path that resets state due to a *remote*
     /// signal (idle from CK or Multipeer) — without this we silently
     /// throw away the user's accumulated time.
-    private func savePartialIfActive(reason: String) {
+    private func savePartialIfActive(reason: String, stoppedStart: Date? = nil, stoppedAt: Date? = nil) {
         guard let start = sessionStartTime else { return }
-        let elapsed = currentElapsedSeconds
+        // Asleep while a peer replaced our shared session with others: like
+        // closeSegmentIfReplaced, whoever replaced it saved it, and we can't
+        // know where it really ended.
+        if let theirs = stoppedStart, abs(theirs.timeIntervalSince(start)) > 3,
+           knowledgeStale, SharedSessionMemory.wasShared(start) {
+            SyncLog.event("skipStaleSegment", ["start": "\(start)", "stoppedStart": "\(theirs)", "reason": reason])
+            return
+        }
+        let end = RemoteStop.end(mine: start, stoppedStart: stoppedStart, stoppedAt: stoppedAt ?? Date())
+        let elapsed = RemoteStop.duration(elapsed: elapsed(until: end), start: start, end: end)
         guard elapsed >= 60 else {
             SyncLog.event("savePartialSkip", [
                 "reason": reason,
@@ -666,6 +680,8 @@ public final class FocusTimerEngine: ObservableObject {
             "phase": phase.rawValue,
             "label": label ?? "",
             "startTime": start,
+            "end": end,
+            "stoppedStart": SyncLog.opt(stoppedStart),
         ])
         insertSession(WorkSession(
             startTime: start,

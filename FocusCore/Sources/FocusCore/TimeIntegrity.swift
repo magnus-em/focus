@@ -1,0 +1,56 @@
+import Foundation
+
+/// Two saved blocks covering the same stretch: that time counts twice.
+public struct SessionOverlap: Sendable {
+    /// The block that started first.
+    public let first: WorkSession
+    public let second: WorkSession
+    /// The stretch both cover.
+    public let start: Date
+    public let end: Date
+
+    /// Same category (or both breaks): one block saved twice, so merging is
+    /// the obvious fix. Otherwise only the user knows which one it was.
+    public var sameLabel: Bool {
+        first.type.isBreak == second.type.isBreak && (first.type.isBreak || first.label == second.label)
+    }
+
+    /// From the first block's start to the later of the two ends.
+    public var union: (start: Date, end: Date) {
+        (first.startTime, max(TimeIntegrity.end(of: first), TimeIntegrity.end(of: second)))
+    }
+
+    /// Stable across refreshes, for "don't ask again".
+    public var key: String { "\(first.id.uuidString)|\(second.id.uuidString)" }
+}
+
+public enum TimeIntegrity {
+    public static func end(of s: WorkSession) -> Date {
+        s.startTime.addingTimeInterval(s.durationMinutes * 60)
+    }
+
+    /// Overlaps of at least `minSeconds` between saved blocks that touch
+    /// [from, to), newest first. Edges a few seconds apart are rounding, not
+    /// double counting.
+    public static func overlaps(in sessions: [WorkSession], from: Date, to: Date,
+                                minSeconds: TimeInterval = 60) -> [SessionOverlap] {
+        let rows = sessions
+            .filter { $0.durationMinutes > 0 && end(of: $0) > from && $0.startTime < to }
+            .sorted { $0.startTime < $1.startTime }
+        var found: [SessionOverlap] = []
+        for i in rows.indices {
+            let a = rows[i]
+            let aEnd = end(of: a)
+            var j = i + 1
+            while j < rows.count, rows[j].startTime < aEnd {
+                let b = rows[j]
+                let overlapEnd = min(aEnd, end(of: b))
+                if overlapEnd.timeIntervalSince(b.startTime) >= minSeconds {
+                    found.append(SessionOverlap(first: a, second: b, start: b.startTime, end: overlapEnd))
+                }
+                j += 1
+            }
+        }
+        return found.sorted { $0.start > $1.start }
+    }
+}

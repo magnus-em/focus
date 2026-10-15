@@ -5,13 +5,38 @@ import SwiftUI
 
 class SessionStore: ObservableObject {
     @Published var sessions: [WorkSession] = []
+    /// Saved blocks covering the same time in the last week, newest first,
+    /// minus ones the user said to leave. Never repaired without asking.
+    @Published private(set) var overlaps: [SessionOverlap] = []
+    /// Why the last save failed, until one succeeds (10/14: a full disk
+    /// failed saves silently).
+    @Published private(set) var saveError: String?
+    /// Free space on the startup disk when it's under 5 GB.
+    @Published private(set) var lowDiskGB: Double?
 
     private let context: ModelContext
     private var dayChangedObserver: NSObjectProtocol?
+    private var remoteObserver: NSObjectProtocol?
+    private var remoteRefresh: DispatchWorkItem?
+    private var diskCheckedAt = Date.distantPast
+    private static let dismissedOverlapsKey = "dismissedOverlaps"
 
     init(container: ModelContainer) {
         self.context = ModelContext(container)
         refresh()
+
+        // Rows other devices save arrive through the CloudKit mirror without
+        // a local save, so nothing refreshed for them (their overlaps
+        // included) until this Mac saved something itself.
+        remoteObserver = NotificationCenter.default.addObserver(
+            forName: .NSPersistentStoreRemoteChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.remoteRefresh?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.refresh() }
+            self.remoteRefresh = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
+        }
 
         // Force SwiftUI views observing "today" computeds (todayWorkMinutes,
         // todayWorkSessions, todayBreakMinutes, todaySessionCount, etc.) to
@@ -31,6 +56,7 @@ class SessionStore: ObservableObject {
 
     deinit {
         if let o = dayChangedObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = remoteObserver { NotificationCenter.default.removeObserver(o) }
     }
 
     /// Belt-and-suspenders: invoked from the popover's `.onAppear` so that
@@ -48,6 +74,17 @@ class SessionStore: ObservableObject {
         descriptor.includePendingChanges = true
         let stored = (try? context.fetch(descriptor)) ?? []
         sessions = stored.map { $0.asValue }
+        let now = Date()
+        let dismissed = Set(UserDefaults.standard.stringArray(forKey: Self.dismissedOverlapsKey) ?? [])
+        overlaps = TimeIntegrity.overlaps(in: sessions, from: now.addingTimeInterval(-7 * 86400), to: now)
+            .filter { !dismissed.contains($0.key) }
+        if now.timeIntervalSince(diskCheckedAt) > 60 {
+            diskCheckedAt = now
+            let free = (try? URL(fileURLWithPath: NSHomeDirectory())
+                .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+                .volumeAvailableCapacityForImportantUsage
+            lowDiskGB = free.map { Double($0) / 1e9 }.flatMap { $0 < 5 ? $0 : nil }
+        }
     }
 
     func addSession(_ session: WorkSession) {
@@ -72,13 +109,39 @@ class SessionStore: ObservableObject {
             // keep the longer one rather than whichever landed first.
             if session.durationMinutes > dupe.durationMinutes {
                 dupe.durationMinutes = session.durationMinutes
-                try? context.save()
+                save()
                 refresh()
             }
             return
         }
         context.insert(StoredWorkSession(value: session))
-        try? context.save()
+        save()
+        refresh()
+    }
+
+    /// Every save goes through here, so a failure shows in the popover
+    /// instead of vanishing. Pending changes stay for the next try.
+    private func save() {
+        do {
+            try context.save()
+            if saveError != nil { saveError = nil }
+        } catch {
+            saveError = error.localizedDescription
+            SyncLog.event("sessionSaveFailed", ["error": error.localizedDescription])
+        }
+    }
+
+    /// Same category: one block covering both. Otherwise `label` (nil =
+    /// break) takes the stretch both cover. Reversible with `undoReview`.
+    func fixOverlap(_ o: SessionOverlap, label: String?) -> ReviewUndo? {
+        let span: (start: Date, end: Date) = o.sameLabel ? o.union : (o.start, o.end)
+        return paintForReview(start: span.start, end: span.end, label: label)
+    }
+
+    func leaveOverlap(_ o: SessionOverlap) {
+        var keys = UserDefaults.standard.stringArray(forKey: Self.dismissedOverlapsKey) ?? []
+        keys.append(o.key)
+        UserDefaults.standard.set(Array(keys.suffix(200)), forKey: Self.dismissedOverlapsKey)
         refresh()
     }
 
@@ -89,7 +152,7 @@ class SessionStore: ObservableObject {
         descriptor.fetchLimit = 1
         if let model = try? context.fetch(descriptor).first {
             model.label = label
-            try? context.save()
+            save()
             refresh()
         }
     }
@@ -97,7 +160,7 @@ class SessionStore: ObservableObject {
     func delete(id: UUID) {
         let target = id
         try? context.delete(model: StoredWorkSession.self, where: #Predicate { $0.id == target })
-        try? context.save()
+        save()
         refresh()
     }
 
@@ -108,7 +171,7 @@ class SessionStore: ObservableObject {
         descriptor.fetchLimit = 1
         if let model = try? context.fetch(descriptor).first {
             model.breakKinds = kinds.isEmpty ? nil : kinds
-            try? context.save()
+            save()
             refresh()
         }
     }
@@ -235,14 +298,14 @@ class SessionStore: ObservableObject {
                 context.delete(m)
             }
         }
-        try? context.save()
+        save()
         refresh()
         fill(start: start, end: end, label: label)
     }
 
     func clearAllData() {
         try? context.delete(model: StoredWorkSession.self)
-        try? context.save()
+        save()
         refresh()
     }
 

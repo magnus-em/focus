@@ -28,7 +28,12 @@ class TimerManager: ObservableObject {
     }
 
     private var timer: AnyCancellable?
-    private(set) var sessionStartTime: Date?
+    private(set) var sessionStartTime: Date? {
+        didSet { if let s = sessionStartTime { lastSessionStart = s } }
+    }
+    /// The most recent session's start, still known after it ends: sent with
+    /// the idle state so peers know which session was stopped.
+    private var lastSessionStart: Date?
     private var elapsedBeforePause: TimeInterval = 0
     private var lastResumeTime: Date?
     private var settingsSubscriptions = Set<AnyCancellable>()
@@ -262,14 +267,14 @@ class TimerManager: ObservableObject {
                 totalSeconds: 0,
                 label: "",
                 breakKindsRaw: [],
-                startTime: Date?.none,
+                startTime: lastSessionStart,
                 endTime: Date?.none,
                 remainingSeconds: 0,
                 timestamp: Date()
             )
             lb.send(msg)
         }
-        stateSync.pushIdle()
+        stateSync.pushIdle(ended: lastSessionStart)
     }
 
     private func applyRemoteMessage(_ msg: LocalTimerBroadcast.Message) {
@@ -292,7 +297,7 @@ class TimerManager: ObservableObject {
             // Save the in-progress local session before remote idle wipes
             // it. Without this guard, a peer launching and broadcasting
             // its own idle state destroys minutes/hours of our progress.
-            savePartialIfActive(reason: "remoteIdleMp")
+            savePartialIfActive(reason: "remoteIdleMp", stoppedStart: msg.startTime, stoppedAt: msg.timestamp)
             timer?.cancel(); timer = nil
             isRunning = false
             elapsedBeforePause = 0
@@ -358,7 +363,7 @@ class TimerManager: ObservableObject {
             // (Same rationale as applyRemoteMessage's idle branch — a
             // peer that just launched can broadcast an idle that
             // doesn't reflect our actually-running local session.)
-            savePartialIfActive(reason: "remoteIdleCk")
+            savePartialIfActive(reason: "remoteIdleCk", stoppedStart: state.startTime, stoppedAt: state.updatedAt)
             timer?.cancel(); timer = nil
             isRunning = false
             elapsedBeforePause = 0
@@ -414,7 +419,7 @@ class TimerManager: ObservableObject {
     /// timer state alone — callers reset it.
     private func closeSegment(at date: Date, notify: Bool = true) {
         guard let start = sessionStartTime else { return }
-        let e = elapsed(until: date)
+        let e = RemoteStop.duration(elapsed: elapsed(until: date), start: start, end: date)
         guard e >= 60 else { return }
         if currentPhase == .work {
             let session = WorkSession(
@@ -895,9 +900,18 @@ class TimerManager: ObservableObject {
     /// resets engine state in response to a *remote* idle signal (CK or
     /// Multipeer). Without this guard, a peer launching and broadcasting
     /// idle destroys our accumulated time silently.
-    private func savePartialIfActive(reason: String) {
+    private func savePartialIfActive(reason: String, stoppedStart: Date? = nil, stoppedAt: Date? = nil) {
         guard let store = sessionStore, let start = sessionStartTime else { return }
-        let elapsed = currentElapsedSeconds
+        // Asleep while a peer replaced our shared session with others: like
+        // closeSegmentIfReplaced, whoever replaced it saved it, and we can't
+        // know where it really ended.
+        if let theirs = stoppedStart, abs(theirs.timeIntervalSince(start)) > 3,
+           knowledgeStale, SharedSessionMemory.wasShared(start) {
+            SyncLog.event("skipStaleSegment", ["start": "\(start)", "stoppedStart": "\(theirs)", "reason": reason])
+            return
+        }
+        let end = RemoteStop.end(mine: start, stoppedStart: stoppedStart, stoppedAt: stoppedAt ?? Date())
+        let elapsed = RemoteStop.duration(elapsed: elapsed(until: end), start: start, end: end)
         guard elapsed >= 60 else {
             SyncLog.event("savePartialSkip", [
                 "reason": reason,
@@ -912,6 +926,8 @@ class TimerManager: ObservableObject {
             "phase": phaseKey(currentPhase),
             "label": currentLabel,
             "startTime": start,
+            "end": end,
+            "stoppedStart": SyncLog.opt(stoppedStart),
         ])
         if currentPhase == .work {
             store.addSession(WorkSession(

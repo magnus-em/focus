@@ -30,6 +30,7 @@ struct TimerView: View {
     @ObservedObject private var watcher = ScreenWatcher.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var savedFocusTotals: [String: Double] = [:]
+    @State private var fixingOverlap: SessionOverlap?
 
     static let breakBlue = Color(red: 0.27, green: 0.62, blue: 0.83)
 
@@ -303,7 +304,9 @@ struct TimerView: View {
 
     private enum Attention {
         case screen(category: String, since: Date)
+        case storage(String)
         case sync(String)
+        case overlap(SessionOverlap)
         case yesterday(Double)
     }
 
@@ -317,8 +320,11 @@ struct TimerView: View {
            let c = block.category, c != running, now.timeIntervalSince(block.start) >= 60 {
             return .screen(category: c, since: block.start)
         }
+        if store.saveError != nil { return .storage("Couldn't save your log. Is the disk full?") }
+        if let gb = store.lowDiskGB { return .storage(String(format: "Disk almost full: %.1f GB left", gb)) }
         if syncMonitor.health == .failing { return .sync("iCloud sync is failing. See Settings.") }
         if syncMonitor.health == .stale { return .sync("iCloud hasn't synced in 3 days.") }
+        if let o = store.overlaps.first { return .overlap(o) }
         let holes = store.untrackedMinutes(on: store.reviewWindow().from)
         if holes >= 15, Calendar.current.component(.hour, from: now) < 12 { return .yesterday(holes) }
         return nil
@@ -330,14 +336,30 @@ struct TimerView: View {
         case .screen(let c, let since):
             attentionRow(color: categoryColor(c), icon: "eye", text: "Screen shows \(c) since \(clock(since))",
                          action: "Switch") { timer.switchTo(c, at: since) }
+        case .storage(let text):
+            attentionRow(color: .red, icon: "externaldrive.badge.exclamationmark", text: text, action: nil) {}
         case .sync(let text):
             attentionRow(color: .orange, icon: "exclamationmark.icloud", text: text, action: nil) {}
+        case .overlap(let o):
+            attentionRow(color: .orange, icon: "square.on.square", text: overlapText(o), action: "Fix") {
+                fixingOverlap = o
+            }
+            .popover(isPresented: Binding(get: { fixingOverlap != nil }, set: { if !$0 { fixingOverlap = nil } }),
+                     arrowEdge: .bottom) {
+                if let o = fixingOverlap { OverlapFixView(overlap: o, store: store) }
+            }
         case .yesterday(let m):
             attentionRow(color: .orange, icon: "clock.badge.questionmark", text: "Fill in \(hm(m)) from yesterday",
                          action: "Review") { showDayReview = true }
         case nil:
             EmptyView()
         }
+    }
+
+    private func overlapText(_ o: SessionOverlap) -> String {
+        let name = { (s: WorkSession) in s.type.isBreak ? "Break" : (s.label ?? "Focus") }
+        let when = "\(OverlapFixView.day(o.start))\(clock(o.start))–\(clock(o.end))"
+        return o.sameLabel ? "\(name(o.first)) counted twice, \(when)" : "\(name(o.first)) and \(name(o.second)) overlap, \(when)"
     }
 
     private func attentionRow(color: Color, icon: String, text: String, action: String?, perform: @escaping () -> Void) -> some View {
@@ -661,5 +683,77 @@ struct FloatingGlass: ViewModifier {
         } else {
             content.background(Capsule().fill(.regularMaterial)).shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         }
+    }
+}
+
+
+/// Two saved blocks covering the same time. Same category: merge into one.
+/// Different: the user says which it was. Undo restores both as they were.
+struct OverlapFixView: View {
+    let overlap: SessionOverlap
+    @ObservedObject var store: SessionStore
+    @State private var undo: SessionStore.ReviewUndo?
+    @State private var failed = false
+
+    static func day(_ d: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { return "" }
+        if cal.isDateInYesterday(d) { return "yesterday " }
+        return d.formatted(.dateTime.weekday(.abbreviated)) + " "
+    }
+
+    private func clock(_ d: Date) -> String { d.formatted(date: .omitted, time: .shortened) }
+    private func name(_ s: WorkSession) -> String? { s.type.isBreak ? nil : s.label }
+    private func title(_ s: WorkSession) -> String { name(s) ?? "Break" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(overlap.sameLabel ? "Saved twice" : "Two blocks at once").font(.system(size: 14, weight: .semibold))
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach([overlap.first, overlap.second], id: \.id) { s in
+                    HStack(spacing: 6) {
+                        Circle().fill(s.type.isBreak ? TimerView.breakBlue : categoryColor(s.label ?? "")).frame(width: 7, height: 7)
+                        Text("\(title(s))  \(Self.day(s.startTime))\(clock(s.startTime))–\(clock(TimeIntegrity.end(of: s)))")
+                            .font(.system(size: 12).monospacedDigit())
+                    }
+                }
+            }
+            if undo != nil {
+                HStack {
+                    Label("Fixed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    Spacer()
+                    Button("Undo") {
+                        if let u = undo, store.undoReview(u) { undo = nil } else { failed = true }
+                    }
+                }
+                .font(.system(size: 12, weight: .medium))
+            } else if overlap.sameLabel {
+                Text("Merge into one \(title(overlap.first)) block, \(clock(overlap.union.start))–\(clock(overlap.union.end))?")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Merge") { apply(name(overlap.first)) }.keyboardShortcut(.defaultAction)
+                    Button("Leave as is") { store.leaveOverlap(overlap) }
+                }
+            } else {
+                Text("Which was it, \(clock(overlap.start))–\(clock(overlap.end))?")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                HStack {
+                    Button(title(overlap.first)) { apply(name(overlap.first)) }
+                    Button(title(overlap.second)) { apply(name(overlap.second)) }
+                    Button("Leave as is") { store.leaveOverlap(overlap) }
+                }
+            }
+            if failed {
+                Text("Couldn't change it: the log changed since, or saving failed.")
+                    .font(.system(size: 11)).foregroundStyle(.red)
+            }
+        }
+        .padding(14)
+        .frame(width: 300, alignment: .leading)
+    }
+
+    private func apply(_ label: String?) {
+        if let u = store.fixOverlap(overlap, label: label) { undo = u } else { failed = true }
     }
 }
