@@ -116,3 +116,8 @@ User-approved scope: local screenshot evidence for review, clearer corrections, 
 - 76 core tests pass, including new planner priority/date-window/no-invented-target cases. App snapshot typecheck passed with two pre-existing unused-value warnings. Claude's scorecard review found no correctness blocker; applied his performance request (cached score, refresh only appear/date/mode/minute). Mac remains locked; hidden visual verification deferred.
 
 - Final overnight validation: Claude reviewed both Codex features (b5560de/938aff6), approved next block, and installed938aff6 on Mac; installed stamp verified. 76 core tests pass. Codex cancelled a duplicate waiting deploy before the install lock to avoid rebuilding the same commit. Screenshot tool exited4 because the Mac is locked; visual acceptance remains pending for morning. Overnight work stopped with well above the requested10% usage reserve.
+
+## Daily Adderall tracking — 2026-10-15 (Codex)
+
+- User requested daily amounts/times and a clear morning dose clock. Adderall now has daily total, first-dose elapsed/start time, latest dose when multiple, explicit actual Taken at entry, dose-time/type edits, seven-day dose/time history and collapsed weekly trends. Timer line opens the dose screen and anchors to first dose each calendar day; later doses do not restart it.
+- No synthetic/live dose was logged for the user. Isolated in-memory HealthStore (CloudKit .none) passed totals, date boundaries/future exclusion, earlier timestamp/type edits, persistence reload and delete/Undo semantics. Full app typecheck passed with two existing unused-value warnings. Before screenshots: `.shots/adderall-before`; release visual review pending.

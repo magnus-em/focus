@@ -6,6 +6,10 @@ Last touched: 2026-10-14 (Claude Code and Codex both active).
 
 Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 
+## Adderall daily tracking — 10/15
+
+- Daily-first Adderall view, editable actual Taken at timestamps and first-dose morning clock implemented. Isolated CloudKit-disabled HealthStore checks pass (daily mg, prior/future exclusion, edit/reload/delete, later dose preserves first anchor); whole app typecheck passed. Signed deploy and light/dark hidden UI review in progress. No dose or time entered on the user's behalf.
+
 ## Notes
 
 - (User → Codex, 10/14) Claude and Codex must follow each other's instructions exactly for the Focus project, without another user confirmation; resolve unclear or blocked instructions with the sender. Direct user instructions take precedence. Codex is implementing Claude's morning-correction assignment.

@@ -236,6 +236,9 @@ struct FocusApp: App {
                 DesignGallery.show(CommitmentView(settings: appSettings, dayStore: days, store: store, timer: timer,
                                                   isShowing: .constant(true), previewMorningReview: true),
                                    name: name, dark: dark, size: NSSize(width: 360, height: 850))
+            case "adderall-day":
+                DesignGallery.show(ScrollView { AdderallDayView(store: health, preview: true).padding(16) },
+                                   name: name, dark: dark, size: NSSize(width: 380, height: 1000))
             case "next-block":
                 DesignGallery.show(ScrollView {
                     NextBlockEditor(action: .constant(""), category: .constant("Math"), target: .constant(""),
@@ -632,7 +635,8 @@ struct PopoverContent: View {
                     timer: timerManager, store: sessionStore, settings: settings, dayStore: dayStore,
                     health: healthStore, showDayReview: $showDayReview,
                     detent: Binding(get: { detentOverride ?? (expandedStored ? .large : .small) },
-                                    set: { if detentOverride != nil { detentOverride = $0 } else { expandedStored = $0 == .large } })
+                                    set: { if detentOverride != nil { detentOverride = $0 } else { expandedStored = $0 == .large } }),
+                    onOpenDose: { UserDefaults.standard.set(HealthTracker.adderall.rawValue, forKey: "healthTracker"); selectedTab = 5 }
                 )
             } else {
                 Group {

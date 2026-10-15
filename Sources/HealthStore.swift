@@ -66,6 +66,7 @@ struct HealthWeek: Identifiable {
 
 class HealthStore: ObservableObject {
     @Published private(set) var events: [HealthEvent] = []
+    @Published private(set) var saveError: String?
 
     private let context: ModelContext
 
@@ -92,20 +93,53 @@ class HealthStore: ObservableObject {
     }
 
     @discardableResult
-    func log(_ kind: HealthKind, at date: Date = Date()) -> UUID {
+    func log(_ kind: HealthKind, at date: Date = Date()) -> UUID? {
         let model = StoredHealthEvent(date: date, kind: kind.rawValue)
         context.insert(model)
-        try? context.save()
+        guard save() else { return nil }
         refresh()
         return model.id
     }
 
     func delete(id: UUID) {
         let predicate = #Predicate<StoredHealthEvent> { $0.id == id }
-        try? context.delete(model: StoredHealthEvent.self, where: predicate)
-        try? context.save()
-        refresh()
+        do {
+            try context.delete(model: StoredHealthEvent.self, where: predicate)
+            if save() { refresh() }
+        } catch { saveError = error.localizedDescription; context.rollback() }
     }
+
+    @discardableResult
+    func update(id: UUID, kind: HealthKind, at date: Date) -> Bool {
+        let descriptor = FetchDescriptor<StoredHealthEvent>(predicate: #Predicate { $0.id == id })
+        do {
+            guard let model = try context.fetch(descriptor).first else { return false }
+            model.kind = kind.rawValue
+            model.date = date
+            guard save() else { return false }
+            refresh()
+            return true
+        } catch { saveError = error.localizedDescription; context.rollback(); return false }
+    }
+
+    private func save() -> Bool {
+        do {
+            try context.save()
+            saveError = nil
+            return true
+        } catch {
+            context.rollback()
+            saveError = error.localizedDescription
+            return false
+        }
+    }
+
+    func doses(on day: Date, through now: Date = Date()) -> [HealthEvent] {
+        events(.adderall).filter { Calendar.current.isDate($0.date, inSameDayAs: day) && $0.date <= now }
+            .sorted { $0.date < $1.date }
+    }
+
+    func firstDoseToday(now: Date = Date()) -> HealthEvent? { doses(on: now, through: now).first }
 
     // MARK: - Stats
 

@@ -6,7 +6,7 @@ struct HealthView: View {
     @ObservedObject var store: HealthStore
     @ObservedObject var sessionStore: SessionStore
 
-    @AppStorage("healthTracker") private var tracker: HealthTracker = .fap
+    @AppStorage("healthTracker") private var tracker: HealthTracker = .adderall
     @State private var backdateKind: HealthKind = .fap
     @State private var justLogged: UUID?
     @State private var showBackdate = false
@@ -24,11 +24,20 @@ struct HealthView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                logCard
-                statsRow
-                chartCard
-                weeksCard
-                recentCard
+                if tracker == .adderall {
+                    AdderallDayView(store: store)
+                    DisclosureGroup("Weekly trends") {
+                        VStack(spacing: 14) { statsRow; chartCard; weeksCard }
+                            .padding(.top, 12)
+                    }
+                    .font(.system(size: 13, weight: .medium))
+                } else {
+                    logCard
+                    statsRow
+                    chartCard
+                    weeksCard
+                    recentCard
+                }
             }
             .padding(.vertical, 14)
             .padding(.horizontal, 18)

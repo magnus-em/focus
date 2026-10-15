@@ -26,6 +26,7 @@ struct TimerView: View {
     @ObservedObject var health: HealthStore
     @Binding var showDayReview: Bool
     @Binding var detent: Detent
+    var onOpenDose: () -> Void = {}
     @ObservedObject private var syncMonitor = CloudSyncMonitor.shared
     @ObservedObject private var watcher = ScreenWatcher.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -252,18 +253,20 @@ struct TimerView: View {
         .minimumScaleFactor(0.85)
     }
 
-    /// Time since today's Adderall, once it's logged (Health tab), for 16 hours.
     private var doseLine: some View {
         TimelineView(.everyMinute) { ctx in
-            if let dose = health.latestToday(.adderall, now: ctx.date),
-               ctx.date.timeIntervalSince(dose.date) < 16 * 3600 {
-                Label("Adderall \(durationText(minutes: (ctx.date.timeIntervalSince(dose.date) / 60).rounded(.down))) ago",
-                      systemImage: "pills")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .help("\(dose.kind.displayName) at \(dose.date.formatted(date: .omitted, time: .shortened))")
+            Button(action: onOpenDose) {
+                if let dose = health.firstDoseToday(now: ctx.date) {
+                    Label("Adderall · \(durationText(minutes: (ctx.date.timeIntervalSince(dose.date) / 60).rounded(.down))) since \(dose.date.formatted(date: .omitted, time: .shortened))",
+                          systemImage: "pills")
+                        .help("Since your first dose today, \(dose.kind.displayName). Click to log or edit a dose.")
+                } else {
+                    Label("Log morning dose", systemImage: "pills")
+                }
             }
+            .buttonStyle(.plain)
+            .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
