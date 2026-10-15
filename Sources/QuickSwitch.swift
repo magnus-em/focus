@@ -131,6 +131,13 @@ final class QuickSwitch {
         case "switcher": showSwitcher()
         case "recall": openRecall?()
         case "coach": Task { @MainActor in CoachChatWindow.shared.open() }
+        case "coach-day":
+            // focus://coach-day?date=2026-10-15 writes (or rewrites) that day's record now.
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            if let day = param("date").flatMap(f.date(from:)) {
+                Task { @MainActor in CoachDayWorker.shared.ensure(day, force: true) }
+            }
         case "review": openReview?()
         case "gallery":
             Task { @MainActor in

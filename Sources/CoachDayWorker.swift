@@ -63,7 +63,7 @@ final class CoachDayWorker: ObservableObject {
                   let client = Coach.client else { return }
             load(day)
             let key = CoachDay.dayKey(day)
-            guard records[key] == nil, status[key] != .working,
+            guard records[key] == nil || isPartial(day), status[key] != .working,
                   Date().timeIntervalSince(lastAttempt[key] ?? .distantPast) > 3600 else { continue }
             lastAttempt[key] = Date()
             status[key] = .working
@@ -102,12 +102,22 @@ final class CoachDayWorker: ObservableObject {
         if records[key] == nil, let r = CoachDay.load(day, from: Self.directory) { records[key] = r }
     }
 
-    /// Writes the record unless it exists, is being written, failed in the
-    /// last hour, or there's no key.
-    func ensure(_ day: Date) {
+    /// Written before the day was over (on demand), so the full day still needs one.
+    private func isPartial(_ day: Date) -> Bool {
+        guard let r = records[CoachDay.dayKey(day)],
+              let next = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: day))
+        else { return false }
+        return r.generatedAt < next
+    }
+
+    /// Writes the record unless it exists for the whole day, is being written,
+    /// failed in the last hour, or the cloud coach is off.
+    func ensure(_ day: Date, force: Bool = false) {
         load(day)
         let key = CoachDay.dayKey(day)
-        guard records[key] == nil, status[key] != .working,
+        if force { lastAttempt[key] = nil }
+        let over = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: day)).map { Date() >= $0 } ?? false
+        guard records[key] == nil || force || (isPartial(day) && over), status[key] != .working,
               Date().timeIntervalSince(lastAttempt[key] ?? .distantPast) > 3600,
               let client = Coach.client, store != nil else { return }
         lastAttempt[key] = Date()
