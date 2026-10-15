@@ -639,11 +639,11 @@ struct PopoverContent: View {
 
     private var pageSubtitle: String {
         switch selectedTab {
-        case 1: "Your focus time by day and category"
-        case 2: "Problems you've solved and reviews due"
-        case 3: "A quick checklist for whatever's on your mind"
-        case 5: "Habits and doses, next to your focus"
-        default: "Goal, categories, screen, coach and more"
+        case 1: "Focus time by day and category"
+        case 2: "Problems you solved, reviews due"
+        case 3: "A quick checklist"
+        case 5: "Habits and doses you log"
+        default: "Goal, categories, screen, coach"
         }
     }
 
@@ -738,7 +738,7 @@ struct PageBar: View {
                 .frame(height: 20)
             Text(title).font(.system(size: 11, weight: on ? .semibold : .regular))
         }
-        .foregroundStyle(on ? Color.accentColor : Color.secondaryText)
+        .foregroundStyle(on ? Color.primary : Color.secondaryText)
         .frame(maxWidth: .infinity, minHeight: 44)
         .background {
             if on {

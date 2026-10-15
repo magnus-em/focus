@@ -138,10 +138,11 @@ struct TimerView: View {
         let totals = todayFocusByCategory.filter { $0.value > 2 }
         let labels = settings.tags.filter { totals[$0] != nil }
             + totals.keys.filter { !settings.tags.contains($0) }.sorted()
-        if !labels.isEmpty {
+        if labels.count > 1 || possibleDrift >= 1 {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text("Focus today").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                    Text(labels.count > 1 ? "Focus today" : labels.first.map { "Focus today: all \($0)" } ?? "Focus today")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                     Spacer()
                     if possibleDrift >= 1 {
                         Text("\(hm(possibleDrift)) possibly off-task")
@@ -149,7 +150,7 @@ struct TimerView: View {
                             .help("The screen showed Leisure, Reading or Admin during focus blocks. Not taken off your focus time: the screen can be wrong, and work on paper or the iPad doesn't show here.")
                     }
                 }
-                FlowLayout(spacing: 8) {
+                if labels.count > 1 { FlowLayout(spacing: 8) {
                     ForEach(labels, id: \.self) { label in
                         HStack(spacing: 6) {
                             Circle().fill(categoryColor(label)).frame(width: 7, height: 7)
@@ -160,7 +161,7 @@ struct TimerView: View {
                         .background(Capsule().fill(Color.primary.opacity(0.05)))
                         .accessibilityElement(children: .combine)
                     }
-                }
+                } }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -213,7 +214,7 @@ struct TimerView: View {
                 if met {
                     Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(Color.good)
                 } else if settings.dailyGoal > 0 {
-                    Text("of \(settings.dailyGoal)h").font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text("of \(settings.dailyGoal)h goal").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
         }
@@ -410,7 +411,7 @@ struct TimerView: View {
         case .sync(let text):
             attentionRow(color: .orange, icon: "exclamationmark.icloud", text: text, action: nil) {}
         case .overlap(let o):
-            attentionRow(color: .orange, icon: "square.on.square", text: overlapText(o), action: "Fix") {
+            attentionRow(color: .orange, icon: "square.on.square", text: overlapText(o), action: o.sameLabel ? "Merge" : "Pick one") {
                 fixingOverlap = o
             }
             .popover(isPresented: Binding(get: { fixingOverlap != nil }, set: { if !$0 { fixingOverlap = nil } }),
@@ -431,7 +432,7 @@ struct TimerView: View {
 
     private func fixText(_ f: DayStory.Fix) -> String {
         switch f.kind {
-        case .calendar(let event): return "\(f.tracked ?? "Tracked") ran through \(event)"
+        case .calendar(let event): return "You tracked \(f.tracked ?? "something else") during \(event)"
         case .untracked: return "\(hm(f.minutes)) not logged at \(clock(f.start))"
         case .screenDiffers(let seen): return "Screen showed \(seen) at \(clock(f.start))"
         }
@@ -439,14 +440,16 @@ struct TimerView: View {
 
     private func overlapText(_ o: SessionOverlap) -> String {
         let name = { (s: WorkSession) in s.type.isBreak ? "Break" : (s.label ?? "Focus") }
-        let when = "\(OverlapFixView.day(o.start))\(clock(o.start))–\(clock(o.end))"
-        return o.sameLabel ? "\(name(o.first)) counted twice, \(when)" : "\(name(o.first)) and \(name(o.second)) overlap, \(when)"
+        let day = OverlapFixView.day(o.start)
+        let when = (day.isEmpty ? "" : day.prefix(1).uppercased() + day.dropFirst()) + "\(clock(o.start))–\(clock(o.end))"
+        return o.sameLabel ? "\(when) was saved twice as \(name(o.first))"
+            : "\(when) is logged as both \(name(o.first)) and \(name(o.second))"
     }
 
     private func attentionRow(color: Color, icon: String, text: String, action: String?, perform: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon).font(.system(size: 13, weight: .medium)).foregroundStyle(color)
-            Text(text).font(.system(size: 13)).lineLimit(1).minimumScaleFactor(0.85)
+            Text(text).font(.system(size: 13)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
             if let action {
                 Button(action, action: perform)
@@ -496,7 +499,14 @@ struct TimerView: View {
     private var dayStrip: some View {
         let day = Calendar.current.startOfDay(for: Date())
         let frac = { (d: Date) in CGFloat(d.timeIntervalSince(day) / 86400) }
+        let streak = store.currentStreak + (store.todayWorkMinutes < 1 && todayFocusMinutes >= 1 ? 1 : 0)
         return VStack(spacing: 6) {
+            HStack {
+                Text("Today, hour by hour")
+                Spacer()
+                if streak > 0 { Text("\(streak)-day streak").help("Days in a row with any focus time") }
+            }
+            .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.06))
@@ -516,8 +526,7 @@ struct TimerView: View {
                 HStack {
                     Text("12 AM")
                     Spacer()
-                    let streak = store.currentStreak + (store.todayWorkMinutes < 1 && todayFocusMinutes >= 1 ? 1 : 0)
-                    if streak > 0 { Text("\(streak)-day streak") } else { Text("12 AM") }
+                    Text("12 AM")
                 }
                 Text("Noon")
             }
@@ -582,6 +591,8 @@ struct TimerView: View {
     /// The last few stretches of today's story, each with what it was about.
     private func storyLog(_ s: DayStory.Story) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            Text("Latest stretches").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
             ForEach(Array(s.blocks.filter { !$0.quiet && $0.category != nil }.suffix(4).reversed())) { b in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(clock(b.start)).font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
@@ -594,8 +605,9 @@ struct TimerView: View {
                             Text(b.running ? "now" : hm(b.end.timeIntervalSince(b.start) / 60))
                                 .font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
                         }
-                        if let line = b.moments.last?.text, !line.isEmpty {
-                            Text(line).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
+                        if let m = b.moments.last, !m.text.isEmpty {
+                            Text(b.study ? m.text : "On screen: " + m.text)
+                                .font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
                         }
                     }
                 }
@@ -736,9 +748,14 @@ struct FocusTransportControls: View {
             if timer.isActive && !timer.isOnBreak {
                 control(id: "break", prominent: false) {
                     Button { timer.startManualBreak(minutes: 0) } label: {
-                        Image(systemName: "cup.and.saucer").font(.system(size: 14)).frame(width: 36, height: 36)
+                        if returnsFromBreak {
+                            Label("Break", systemImage: "cup.and.saucer").font(.system(size: 13, weight: .medium))
+                                .padding(.horizontal, 4).frame(height: 36)
+                        } else {
+                            Image(systemName: "cup.and.saucer").font(.system(size: 14)).frame(width: 36, height: 36)
+                        }
                     }
-                    .buttonBorderShape(.circle)
+                    .buttonBorderShape(returnsFromBreak ? .capsule : .circle)
                     .help("Take a break").accessibilityLabel("Take a break")
                 }
             }
@@ -914,7 +931,7 @@ struct LogFixView: View {
             case .typing(let note):
                 HStack(spacing: 8) {
                     Image(systemName: "text.bubble").foregroundStyle(Color.secondaryText)
-                    TextField("Fix the log: “class 1–1:40, then leisure”", text: $text)
+                    TextField("Correct the log: “class 1–1:40, then leisure”", text: $text)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
                         .onSubmit(read)

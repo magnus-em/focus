@@ -441,9 +441,9 @@ struct DashboardView: View {
                 dayNavButton(systemImage: "chevron.right", disabled: isSelectedDayToday) { shiftSelectedDay(by: 1) }
                 Divider().frame(height: 20).padding(.horizontal, 4)
                 Button { showTrackedLog.toggle() } label: {
-                    Image(systemName: "sidebar.right")
-                        .font(.system(size: 14, weight: .medium)).frame(width: 36, height: 36)
-                        .foregroundStyle(showTrackedLog ? accent : .secondaryText)
+                    Label("Tracked log", systemImage: "sidebar.right")
+                        .font(.system(size: 13, weight: .medium)).padding(.horizontal, 10).frame(height: 36)
+                        .foregroundStyle(showTrackedLog ? Color.primary : .secondaryText)
                 }
                 .buttonStyle(.plain)
                 .help("Show or hide your tracked log")
@@ -2860,10 +2860,10 @@ struct ExamRadarSection: View {
                         Spacer()
                         if let c = exam.category {
                             VStack(alignment: .trailing, spacing: 1) {
-                                Text(String(format: "%.1fh", week)).font(.system(size: 15, weight: .semibold).monospacedDigit())
-                                Text("\(c) this week").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                                Text(durationText(minutes: week * 60)).font(.system(size: 15, weight: .semibold).monospacedDigit())
+                                Text("\(c) on your timer this week").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                             }
-                            .help("\(String(format: "%.1f", twoWeeks))h of \(c) in the two weeks before")
+                            .help("\(durationText(minutes: twoWeeks * 60)) of \(c) in the two weeks before it")
                         }
                     }
                 }

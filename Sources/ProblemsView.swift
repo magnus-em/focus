@@ -160,29 +160,21 @@ struct ProblemsView: View {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) { reviewExpanded.toggle() }
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
-                    Text("Review queue")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.orange)
-                    Text("\(total)")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Color.orange)
-                        .clipShape(Capsule())
-                    if !dueItems.isEmpty {
-                        Text("\(dueItems.count) spaced")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.orange.opacity(0.7))
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(total) due for review")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        Text([aiItems.isEmpty ? nil : "\(aiItems.count) you flagged as needing help",
+                              dueItems.isEmpty ? nil : "\(dueItems.count) due on the review schedule"]
+                                .compactMap { $0 }.joined(separator: " · "))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.secondaryText)
                     }
                     Spacer()
                     Image(systemName: reviewExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.secondaryText)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -530,23 +522,15 @@ private struct ReviewRow: View {
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.title.isEmpty ? item.categories.joined(separator: " · ") : item.title)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
-                        HStack(spacing: 4) {
-                            if !item.source.isEmpty {
-                                Text(item.source)
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.tertiary)
-                                Text("·").font(.system(size: 10)).foregroundStyle(.tertiary)
-                            }
-                            Text(item.difficulty.rawValue)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(item.difficulty.color)
-                            Text("·").font(.system(size: 10)).foregroundStyle(.tertiary)
-                            Text(item.domain.rawValue)
-                                .font(.system(size: 10))
-                                .foregroundStyle(item.domain.color)
+                        HStack(spacing: 6) {
+                            Circle().fill(categoryColor(item.domain.rawValue)).frame(width: 6, height: 6)
+                            Text(([item.domain.rawValue, item.difficulty.rawValue] + (item.source.isEmpty ? [] : [item.source]))
+                                    .joined(separator: " · "))
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.secondaryText)
                         }
                     }
                     Spacer()

@@ -82,6 +82,7 @@ extension View {
         if #available(macOS 26.0, *) {
             self
                 .background { CategoryWash(color: tint).clipShape(shape) }
+                .background { LightSheetBase().clipShape(shape) }
                 .background(WindowTransparencyConfigurator().frame(width: 0, height: 0))
                 .glassEffect(.regular, in: shape)
                 .contentShape(shape)
@@ -203,4 +204,12 @@ extension Color {
     /// Secondary text that keeps 4.5:1 on light glass and washes: #5E606B / #A9AAB4.
     static let secondaryText = dynamic(light: NSColor(srgbRed: 0.37, green: 0.38, blue: 0.42, alpha: 1),
                                        dark: NSColor(srgbRed: 0.66, green: 0.67, blue: 0.71, alpha: 1))
+}
+
+/// In light mode the popover's glass read mid-gray over dark or busy
+/// backgrounds and secondary text fell under 4.5:1; a white base keeps it a
+/// light sheet. Dark mode keeps the plain glass.
+private struct LightSheetBase: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View { scheme == .light ? Color.white.opacity(0.55) : Color.clear }
 }

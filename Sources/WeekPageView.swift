@@ -147,23 +147,32 @@ struct WeekPage: View {
         .onChange(of: sessions.count) { _, _ in model.refresh(endDay: endDay, sessions: sessions, live: live, focus: focus) }
     }
 
+    /// A judgement, not a recap of the card below: the nearest exam and how
+    /// its course went, else the course that got the most, then the goal
+    /// that's been quiet longest.
     private var headline: String? {
         var parts: [String] = []
         let rows = courses
-        if let top = rows.first {
+        if let (row, exam) = rows.lazy.compactMap({ r in nextExam(for: r).map { (r, $0) } })
+            .min(by: { $0.1.date < $1.1.date }), daysUntil(exam.date) <= 30 {
+            var line = "\(exam.title) is \(examWhen(exam)). \(row.code) had \(durationText(minutes: row.minutes)) on your screen this week"
+            if let p = row.practice {
+                line += p < 0.25 ? ", mostly reading and asking AI; test yourself more" : p >= 0.5 ? ", much of it solving on your own" : ""
+            }
+            parts.append(line + ".")
+        } else if let top = rows.first {
             var line = "\(top.code) got the most study time (\(durationText(minutes: top.minutes)) on screen)"
             if let p = top.practice {
                 line += p < 0.25 ? ", mostly reading and asking AI" : p >= 0.5 ? ", much of it solving on your own" : ""
             }
             parts.append(line + ".")
-            if rows.count > 1 { parts.append("\(rows[1].code) had \(durationText(minutes: rows[1].minutes)).") }
         } else if let top = trackedByCategory.first {
             parts.append("\(top.label) got the most tracked time: \(durationText(minutes: top.minutes)).")
         }
         if let stale = quiet.compactMap({ q in q.last.map { (q.label, $0) } }).max(by: { $0.1 < $1.1 }) {
             parts.append("Nothing on \(stale.0) since \(stale.1.formatted(.dateTime.month(.abbreviated).day())).")
         }
-        if let last = lastLeetCode, leetCodeThisWeek == 0 {
+        if parts.count < 2, let last = lastLeetCode, leetCodeThisWeek == 0 {
             parts.append("No LeetCode since \(last.formatted(.dateTime.month(.abbreviated).day())).")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
@@ -178,6 +187,16 @@ struct WeekPage: View {
             if rows.isEmpty {
                 Text("No course work seen this week. Course time shows up once the cloud coach has watched some study.")
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText).fixedSize(horizontal: false, vertical: true)
+            }
+            if !rows.isEmpty {
+                HStack(spacing: 12) {
+                    Color.clear.frame(width: 8, height: 1)
+                    Text("Course").frame(width: 96, alignment: .leading)
+                    Text("On screen").frame(width: 70, alignment: .leading)
+                    Text("How you studied").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Next exam")
+                }
+                .font(.system(size: 11, weight: .medium)).foregroundStyle(Color.secondaryText)
             }
             ForEach(rows) { row in
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -196,7 +215,8 @@ struct WeekPage: View {
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 Text("Your timer's focus time: " + (trackedByCategory.isEmpty ? "none"
-                     : trackedByCategory.map { "\($0.label) \(durationText(minutes: $0.minutes))" }.joined(separator: " · ")))
+                     : trackedByCategory.map { "\($0.label == "Focus" ? "Unlabeled" : $0.label) \(durationText(minutes: $0.minutes))" }
+                        .joined(separator: " · ")))
                     .font(.system(size: 12)).foregroundStyle(Color.secondaryText).fixedSize(horizontal: false, vertical: true)
                 ForEach(quiet.prefix(4), id: \.label) { q in
                     HStack(spacing: 8) {
@@ -206,10 +226,13 @@ struct WeekPage: View {
                             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                     }
                 }
-                Text(leetCodeThisWeek > 0 ? "LeetCode: \(leetCodeThisWeek) solved this week"
-                     : lastLeetCode.map { "LeetCode: none this week, last on \($0.formatted(.dateTime.month(.abbreviated).day()))" }
-                     ?? "LeetCode: none logged yet")
-                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                HStack(spacing: 8) {
+                    Circle().fill(categoryColor("SWE")).frame(width: 6, height: 6)
+                    Text(leetCodeThisWeek > 0 ? "LeetCode: \(leetCodeThisWeek) solved this week"
+                         : lastLeetCode.map { "LeetCode: none this week, last on \($0.formatted(.dateTime.month(.abbreviated).day()))" }
+                         ?? "LeetCode: none logged yet")
+                        .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                }
             }
         }
         .padding(16)
@@ -227,7 +250,7 @@ struct WeekPage: View {
             bits.append("\(Int((p * 100).rounded()))% solving problems yourself")
             if let mostly, p < 0.5 { bits.append(mostly) }
         }
-        if row.shaky > 0 { bits.append(row.shaky == 1 ? "1 thing looked shaky" : "\(row.shaky) things looked shaky") }
+        if row.shaky > 0 { bits.append(row.shaky == 1 ? "struggled with 1 topic" : "struggled with \(row.shaky) topics") }
         return bits.joined(separator: " · ")
     }
 
@@ -245,11 +268,12 @@ struct WeekPage: View {
         cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: date)).day ?? 0
     }
 
-    private func examText(_ exam: ClassCalendar.Exam) -> String {
+    private func examWhen(_ exam: ClassCalendar.Exam) -> String {
         let d = daysUntil(exam.date)
-        let when = d <= 0 ? "today" : d == 1 ? "tomorrow" : "in \(d) days"
-        return "\(exam.title) \(when)"
+        return d <= 0 ? "today" : d == 1 ? "tomorrow" : "in \(d) days"
     }
+
+    private func examText(_ exam: ClassCalendar.Exam) -> String { "\(exam.title) \(examWhen(exam))" }
 
     // MARK: Days to fix
 

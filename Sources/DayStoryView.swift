@@ -77,11 +77,11 @@ final class DayStoryModel: ObservableObject {
 }
 
 extension Color {
-    /// Something to fix: #C2410C on light, #FF9F5A on dark (orange, never red: red is for errors).
+    /// Something to fix: amber #B45309 on light, #F5A524 on dark (never red: red is for errors).
     static let attention = Color(nsColor: NSColor(name: nil) {
         $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 1.0, green: 0.62, blue: 0.35, alpha: 1)
-            : NSColor(srgbRed: 0.76, green: 0.25, blue: 0.05, alpha: 1)
+            ? NSColor(srgbRed: 0.961, green: 0.647, blue: 0.141, alpha: 1)
+            : NSColor(srgbRed: 0.706, green: 0.325, blue: 0.035, alpha: 1)
     })
 }
 
@@ -136,7 +136,14 @@ struct DayStoryPage: View {
     private func header(_ story: DayStory.Story) -> some View {
         if let line = story.headline ?? fallbackHeadline(story) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(headlineCaption(story)).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                HStack(spacing: 6) {
+                    Text(headlineCaption(story)).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                    if story.hasCoach {
+                        Image(systemName: "info.circle").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                            .help("The coach is an AI (Grok) that reads your timer log and what's on your screen, then writes this summary, the notes under each stretch and what you learned. Settings → Coach turns it off.")
+                            .accessibilityLabel("About the coach")
+                    }
+                }
                 Text(line)
                     .font(.system(size: 22, weight: .medium))
                     .lineSpacing(3)
@@ -149,8 +156,8 @@ struct DayStoryPage: View {
 
     private func headlineCaption(_ story: DayStory.Story) -> String {
         guard story.headline != nil else { return isToday ? "So far today, from your tracking" : "From your tracking" }
-        if let asOf = story.headlineAsOf { return "The coach's summary, written at \(clock(asOf))" }
-        return "The coach's summary of the day"
+        if let asOf = story.headlineAsOf { return "The AI coach's summary of your timer and screen, written at \(clock(asOf))" }
+        return "The AI coach's summary of your timer and screen"
     }
 
     private func fallbackHeadline(_ story: DayStory.Story) -> String? {
@@ -168,7 +175,8 @@ struct DayStoryPage: View {
             }
             if !fixes.isEmpty {
                 fact("Log check", fixes.count == 1 ? "1 to fix" : "\(fixes.count) to fix",
-                     fixSummary(fixes[0]) + (fixes.count > 1 ? ", and more below" : ", below"), color: .attention)
+                     fixSummary(fixes[0]) + (fixes.count > 1 ? ", and \(fixes.count - 1) more below" : "; fix it below"),
+                     color: .attention)
             } else if !story.blocks.isEmpty {
                 fact("Log check", "Looks right", "Nothing disagrees with your calendar or screen", color: .good)
             }
@@ -178,13 +186,13 @@ struct DayStoryPage: View {
 
     private var goalLine: String {
         let goal = goalHours * 60
-        if focusMinutes >= goal { return "Your \(goalHours.formatted())h goal is met" }
-        return "\(durationText(minutes: goal - focusMinutes)) short of your \(goalHours.formatted())h goal"
+        if focusMinutes >= goal { return "On your timer; your \(goalHours.formatted())h goal is met" }
+        return "On your timer, \(durationText(minutes: goal - focusMinutes)) short of your \(goalHours.formatted())h goal"
     }
 
     private func courseLine(_ c: DayStory.Course) -> String {
-        var line = "\(durationText(minutes: c.minutes)) on screen"
-        if let p = c.practiceShare, c.observations >= 5 { line += ", \(Int((p * 100).rounded()))% of it solving problems yourself" }
+        var line = "Seen on your screen for \(durationText(minutes: c.minutes))"
+        if let p = c.practiceShare, c.observations >= 5 { line += ", \(Int((p * 100).rounded()))% of that solving problems yourself" }
         return line
     }
 
@@ -200,8 +208,8 @@ struct DayStoryPage: View {
 
     private func fixSummary(_ f: DayStory.Fix) -> String {
         switch f.kind {
-        case .calendar(let event): return "\(f.tracked ?? "Something else") was tracked during \(event)"
-        case .untracked: return "\(durationText(minutes: f.minutes)) not logged at \(clock(f.start))"
+        case .calendar(let event): return "You tracked \(f.tracked ?? "something else") during \(event) on your calendar"
+        case .untracked: return "Nothing logged for \(durationText(minutes: f.minutes)) at \(clock(f.start))"
         case .screenDiffers(let seen): return "The screen showed \(seen) while \(f.tracked ?? "something else") was tracked"
         }
     }
@@ -223,9 +231,9 @@ struct DayStoryPage: View {
     }
 
     private func storySubtitle(_ story: DayStory.Story) -> String {
-        var line = "Each stretch of the day, with what the coach saw you do in it. Orange notes mark time your log may have wrong; fix it right there."
+        var line = "Each stretch of the day with what you did in it. Orange notes mark time your log may have wrong; fix it on the row."
         if isToday, let asOf = story.headlineAsOf, story.headline != nil {
-            line += " Stretches after \(clock(asOf)) come straight from what the screen saw."
+            line += " Rows after \(clock(asOf)) are newer than the summary and keep updating."
         }
         return line
     }
@@ -443,7 +451,7 @@ struct DayStoryPage: View {
                 }
             }
             if !c.shaky.isEmpty {
-                Text("Looked shaky").font(.system(size: 12, weight: .semibold)).padding(.top, 2)
+                Text("Where you struggled").font(.system(size: 12, weight: .semibold)).padding(.top, 2)
                 ForEach(c.shaky.prefix(3), id: \.self) { s in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text("•").foregroundStyle(Color.attention)
@@ -555,7 +563,7 @@ struct DayLanesView: View {
     private var rows: [Row] {
         var rows: [Row] = []
         if !lanes.events.isEmpty {
-            rows.append(Row(label: "Calendar", height: 8, items: lanes.events.map { ($0.start, $0.end, Self.eventColor) }))
+            rows.append(Row(label: "Calendar", height: 18, items: lanes.events.map { ($0.start, $0.end, Self.eventColor) }))
         }
         rows.append(Row(label: "Tracked", height: 14, items: lanes.tracked.map { ($0.start, $0.end, categoryColor($0.label)) }))
         rows.append(Row(label: "Screen", height: 14,
@@ -569,13 +577,13 @@ struct DayLanesView: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .trailing, spacing: 5) {
                     ForEach(rows) { r in
-                        Text(r.label).font(.system(size: 11)).foregroundStyle(Color.secondaryText).frame(height: 14)
+                        Text(r.label).font(.system(size: 11)).foregroundStyle(Color.secondaryText).frame(height: r.height)
                     }
                 }
                 .frame(width: 56, alignment: .trailing)
                 GeometryReader { geo in
                     VStack(spacing: 5) {
-                        ForEach(rows) { r in lane(r).frame(height: 14) }
+                        ForEach(rows) { r in lane(r) }
                     }
                     .overlay(alignment: .topLeading) {
                         if let hover {
@@ -593,7 +601,7 @@ struct DayLanesView: View {
                         }
                     }
                 }
-                .frame(height: CGFloat(rows.count) * 19 - 5)
+                .frame(height: rows.reduce(0) { $0 + $1.height + 5 } - 5)
             }
             HStack(spacing: 10) {
                 Color.clear.frame(width: 56, height: 1)
@@ -607,6 +615,19 @@ struct DayLanesView: View {
                 }
                 .frame(height: 12)
             }
+            HStack(alignment: .top, spacing: 10) {
+                Color.clear.frame(width: 56, height: 1)
+                FlowLayout(spacing: 12) {
+                    ForEach(legend, id: \.self) { label in
+                        HStack(spacing: 5) {
+                            RoundedRectangle(cornerRadius: 2).fill(label == "Calendar event" ? Self.eventColor : categoryColor(label))
+                                .frame(width: 10, height: 10)
+                            Text(label).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 6)
             HStack(spacing: 10) {
                 Color.clear.frame(width: 56, height: 1)
                 Text(readout).font(.system(size: 12)).monospacedDigit()
@@ -617,6 +638,14 @@ struct DayLanesView: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Your day: calendar, what you tracked and what the screen saw")
+    }
+
+    /// Today's categories in the order they first appear, then the calendar swatch.
+    private var legend: [String] {
+        var seen = Set<String>()
+        let labels = (lanes.tracked.map { ($0.start, $0.label) } + lanes.screen.compactMap { s in s.category.map { (s.start, $0) } })
+            .sorted { $0.0 < $1.0 }.map(\.1).filter { seen.insert($0).inserted }
+        return labels + (lanes.events.isEmpty ? [] : ["Calendar event"])
     }
 
     private var readout: String {
@@ -636,13 +665,20 @@ struct DayLanesView: View {
     }
 
     private func lane(_ r: Row) -> some View {
-        Canvas { ctx, size in
+        let titles = r.label == "Calendar" ? lanes.events.map(\.title) : []
+        return Canvas { ctx, size in
             ctx.fill(Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 4),
                      with: .color(Color.primary.opacity(0.06)))
-            for (a, b, color) in r.items {
+            for (i, (a, b, color)) in r.items.enumerated() {
                 let x0 = x(a, size.width), x1 = x(b, size.width)
                 guard x1 > x0 else { continue }
-                ctx.fill(Path(CGRect(x: x0, y: 0, width: max(1, x1 - x0), height: size.height)), with: .color(color))
+                let rect = CGRect(x: x0, y: 0, width: max(1, x1 - x0), height: size.height)
+                ctx.fill(Path(rect), with: .color(color))
+                guard i < titles.count else { continue }
+                let text = ctx.resolve(Text(titles[i]).font(.system(size: 11, weight: .medium)).foregroundColor(.black.opacity(0.8)))
+                if text.measure(in: CGSize(width: .infinity, height: size.height)).width + 8 <= rect.width {
+                    ctx.draw(text, at: CGPoint(x: rect.minX + 4, y: rect.midY), anchor: .leading)
+                }
             }
         }
         .frame(height: r.height)
