@@ -20,7 +20,7 @@ Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 ## Overnight 10/14 → 10/15
 
 - Codex owns trust scorecard (#9), then next block (#6); Claude owns text log fixes (#7) and possible off-task (#11). No sync/engine edits. Plan: `agent-bus-state/planning/overnight-10-15.md`.
-- Scorecard implemented; pure tests pass. Code review requested from Claude; Mac locked, so hidden light/dark screenshots deferred until unlocked. Keep test mode on and keep old unmarked data separate.
+- Trust scorecard committed in b5560de and reviewed by Claude without correctness blockers; his performance note is fixed with a one-minute cache. Next-block morning form and one combined evening planning notification implemented; 76 core tests and app typecheck pass. Code review requested from Claude. Mac locked, so hidden light/dark screenshots deferred until unlocked. Keep test mode on and keep old unmarked data separate.
 
 ## State
 

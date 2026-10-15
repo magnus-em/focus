@@ -108,3 +108,9 @@ User-approved scope: local screenshot evidence for review, clearer corrections, 
 - Added read-only seven-day scorecard in Dashboard → Review: checked accuracy with sample count, unambiguous interval-weighted tracking agreement, card outcomes, observed-evidence detection delay and auto-switch Undo rate. Existing card-ledger copy no longer calls accepted suggestions correct labels.
 - New spans/checks/prompts record test mode; old and unmarked device data remains Earlier data, never inferred from current settings. No timer or history mutations.
 - Regression cases cover mode separation, ambiguity/clipping/deduplication, pending/unanswered outcomes and auto-switch Undo denominators. Mac is locked; screenshots deferred until unlocked.
+
+## Overnight next block — 2026-10-14 (Codex)
+
+- Replaced the commitment's guessed exam-study hours with an editable first action, category and optional target. Deterministic planner uses the user's start-with note, then commitment, then nearest exam within the coming week; topic selection stays with the user. Plans are device-local, saved on explicit Start My Day, and visible on Dashboard Today. No timer changes or historic edits.
+- Reused the existing evening check-in notification for tomorrow's proposed block; same single request/time/toggle, after commitment review too. Tapping still opens the evening review with its Tomorrow, start with field. No extra alert stream.
+- 76 core tests pass, including new planner priority/date-window/no-invented-target cases. App snapshot typecheck passed with two pre-existing unused-value warnings. Claude's scorecard review found no correctness blocker; applied his performance request (cached score, refresh only appear/date/mode/minute). Mac remains locked; hidden visual verification deferred.

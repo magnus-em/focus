@@ -3,9 +3,8 @@ import Combine
 import UserNotifications
 import FocusCore
 
-/// End-of-day "did you keep your commitment?" notification. One pending
-/// request at a time, rescheduled whenever today's record or the reminder
-/// settings change, so answering early (End Day, dashboard) cancels it.
+/// One evening check-in combines today's commitment review with tomorrow's
+/// proposed first block; answering early keeps just the planning prompt.
 final class CommitmentReminder: NSObject, UNUserNotificationCenterDelegate {
     static let shared = CommitmentReminder()
 
@@ -44,10 +43,12 @@ final class CommitmentReminder: NSObject, UNUserNotificationCenterDelegate {
         ])
         center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
-        Publishers.Merge(
-            dayStore.$records.map { _ in () },
-            settings.objectWillChange.map { _ in () }
-        )
+        Publishers.MergeMany([
+            dayStore.$records.map { _ in () }.eraseToAnyPublisher(),
+            settings.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+            NotificationCenter.default.publisher(for: .NSCalendarDayChanged).map { _ in () }.eraseToAnyPublisher(),
+            NotificationCenter.default.publisher(for: .eveningPlanChanged).map { _ in () }.eraseToAnyPublisher()
+        ])
         .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
         .sink { [weak self] in self?.reschedule() }
         .store(in: &cancellables)
@@ -60,9 +61,9 @@ final class CommitmentReminder: NSObject, UNUserNotificationCenterDelegate {
         center.removePendingNotificationRequests(withIdentifiers: [Self.requestID])
 
         guard let settings, settings.commitmentEnabled, settings.commitmentReviewReminder,
-              let record = dayStore?.todayRecord,
-              let text = record.commitmentText, !text.isEmpty,
-              record.commitmentFulfilled == nil else { return }
+              let record = dayStore?.todayRecord else { return }
+        let text = record.commitmentText ?? ""
+        let needsReview = !text.isEmpty && record.commitmentFulfilled == nil
 
         let cal = Calendar.current
         if let s = snoozedUntil, !cal.isDateInToday(s) || s <= Date() { snoozedUntil = nil }
@@ -71,11 +72,18 @@ final class CommitmentReminder: NSObject, UNUserNotificationCenterDelegate {
                                         second: 0, of: Date())!
         guard fire > Date() else { return }
 
+        let tomorrow = cal.date(byAdding: .day, value: 1, to: Date())!
+        let proposal = MainActor.assumeIsolated {
+            NextBlockStore.shared.plan(for: tomorrow)
+                ?? NextBlockStore.suggestion(for: tomorrow, commitment: text)
+        }
+        let next = proposal.map { "Tomorrow: \($0.action). Tap to choose your first block." }
+            ?? "Choose one assignment or concept to start with tomorrow."
         let content = UNMutableNotificationContent()
-        content.title = "Did you keep your word today?"
-        content.body = "\u{201C}\(text)\u{201D}"
+        content.title = needsReview ? "Did you keep your word today?" : "What will you start with tomorrow?"
+        content.body = needsReview ? "\u{201C}\(text)\u{201D}\n\(next)" : next
         content.sound = .default
-        content.categoryIdentifier = Self.categoryID
+        content.categoryIdentifier = needsReview ? Self.categoryID : ""
         content.userInfo = ["dayID": record.id.uuidString]
 
         let comps = cal.dateComponents([.year, .month, .day, .hour, .minute], from: fire)
@@ -131,4 +139,5 @@ final class CommitmentReminder: NSObject, UNUserNotificationCenterDelegate {
 
 extension Notification.Name {
     static let showCommitmentReview = Notification.Name("FocusShowCommitmentReview")
+    static let eveningPlanChanged = Notification.Name("FocusEveningPlanChanged")
 }

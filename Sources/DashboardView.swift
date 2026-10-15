@@ -559,6 +559,7 @@ struct DashboardView: View {
             .padding(16)
             .background(RoundedRectangle(cornerRadius: 18).fill(.background.secondary))
         }
+        NextBlockSummary(day: selectedDay)
         ScreenActivitySection(watcher: screenWatcher, day: selectedDay, sessions: selectedDaySessions)
         DisclosureGroup("Your day timeline", isExpanded: $showTimeline) {
             if showTimeline { dayTimelineSection.padding(.top, 12) }

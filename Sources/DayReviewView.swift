@@ -664,7 +664,10 @@ enum EveningLog {
         let enc = JSONEncoder()
         enc.dateEncodingStrategy = .iso8601
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? enc.encode(m) { try? data.write(to: url, options: .atomic) }
+        if let data = try? enc.encode(m) {
+            try? data.write(to: url, options: .atomic)
+            NotificationCenter.default.post(name: .eveningPlanChanged, object: nil)
+        }
     }
 }
 

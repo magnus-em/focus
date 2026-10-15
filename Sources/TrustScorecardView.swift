@@ -3,12 +3,13 @@ import Combine
 import FocusCore
 
 struct TrustScorecardView: View {
-    @ObservedObject var watcher: ScreenWatcher
+    let watcher: ScreenWatcher
     let day: Date
     let sessions: [WorkSession]
     var preview = false
     @State private var mode: TrustScorecard.Mode = .normal
     @State private var cards: [TrustScorecard.Card] = []
+    @State private var cached = TrustScorecard.Score()
 
     private var from: Date { Calendar.current.date(byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: day))! }
     private var end: Date { Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: day))! }
@@ -33,7 +34,7 @@ struct TrustScorecardView: View {
     }
 
     var body: some View {
-        let score = score
+        let score = cached
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Can you trust the labels?").font(.system(size: 15, weight: .semibold))
@@ -73,11 +74,16 @@ struct TrustScorecardView: View {
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
-        .task(id: day) { reload() }
-        .onReceive(watcher.objectWillChange.debounce(for: .seconds(2), scheduler: DispatchQueue.main)) { _ in reload() }
+        .onAppear { reload() }
+        .onChange(of: day) { _, _ in reload() }
+        .onChange(of: mode) { _, _ in reload() }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in reload() }
     }
 
-    private func reload() { if !preview { cards = PromptLog.scorecardCards(since: from) } }
+    private func reload() {
+        if !preview { cards = PromptLog.scorecardCards(since: from) }
+        cached = score
+    }
 
     private func percent<T: BinaryInteger>(_ a: T, _ b: T) -> String { percent(Double(a), Double(b)) }
     private func percent(_ a: Double, _ b: Double) -> String { "\(Int((100 * a / b).rounded()))%" }

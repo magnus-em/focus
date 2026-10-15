@@ -236,6 +236,12 @@ struct FocusApp: App {
                 DesignGallery.show(CommitmentView(settings: appSettings, dayStore: days, store: store, timer: timer,
                                                   isShowing: .constant(true), previewMorningReview: true),
                                    name: name, dark: dark, size: NSSize(width: 360, height: 850))
+            case "next-block":
+                DesignGallery.show(ScrollView {
+                    NextBlockEditor(action: .constant(""), category: .constant("Math"), target: .constant(""),
+                        tags: appSettings.tags, suggestion: .init(action: "Work through one example of a partial order",
+                        category: "Math", source: "Your start-with note")).padding(16)
+                }, name: name, dark: dark, size: NSSize(width: 360, height: 530))
             case "trust-scorecard":
                 DesignGallery.show(ScrollView { TrustScorecardView(watcher: ScreenWatcher.shared, day: Date(), sessions: [], preview: true).padding(16) },
                                    name: name, dark: dark, size: NSSize(width: 620, height: 690))

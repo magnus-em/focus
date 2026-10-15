@@ -1,4 +1,5 @@
 import SwiftUI
+import FocusCore
 
 struct CommitmentView: View {
     @ObservedObject var settings: AppSettings
@@ -9,30 +10,13 @@ struct CommitmentView: View {
     var previewMorningReview = false
 
     @State private var text = ""
+    @State private var firstAction = ""
+    @State private var firstCategory = ""
+    @State private var firstTarget = ""
+    @ObservedObject private var calendar = ClassCalendar.shared
     @FocusState private var focused: Bool
 
     private let red = Color.accentColor
-
-    /// Last night's "start with", exams this week, the LeetCode goal and the
-    /// hours goal, as one editable line.
-    private var suggestion: String? {
-        let cal = Calendar.current
-        var parts: [String] = []
-        if let y = cal.date(byAdding: .day, value: -1, to: cal.startOfDay(for: Date())),
-           let first = EveningLog.entry(for: y)?.firstTask.trimmingCharacters(in: .whitespacesAndNewlines), !first.isEmpty {
-            parts.append("Start with \(first)")
-        }
-        for exam in ClassCalendar.shared.exams.prefix(2) {
-            let days = cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: exam.date)).day ?? 99
-            guard days <= 7 else { continue }
-            let hours = days <= 2 ? 3 : days <= 5 ? 2 : 1
-            let when = days == 0 ? "today" : days == 1 ? "tomorrow" : exam.date.formatted(.dateTime.weekday(.wide))
-            parts.append("\(hours)h \(exam.category ?? "studying") for \(exam.title) (\(when))")
-        }
-        if settings.sweGoal > 0 { parts.append("\(settings.sweGoal) LeetCode problems") }
-        if settings.dailyGoal > 0 { parts.append("\(settings.dailyGoal)h of focus") }
-        return parts.isEmpty ? nil : parts.joined(separator: "; ")
-    }
 
     var body: some View {
         ZStack {
@@ -80,24 +64,11 @@ struct CommitmentView: View {
                             }
                             .background(Color.secondary.opacity(0.06))
                             .cornerRadius(9)
-                            if let plan = suggestion, text.isEmpty {
-                                Button { text = plan } label: {
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Image(systemName: "sparkles").foregroundStyle(Color.secondaryText)
-                                        Text(plan).font(.system(size: 13)).multilineTextAlignment(.leading)
-                                            .fixedSize(horizontal: false, vertical: true)
-                                        Spacer(minLength: 4)
-                                        Text("Use").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.accentColor)
-                                    }
-                                    .padding(10)
-                                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.04)))
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .help("A starting point from last night's plan, upcoming exams and your goals")
-                            }
+
                         }
 
+                        NextBlockEditor(action: $firstAction, category: $firstCategory, target: $firstTarget,
+                                        tags: settings.tags, suggestion: nextSuggestion)
                     }
                     .padding(18)
                 }
@@ -110,6 +81,10 @@ struct CommitmentView: View {
                         let cleaned = text.trimmingCharacters(in: .whitespaces)
                         settings.markCommitmentDone(text: cleaned)
                         dayStore.setCommitment(text: cleaned)
+                        if !firstAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            NextBlockStore.shared.save(.init(action: firstAction,
+                                category: firstCategory.isEmpty ? nil : firstCategory, target: firstTarget, source: "Your choice"), for: Date())
+                        }
                         isShowing = false
                     } label: {
                         Text("Start My Day")
@@ -139,7 +114,23 @@ struct CommitmentView: View {
                 .padding(.vertical, 12)
             }
         }
-        .onAppear { focused = true }
+        .onAppear {
+            focused = true
+            guard !previewMorningReview, let plan = NextBlockStore.shared.plan(for: Date()) else { return }
+            firstAction = plan.action
+            firstCategory = plan.category.flatMap { settings.tags.contains($0) ? $0 : nil } ?? ""
+            firstTarget = plan.target
+        }
+    }
+
+    private var nextSuggestion: NextBlockPlanner.Plan? {
+        if previewMorningReview {
+            return .init(action: "Work through one example of a partial order", category: "Math", source: "Your start-with note")
+        }
+        let previous = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
+        return NextBlockPlanner.suggest(on: Date(), startWith: EveningLog.entry(for: previous)?.firstTask,
+            commitment: text.isEmpty ? dayStore.todayRecord?.commitmentText : text,
+            exams: calendar.exams.map { .init(title: $0.title, date: $0.date, category: $0.category) })
     }
 
     private var greeting: String {
