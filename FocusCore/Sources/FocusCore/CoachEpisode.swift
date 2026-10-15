@@ -19,8 +19,6 @@ public enum CoachEpisode {
         public let struggle: String?
         public let confidence: Confidence
         public var needsStrongPass: Bool { diagram || unreadable || confidence == .low }
-        @available(*, deprecated, message: "Use askedByUser (the user's own questions) or onScreenPrompts")
-        public var questions: [String] { askedByUser + onScreenPrompts }
 
         public init(topic: String, course: String?, activity: String, concepts: [String], summary: String, notes: [String],
                     askedByUser: [String], onScreenPrompts: [String], transcription: String?, diagram: Bool,
@@ -29,15 +27,6 @@ public enum CoachEpisode {
             self.summary = summary; self.notes = notes; self.askedByUser = askedByUser
             self.onScreenPrompts = onScreenPrompts; self.transcription = transcription; self.diagram = diagram
             self.unreadable = unreadable; self.struggle = struggle; self.confidence = confidence
-        }
-
-        @available(*, deprecated, message: "Pass askedByUser and onScreenPrompts")
-        public init(topic: String, course: String?, activity: String, concepts: [String], summary: String, notes: [String],
-                    questions: [String], transcription: String?, diagram: Bool, unreadable: Bool, struggle: String?,
-                    confidence: Confidence) {
-            self.init(topic: topic, course: course, activity: activity, concepts: concepts, summary: summary, notes: notes,
-                      askedByUser: questions, onScreenPrompts: [], transcription: transcription, diagram: diagram,
-                      unreadable: unreadable, struggle: struggle, confidence: confidence)
         }
 
         enum CodingKeys: String, CodingKey, CaseIterable {
