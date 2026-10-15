@@ -262,6 +262,11 @@ struct FocusApp: App {
             case "trust-scorecard":
                 DesignGallery.show(ScrollView { TrustScorecardView(watcher: ScreenWatcher.shared, day: Date(), sessions: [], preview: true).padding(16) },
                                    name: name, dark: dark, size: NSSize(width: 620, height: 690))
+            case "where-was-i":
+                DesignGallery.show(VStack(alignment: .leading, spacing: 12) {
+                    WhereWasIRow(line: .init(text: "Last time on MATH 244 (12:52 PM): Inclusion–exclusion for ball distributions; you asked: Why inclusion-exclusion on (b) but not (c)?", url: nil, bundle: "com.openai.chat"))
+                    WhereWasIRow(line: .init(text: "Last time on SWE (Tue 4:50 PM): Two Sum with a hash map", url: URL(string: "https://leetcode.com/problems/two-sum/"), bundle: "com.google.Chrome"))
+                }.padding(16), name: name, dark: dark, size: NSSize(width: 360, height: 160))
             case "learned-labels":
                 DesignGallery.show(ScrollView { LearnedLabelReviewView(preview: true).padding(16) },
                                    name: name, dark: dark, size: NSSize(width: 360, height: 650))

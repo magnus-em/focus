@@ -245,6 +245,15 @@ final class CoachDayWorker: ObservableObject {
         return (pack, images)
     }
 
+    /// Where the running subject was left, from the last three days of observations.
+    nonisolated static func whereWasI(running: String) async -> WhereWasI.Line? {
+        await Task.detached {
+            let today = Calendar.current.startOfDay(for: Date())
+            let days = (0...2).compactMap { Calendar.current.date(byAdding: .day, value: -$0, to: today) }
+            return WhereWasI.line(days.flatMap(episodes(for:)), running: running, now: Date())
+        }.value
+    }
+
     /// The day's episode records (`Focus/episodes/DATE.jsonl`, written by the episode worker).
     nonisolated private static func episodes(for day: Date) -> [CoachEpisode.Record] {
         let file = journalDirectory.deletingLastPathComponent()

@@ -32,6 +32,7 @@ struct TimerView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var savedFocusTotals: [String: Double] = [:]
     @State private var fixingOverlap: SessionOverlap?
+    @State private var whereWasI: WhereWasI.Line?
     /// Minutes today the screen showed a life category during focus blocks.
     @State private var possibleDrift: Double = 0
 
@@ -73,6 +74,7 @@ struct TimerView: View {
                 startChips
             }
             attention
+            if let whereWasI { WhereWasIRow(line: whereWasI) }
             if detent == .large {
                 dayStrip
                 onScreenNow
@@ -93,6 +95,10 @@ struct TimerView: View {
                 refreshDrift()
                 try? await Task.sleep(for: .seconds(60))
             }
+        }
+        .task(id: running) {
+            guard let running, running != "Break", !FocusCategories.isLife(running) else { whereWasI = nil; return }
+            whereWasI = await CoachDayWorker.whereWasI(running: running)
         }
         .onChange(of: settings.lifeTags) { _, _ in refreshFocusTotals(store.sessions) }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in refreshFocusTotals(store.sessions) }
@@ -959,5 +965,30 @@ struct LogFixView: View {
             }
         }
         step = .done(undos, changedRunning: changedRunning, failed: failed)
+    }
+}
+
+/// Where the running subject was left last time; a tap reopens the page or app.
+struct WhereWasIRow: View {
+    let line: WhereWasI.Line
+
+    var body: some View {
+        Button {
+            if let url = line.url {
+                NSWorkspace.shared.open(url)
+            } else if let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: line.bundle) {
+                NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "arrow.uturn.backward").font(.system(size: 11)).padding(.top, 1)
+                Text(line.text).font(.system(size: 11.5)).lineLimit(2).multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Color.secondaryText)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Open where you left off")
     }
 }
