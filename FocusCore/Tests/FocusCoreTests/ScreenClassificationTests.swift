@@ -188,6 +188,25 @@ final class SocialFeedPolicyTests: XCTestCase {
         }
     }
 
+    func testVideosAreNeverErrandsOrReading() {
+        for title in ["(581) I Told My AI Job Interviewer I Love You - YouTube", "(583) Saturday Night Live - YouTube 🔊"] {
+            XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome", title: title, text: "").category, "Leisure", title)
+            XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome", title: title, text: "").category, title)
+        }
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Google Chrome",
+            title: "(579) File Descriptors 1: Overview - YouTube 🔊", text: "").category, "SWE")
+        XCTAssertFalse(ScreenClassificationPolicy.isVideo(title: "YouTube API documentation"))
+    }
+
+    func testPlaceholderPagesAndFinderAreNotEvidence() {
+        for title in ["New Tab", "New Incognito Tab", "", "Blocked · Focus"] {
+            XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome", title: title, text: "").category, title)
+        }
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Preview", title: "Untitled", text: "").category, "Math")
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Finder", title: "Desktop",
+            text: "CS Systems Deep Learning Discrete Math").category)
+    }
+
     func testCodeThreadsStaySWEAndOldFeedReadingNeedsFreshLabel() {
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Google Chrome",
             title: "POSIX threads tutorial", text: "pthread_create").category, "SWE")

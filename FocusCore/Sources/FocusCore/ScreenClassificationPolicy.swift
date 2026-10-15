@@ -19,6 +19,13 @@ public enum ScreenClassificationPolicy {
         if isFocusProjectWork(title: title, text: text) {
             return Decision(category: "Admin", reason: "Your rule: work on the Focus project is Admin", uncertain: false)
         }
+        // 10/14: New Tab and Focus's own block page were labeled Admin and drew cards.
+        if isPlaceholderPage(app: app, title: title) {
+            return Decision(category: nil, reason: "An empty tab or block page does not show the task", uncertain: true)
+        }
+        if category == "Reading", isVideo(title: title) {
+            return Decision(category: nil, reason: "Reading means reading; a video needs a fresh label", uncertain: true)
+        }
         if category == "Reading", let alternative = readingAlternative(title: title) {
             return source == .model
                 ? Decision(category: alternative, reason: "Reading is educational long-form material; this shows browsing or an errand", uncertain: false)
@@ -28,6 +35,14 @@ public enum ScreenClassificationPolicy {
             // 10/14: the model called Threads and Instagram feeds Admin and Reading.
             if isSocialFeed(title: title), category != nil, category != "Leisure" {
                 return Decision(category: "Leisure", reason: "A social media feed", uncertain: false)
+            }
+            // 10/14: YouTube clips (SNL, tech interviews) were called Admin.
+            if category == "Admin", isVideo(title: title) {
+                return Decision(category: "Leisure", reason: "A video is not an errand", uncertain: false)
+            }
+            // 10/14: a Desktop folder list with course folders was called SWE.
+            if normalized(app) == "finder" {
+                return Decision(category: nil, reason: "A Finder folder lists files; it does not show the task", uncertain: true)
             }
             if category == "Math", showsMaterialCuriosity(title: title, text: text) {
                 return supportsEducationalReading(title: title, text: text)
@@ -88,6 +103,19 @@ public enum ScreenClassificationPolicy {
         let title = normalized(String(title.prefix(240)))
         return ["• threads", "• instagram", "instagram photos", "tiktok", "facebook"].contains { title.contains($0) }
             || title.hasSuffix("instagram") || title.hasSuffix(" / x")
+    }
+
+    public static func isVideo(title: String) -> Bool {
+        let title = normalized(String(title.prefix(240))).trimmingCharacters(in: CharacterSet.alphanumerics.union(.punctuationCharacters).inverted)
+        return title.hasSuffix("- youtube") || title.range(of: #"^(\(\d+\+?\) )?youtube$"#, options: .regularExpression) != nil
+    }
+
+    private static let browsers = ["google chrome", "safari", "arc", "firefox", "microsoft edge", "brave browser", "chromium"]
+
+    public static func isPlaceholderPage(app: String, title: String) -> Bool {
+        guard browsers.contains(normalized(app)) else { return false }
+        let title = normalized(title).trimmingCharacters(in: .whitespaces)
+        return ["", "new tab", "new incognito tab", "new private tab", "start page", "untitled", "blocked · focus"].contains(title)
     }
 
     public static func readingAlternative(title: String) -> String? {

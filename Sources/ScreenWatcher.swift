@@ -1282,7 +1282,11 @@ final class ScreenCoach {
             PromptLog.answer(logID, "switched to \(label ?? "Break")")
             if let label {
                 self.timer.switchTo(label, at: run.start)
-                if !FocusCategories.isLife(label) { ScreenWatcher.learn(run.keys, as: label) }
+                // Picking HW on a "Looks like Leisure" card over a YouTube clip
+                // means "I'm starting HW", not "that clip was HW" (10/14).
+                if !FocusCategories.isLife(label), label == run.category || !FocusCategories.isLife(run.category) {
+                    ScreenWatcher.learn(run.keys, as: label)
+                }
             } else {
                 self.timer.startManualBreak(minutes: 0, at: run.start)
             }
