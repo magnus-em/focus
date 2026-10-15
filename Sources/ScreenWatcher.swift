@@ -108,6 +108,8 @@ final class ScreenWatcher: ObservableObject {
     private var tick: Timer?
     private var busy = false
     private var sampleGeneration = 0
+    private var journalWindowID: CGWindowID?
+    private var journalWindowChangedAt = Date()
     private var watchSetting: AnyCancellable?
     /// OCR sometimes drops a space in a chat's title ("Activitycategory
     /// naming"), splitting one chat into two windows; the spaced spelling wins.
@@ -199,7 +201,7 @@ final class ScreenWatcher: ObservableObject {
         self.settings = settings
         guard tick == nil else { return }
         watchSetting = settings.$screenWatch.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] enabled in
-            if !enabled { self?.resetEvidence() }
+            if !enabled { self?.resetEvidence(); ScreenJournalStore.shared.invalidate() }
         }
         if settings.screenWatch, !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
         tick = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { [weak self] _ in
@@ -224,6 +226,10 @@ final class ScreenWatcher: ObservableObject {
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.journalWindowID = nil
+                self?.journalWindowChangedAt = Date()
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 Task { @MainActor in
                     guard let self, Date().timeIntervalSince(self.lastSampleAt) > 3 else { return }
@@ -299,7 +305,7 @@ final class ScreenWatcher: ObservableObject {
     /// reasoning as JSON in `Focus/screen-debug.json`, for Claude to read.
     func dumpDebug() {
         let iso = ISO8601DateFormatter()
-        var d: [String: Any] = ["status": status, "coach": coachStatus, "ignored": Self.userIgnored,
+        var d: [String: Any] = ["journalError": ScreenJournalStore.shared.lastError ?? "", "status": status, "coach": coachStatus, "ignored": Self.userIgnored,
                                 "modelError": { if #available(macOS 26.0, *) { return ScreenLabeler.lastError ?? "" }; return "" }()]
         if let x = lastSnapshot {
             d["snapshot"] = ["at": iso.string(from: x.date), "app": x.app, "bundle": x.bundle, "title": x.title,
@@ -367,6 +373,8 @@ final class ScreenWatcher: ObservableObject {
         let appName = app.localizedName ?? bundle
         let now = Date()
         let generation = sampleGeneration
+        let journalToken = ScreenJournalStore.shared.token
+        let trackedAtCapture = runningCategory()
 
         if bundle == Self.ownBundle {
             let window = Self.frontTitle(pid: app.processIdentifier) ?? ""
@@ -395,6 +403,13 @@ final class ScreenWatcher: ObservableObject {
         guard let capture = await Self.captureWindows(pid: app.processIdentifier, skipOthers: recentOthers) else { return }
         guard canRecordSample(generation: generation, bundle: bundle) else { return }
         let shot = capture.front
+        let capturedAt = Date()
+        if journalWindowID != shot.windowID {
+            journalWindowID = shot.windowID
+            journalWindowChangedAt = capturedAt
+        }
+        let focusReportAtCapture = BrowserBridge.shared.focusReport
+        let windowChangedAtCapture = journalWindowChangedAt
         let skip = Self.chromeFraction(shot, bundle: bundle)
         stage = "Reading text in \(appName)"
         let includeSidebar = !Self.chatApps.contains(bundle)
@@ -408,7 +423,8 @@ final class ScreenWatcher: ObservableObject {
            !Self.isGeneric(title: h, app: appName) {
             title = canonicalChatTitle(h, bundle: bundle)
         }
-        ScreenEvidenceStore.shared.record(image: shot.image, at: now, bundle: bundle, title: title)
+        let imageID = await ScreenEvidenceStore.shared.record(image: shot.image, at: now, bundle: bundle, title: title)
+        guard canRecordSample(generation: generation, bundle: bundle) else { return }
         // The Chrome extension knows the tab's address; the picture doesn't.
         var url: String?
         if Self.browsers.contains(bundle), let tab = BrowserBridge.shared.activeTab,
@@ -448,6 +464,16 @@ final class ScreenWatcher: ObservableObject {
             : labelSource == "your Focus project rule" ? "rule"
             : labelSource.hasPrefix("kept") ? "held"
             : labelSource.contains("model") ? "model" : nil
+        let browser = Self.browsers.contains(bundle)
+        let privateMarker = (shot.title + "\n" + read.fullText).range(of: #"(?i)\b(incognito|private browsing)\b"#, options: .regularExpression) != nil
+        let privacy: ScreenJournal.Privacy = browser ? (privateMarker ? .incognito : BrowserWindowPrivacy.decide(
+            report: focusReportAtCapture, capturedTitle: shot.title, windowChangedAt: windowChangedAtCapture,
+            capturedAt: capturedAt, nativeWindowMatches: Self.frontWindowID(pid: app.processIdentifier) == shot.windowID,
+            isChrome: bundle == "com.google.Chrome")) : .notBrowser
+        ScreenJournalStore.shared.record(.init(at: now, end: now.addingTimeInterval(Self.interval),
+            app: appName, bundle: bundle, windowID: "\(app.processIdentifier):\(shot.windowID)", title: title,
+            url: privacy == .incognito ? nil : url, category: category, trackedCategory: trackedAtCapture, active: idle < 90,
+            idleSeconds: idle, privacy: privacy, evidenceImageID: imageID, text: read.fullText), token: journalToken)
         record(ScreenSample(date: now, app: appName, bundleID: bundle, title: title,
                             summary: summary, category: category, active: PresenceMonitor.idleSeconds < 90,
                             learned: learned, source: source, reason: labelReason, uncertain: labelUncertain))
@@ -693,6 +719,7 @@ final class ScreenWatcher: ObservableObject {
         let image: CGImage
         let title: String
         let heightPoints: CGFloat
+        let windowID: CGWindowID
     }
 
     /// Their tab strip and bookmarks bar OCR first and filled the 1500-char
@@ -715,6 +742,17 @@ final class ScreenWatcher: ObservableObject {
         return info.first {
             ($0[kCGWindowLayer as String] as? Int) == 0 && ($0[kCGWindowOwnerPID as String] as? Int32) == pid
         }.map { $0[kCGWindowName as String] as? String ?? "" }
+    }
+
+    private static func frontWindowID(pid: pid_t) -> CGWindowID? {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        return windows.first { window in
+            guard (window[kCGWindowLayer as String] as? Int) == 0,
+                  (window[kCGWindowOwnerPID as String] as? Int32) == pid,
+                  let bounds = window[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: bounds) else { return false }
+            return rect.width > 200 && rect.height > 150
+        }?[kCGWindowNumber as String] as? CGWindowID
     }
 
     private static func captureWindows(pid: pid_t, skipOthers: Set<String>) async -> Capture? {
@@ -765,7 +803,7 @@ final class ScreenWatcher: ObservableObject {
         guard let image = try? await SCScreenshotManager.captureImage(
             contentFilter: SCContentFilter(desktopIndependentWindow: window), configuration: config
         ) else { return nil }
-        return Shot(image: image, title: window.title ?? fallbackTitle, heightPoints: window.frame.height)
+        return Shot(image: image, title: window.title ?? fallbackTitle, heightPoints: window.frame.height, windowID: id)
     }
 
     nonisolated private static func recognizeText(_ image: CGImage, skipTop: CGFloat = 0) -> String {
@@ -778,7 +816,7 @@ final class ScreenWatcher: ObservableObject {
 
     /// Text plus the longest main-column line in the title bar (a chat's title).
     nonisolated private static func recognize(_ image: CGImage, skipTop: CGFloat = 0,
-                                            includeSidebar: Bool = true) -> (text: String, header: String?) {
+                                            includeSidebar: Bool = true) -> (text: String, fullText: String, header: String?) {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = false
@@ -798,7 +836,9 @@ final class ScreenWatcher: ObservableObject {
             // Text scrolled under the translucent bar reads as sentences; titles don't.
             .filter { (6...60).contains($0.count) && !$0.contains(". ") && !$0.hasSuffix(".") }
             .max { $0.count < $1.count }
-        return (String(lines.joined(separator: "\n").prefix(2500)), header)
+        let fullText = (request.results ?? []).sorted { $0.boundingBox.minY > $1.boundingBox.minY }
+            .compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+        return (String(lines.joined(separator: "\n").prefix(2500)), fullText, header)
     }
 
     nonisolated private static func chromeFraction(_ shot: Shot, bundle: String?) -> CGFloat {

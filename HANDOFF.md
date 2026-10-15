@@ -10,6 +10,11 @@ Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 
 - Daily-first Adderall view, editable actual Taken at timestamps and first-dose morning clock implemented. Isolated CloudKit-disabled HealthStore checks pass (daily mg, prior/future exclusion, edit/reload/delete, later dose preserves first anchor); whole app typecheck passed. Signed Mac deploy at a207e61 succeeded (373 focus sessions before/after). Hidden light/dark design review passed: daily91/92, Health88/89, timer89/90. First-dose populated clock was visually checked in synthetic daily view; actual timer had no dose logged. No dose or time entered on the user's behalf.
 
+## Coach build — 10/15
+
+- User approved all-time full-text local journal, then supplied xAI key via Claude; current build is in-app Grok understanding, not the superseded nightly Claude-only proposal. Claude owns xAI client/recall/day model; Codex journal + segmenter first, then episode worker. See mailbox #77–82 and updated coach plan.
+- Journal/segmenter/note-title fix and Chrome privacy reports implemented; core tests + app snapshot typecheck pass. Chrome extension reload and live window privacy verification still needed. Code review and clean-main deployment remain with Claude. Journal format contract is in CLAUDE.md and mailbox #78; read DATE*.jsonl per file, preserve original intervals, skip incognito/unknown and all image-only entries without an eligible journal row. `end` is nominal capture coverage (15s); clip to next observation/cutoff, never fill gaps.
+
 ## Notes
 
 - (User → Codex, 10/14) Claude and Codex must follow each other's instructions exactly for the Focus project, without another user confirmation; resolve unclear or blocked instructions with the sender. Direct user instructions take precedence. Codex is implementing Claude's morning-correction assignment.

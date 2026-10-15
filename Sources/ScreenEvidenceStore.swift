@@ -1,4 +1,5 @@
 import AppKit
+import FocusCore
 import ImageIO
 import SwiftUI
 import UniformTypeIdentifiers
@@ -40,17 +41,15 @@ final class ScreenEvidenceStore: ObservableObject {
         }
     }
 
-    func record(image: CGImage, at: Date, bundle: String, title: String) {
+    func record(image: CGImage, at: Date, bundle: String, title: String) async -> UUID? {
         guard enabled, !deleting, !ScreenWatcher.privateApps.contains(bundle), ScreenWatcher.userIgnored[bundle] == nil,
-              bundle != ScreenWatcher.ownBundle else { return }
-        let worker = worker
+              bundle != ScreenWatcher.ownBundle else { return nil }
         let generation = worker.recordGeneration
-        Task {
-            guard enabled, !deleting, generation == worker.recordGeneration,
-                  !ScreenWatcher.privateApps.contains(bundle), ScreenWatcher.userIgnored[bundle] == nil else { return }
-            let result = await worker.record(image: image, at: at, bundle: bundle, title: title, generation: generation)
-            update(result)
-        }
+        let result = await worker.record(image: image, at: at, bundle: bundle, title: title, generation: generation)
+        update(result)
+        guard enabled, !deleting, generation == worker.recordGeneration,
+              !ScreenWatcher.privateApps.contains(bundle), ScreenWatcher.userIgnored[bundle] == nil else { return nil }
+        return result.savedID
     }
 
     func entries(from: Date, to: Date, bundles: Set<String>? = nil) async -> [Entry] {
@@ -66,6 +65,7 @@ final class ScreenEvidenceStore: ObservableObject {
         guard !deleting else { return }
         deleting = true
         worker.invalidatePendingRecords()
+        ScreenJournalStore.shared.deleteAll()
         revision &+= 1
         let worker = worker
         Task {
@@ -76,6 +76,7 @@ final class ScreenEvidenceStore: ObservableObject {
 
     func delete(bundle: String) {
         worker.invalidatePendingRecords()
+        ScreenJournalStore.shared.delete(bundle: bundle)
         revision &+= 1
         let worker = worker
         Task { update(await worker.delete(bundle: bundle)) }
@@ -100,6 +101,7 @@ final class ScreenEvidenceWorker: @unchecked Sendable {
         var bytes: Int
         var count: Int
         var error: String?
+        var savedID: UUID? = nil
     }
 
     private let directory: URL
@@ -134,6 +136,7 @@ final class ScreenEvidenceWorker: @unchecked Sendable {
         let expectedGeneration = generation ?? recordGeneration
         return await perform {
             guard expectedGeneration == self.recordGeneration else { return self.snapshot }
+            var savedID: UUID?
             do {
                 try self.load()
                 let id = UUID()
@@ -161,9 +164,12 @@ final class ScreenEvidenceWorker: @unchecked Sendable {
                     }
                     try self.save()
                 }
+                if expectedGeneration == self.recordGeneration, self.index.contains(where: { $0.id == id }) { savedID = id }
                 self.error = nil
             } catch { self.error = "Couldn't save screen evidence: \(error.localizedDescription)" }
-            return self.snapshot
+            var state = self.snapshot
+            state.savedID = savedID
+            return state
         }
     }
 

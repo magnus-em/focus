@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import FocusCore
 
 /// Loopback HTTP endpoint for the Chrome extension in `ChromeExtension/`.
 ///
@@ -33,6 +34,7 @@ final class BrowserBridge: ObservableObject {
     struct Tab { let url: String; let title: String; let at: Date }
     /// Focused Chrome tab (non-incognito), kept in memory only.
     @MainActor private(set) var activeTab: Tab?
+    @MainActor private(set) var focusReport: BrowserWindowPrivacy.Report?
     @Published private(set) var listenError: String?
 
     var stateProvider: (() -> State)?
@@ -132,8 +134,18 @@ final class BrowserBridge: ObservableObject {
             DispatchQueue.main.async {
                 self.lastContact = Date()
                 MainActor.assumeIsolated {
-                    if let url = obj?["url"] as? String, !url.isEmpty {
+                    if let ts = obj?["ts"] as? Double, let window = obj?["focusedWindowId"] as? Int,
+                       let incognito = obj?["incognito"] as? Bool {
+                        let at = Date(timeIntervalSince1970: ts / 1000)
+                        if abs(at.timeIntervalSinceNow) <= 10, at > (self.focusReport?.at ?? .distantPast) {
+                            self.focusReport = .init(windowID: window, incognito: incognito, title: obj?["title"] as? String ?? "", at: at)
+                            if window >= 0, !incognito, let url = obj?["url"] as? String, !url.isEmpty {
+                                self.activeTab = Tab(url: url, title: obj?["title"] as? String ?? "", at: at)
+                            } else { self.activeTab = nil }
+                        }
+                    } else if let url = obj?["url"] as? String, !url.isEmpty {
                         self.activeTab = Tab(url: url, title: obj?["title"] as? String ?? "", at: Date())
+                        self.focusReport = nil
                     }
                 }
                 self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }

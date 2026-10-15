@@ -178,16 +178,25 @@ function track() {
 }
 
 // The focused tab's address for the app's screen watcher (a screenshot can't
-// tell godbolt.org from a math PDF). Sent on every change; never incognito.
-async function postTab() {
-  const win = await chrome.windows.getLastFocused().catch(() => null);
-  if (!win || !win.focused || win.incognito) return;
-  const [tab] = await chrome.tabs.query({ active: true, windowId: win.id });
-  if (!tab || !tab.url || !/^https?:/.test(tab.url)) return;
+// tell godbolt.org from a math PDF). Private/unavailable focus clears the tab;
+// a fresh normal-window report is also required before coach uploads.
+async function postTab(focusHint) {
+  const started = Date.now();
+  let payload = { focusedWindowId: chrome.windows.WINDOW_ID_NONE, incognito: false, url: '', title: '', ts: started };
+  if (focusHint !== chrome.windows.WINDOW_ID_NONE) {
+    const win = await chrome.windows.getLastFocused().catch(() => null);
+    if (win && win.focused && !win.incognito) {
+      const [tab] = await chrome.tabs.query({ active: true, windowId: win.id }).catch(() => []);
+      const check = await chrome.windows.getLastFocused().catch(() => null);
+      if (tab && tab.url && /^https?:/.test(tab.url) && check && check.id === win.id && check.focused && !check.incognito) {
+        payload = { focusedWindowId: win.id, incognito: false, url: tab.url, title: tab.title || '', ts: started };
+      }
+    }
+  }
   fetch(API + '/tab', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: tab.url, title: tab.title || '' }),
+    body: JSON.stringify(payload),
     signal: AbortSignal.timeout(2000),
   }).catch(() => {});
 }
@@ -282,7 +291,7 @@ chrome.tabs.onUpdated.addListener((_id, info, tab) => {
   if (tab.active && (info.url || info.audible !== undefined)) track();
   if (tab.active && (info.url || info.title)) postTab();
 });
-chrome.windows.onFocusChanged.addListener(() => { track(); postTab(); });
+chrome.windows.onFocusChanged.addListener((id) => { track(); postTab(id); });
 chrome.idle.onStateChanged.addListener(() => track());
 
 function ensureAlarm() {
