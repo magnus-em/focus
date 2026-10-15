@@ -112,7 +112,7 @@ final class ScreenClassificationPolicyTests: XCTestCase {
 
     func testSaunaMaterialCuriosityIsNotInventedMathCoursework() {
         let text = "Explain why wool insulation in a sauna hat protects the head. I am curious about the material science."
-        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Why sauna hats?", text: text).category, "Reading")
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Why sauna hats?", text: text).category)
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "ChatGPT", title: "Why sauna hats?", text: text, source: .learned).category, "Admin")
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Heat equation assignment", text: text + " Derive the heat equation for homework.").category, "Math")
     }
@@ -188,10 +188,10 @@ final class SocialFeedPolicyTests: XCTestCase {
         }
     }
 
-    func testThreadsInCodeAndLearnedLabelsAreKept() {
+    func testCodeThreadsStaySWEAndOldFeedReadingNeedsFreshLabel() {
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Google Chrome",
             title: "POSIX threads tutorial", text: "pthread_create").category, "SWE")
-        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome",
-            title: "Home • Threads", text: "", source: .learned).category, "Reading")
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome",
+            title: "Home • Threads", text: "", source: .learned).category)
     }
 }

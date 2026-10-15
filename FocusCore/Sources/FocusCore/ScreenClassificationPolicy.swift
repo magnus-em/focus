@@ -19,17 +19,29 @@ public enum ScreenClassificationPolicy {
         if isFocusProjectWork(title: title, text: text) {
             return Decision(category: "Admin", reason: "Your rule: work on the Focus project is Admin", uncertain: false)
         }
+        if category == "Reading", let alternative = readingAlternative(title: title) {
+            return source == .model
+                ? Decision(category: alternative, reason: "Reading is educational long-form material; this shows browsing or an errand", uncertain: false)
+                : Decision(category: nil, reason: "Earlier Reading label conflicts with the visible browsing or errand; needs a fresh label", uncertain: true)
+        }
         if source == .model {
             // 10/14: the model called Threads and Instagram feeds Admin and Reading.
             if isSocialFeed(title: title), category != nil, category != "Leisure" {
                 return Decision(category: "Leisure", reason: "A social media feed", uncertain: false)
             }
             if category == "Math", showsMaterialCuriosity(title: title, text: text) {
-                return Decision(category: "Reading", reason: "Exploring sauna materials, without mathematics or coursework", uncertain: false)
+                return supportsEducationalReading(title: title, text: text)
+                    ? Decision(category: "Reading", reason: "An educational explainer, without mathematics or coursework", uncertain: false)
+                    : Decision(category: nil, reason: "Curiosity alone does not establish coursework or educational long-form reading", uncertain: true)
             }
         }
         guard let category else {
             return Decision(category: nil, reason: "Not enough evidence to identify the task", uncertain: true)
+        }
+        if category == "Reading" {
+            if source == .model && !supportsEducationalReading(title: title, text: text) {
+                return Decision(category: nil, reason: "Not enough evidence of an educational article, book, paper or substantial explainer", uncertain: true)
+            }
         }
         guard category == "AI" else {
             return Decision(category: category, reason: "", uncertain: false)
@@ -76,6 +88,37 @@ public enum ScreenClassificationPolicy {
         let title = normalized(String(title.prefix(240)))
         return ["• threads", "• instagram", "instagram photos", "tiktok", "facebook"].contains { title.contains($0) }
             || title.hasSuffix("instagram") || title.hasSuffix(" / x")
+    }
+
+    public static func readingAlternative(title: String) -> String? {
+        let title = normalized(String(title.prefix(240)))
+        if ["pay bill", "bill payment", "tax form", "account settings", "appointment booking", "course registration"].contains(where: title.contains) {
+            return "Admin"
+        }
+        if isSocialFeed(title: title)
+            || ["breaking news", "latest news", "top stories", "hacker news", "shopping cart", "shop online", "amazon.com", "ebay.com"].contains(where: title.contains)
+            || title.hasSuffix(" - reddit") || title.hasSuffix(" | reddit") || title.hasPrefix("r/")
+            || title.range(of: #"^(?:news|home feed|for you|shopping|forums?)(?:$|\s*[-|:])"#, options: .regularExpression) != nil {
+            return "Leisure"
+        }
+        return nil
+    }
+
+    public static func supportsEducationalReading(title: String, text: String) -> Bool {
+        guard readingAlternative(title: title) == nil else { return false }
+        let title = normalized(String(title.prefix(240)))
+        let body = normalized(String(text.prefix(2400)))
+        let explicit = ["textbook", "documentation", "tutorial", "beginner's guide", "beginners guide",
+                        "introduction to", "explainer", "lecture notes", "understanding "]
+        if explicit.contains(where: title.contains) { return true }
+        let form = ["article", "essay", "chapter", "book", "paper", "journal", "read online", "epub"]
+        let subject = ["learn", "explain", "concept", "history", "science", "psychology", "philosophy",
+                       "economics", "biology", "physics", "engineering", "mathematics", "research", "evidence"]
+        let content = title + "\n" + body
+        if form.contains(where: { containsWordBeginning($0, in: content) }),
+           subject.contains(where: { containsWordBeginning($0, in: content) }) { return true }
+        let explanations = ["because ", "for example", "in other words", "defined as", "refers to", "means that"]
+        return body.count >= 800 && explanations.filter(body.contains).count >= 2
     }
 
     private static func showsMaterialCuriosity(title: String, text: String) -> Bool {

@@ -1,5 +1,11 @@
 # Focus implementation work log
 
+## Reading definition and time-integrity review — 2026-10-14
+
+- Reading is now educational long-form material. Updated the local model hints and deterministic checks; obvious news/feeds/shopping/forums become Leisure for model proposals, errands Admin. Contradictory old learned/held Reading labels are rejected as uncertain rather than blindly trusted. Casual curiosity alone does not establish Reading. Saved/manual blocks, user checks and learned-label storage are unchanged.
+- Added four Reading policy cases for educational formats, non-educational browsing/errands, old learned labels and casual chat. Full core suite passed 58 tests before one additional precedence assertion for account settings.
+- Approved Claude's time-integrity fixes through 253079d after code review and an isolated in-memory actual-SessionStore check: merging a pair leaves a third row intact, Undo restores the pair, and a changed displayed pair is refused. This is not a full device round-trip test. Claude owns installation of that change.
+
 ## Learned-title guard and morning lifecycle repair — 2026-10-14
 
 - Added pure title-shape checks and raw/lowercase regression examples for timestamp/process/compiler output, terminal commands, code, multiline text and very long strings. Ordinary study topics and Focus source-file titles remain eligible. Targeted policy tests pass.
