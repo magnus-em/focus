@@ -73,6 +73,8 @@ final class QuickSwitch {
     var currentLabel: String { timer.isActive && !timer.isOnBreak ? timer.currentLabel : "" }
     var isActive: Bool { timer.isActive }
     var isOnBreak: Bool { timer.isOnBreak && timer.isActive }
+    /// The block the timer is running now (focus, life or break), for the coach's day record.
+    var inProgress: WorkSession? { timer.currentInProgressSession ?? timer.currentInProgressBreak }
 
     private func ensureDayOpen() {
         if !days.isDayStarted { days.isDayEnded ? days.reopenDay() : days.startDay() }

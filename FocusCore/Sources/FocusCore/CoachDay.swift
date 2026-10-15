@@ -7,7 +7,7 @@ import Foundation
 /// real data with grok-4.7 (reasoning low): about a minute and $0.08, with
 /// questions taken from what was actually on screen.
 public enum CoachDay {
-    public static let promptVersion = 3
+    public static let promptVersion = 4
 
     public struct Entry: Codable, Equatable, Sendable {
         public var start: String
@@ -139,11 +139,30 @@ public enum CoachDay {
         public var start: Date
         public var end: Date
         public var label: String
-        public init(start: Date, end: Date, label: String) {
+        /// The timer's block still going when the evidence was gathered.
+        public var running: Bool
+        public init(start: Date, end: Date, label: String, running: Bool = false) {
             self.start = start
             self.end = end
             self.label = label
+            self.running = running
         }
+    }
+
+    /// The saved log plus the block the timer is running, clipped at `now`.
+    /// A record written at 1 PM called 11:53–12:37 "untracked" (10/15) while
+    /// Math had been running since 11:53: only saved sessions were passed.
+    /// The running block wins any overlap with a saved row (a peer's copy of
+    /// the same session, or a phantom), so nothing is counted twice.
+    public static func trackedSessions(saved: [Session], running: Session?, now: Date) -> [Session] {
+        guard let running, running.start < now else { return saved.sorted { $0.start < $1.start } }
+        let live = Session(start: running.start, end: now, label: running.label, running: true)
+        return saved.compactMap { s -> Session? in
+            guard s.start < live.start else { return nil }
+            var s = s
+            s.end = min(s.end, live.start)
+            return s.end > s.start ? s : nil
+        }.sorted { $0.start < $1.start } + [live]
     }
 
     public struct Pack: Sendable {
@@ -155,15 +174,18 @@ public enum CoachDay {
         public var imageLabels: [String]
         /// The vision model's reading of each screen change (see `observationLines`).
         public var observations: [String]
+        /// When the day isn't over yet: the evidence runs up to here.
+        public var asOf: Date?
 
         public init(day: Date, commitment: String?, sessions: [Session], blocks: [Block], imageLabels: [String],
-                    observations: [String] = []) {
+                    observations: [String] = [], asOf: Date? = nil) {
             self.day = day
             self.commitment = commitment
             self.sessions = sessions
             self.blocks = blocks
             self.imageLabels = imageLabels
             self.observations = observations
+            self.asOf = asOf
         }
     }
 
@@ -225,7 +247,8 @@ public enum CoachDay {
             .joined(separator: ", ")
         let timeline = pack.sessions.filter { $0.end > dayStart && $0.start < dayEnd }.map { s in
             "- \(clock.string(from: max(s.start, dayStart)))–\(clock.string(from: min(s.end, dayEnd))) \(s.label)"
-                + " (\(Int((min(s.end, dayEnd).timeIntervalSince(max(s.start, dayStart)) / 60).rounded())) min)"
+                + " (\(Int((min(s.end, dayEnd).timeIntervalSince(max(s.start, dayStart)) / 60).rounded())) min"
+                + (s.running ? ", still running)" : ")")
         }
         let blocks = pack.blocks.map { b -> String in
             var line = "- \(clock.string(from: b.start))–\(clock.string(from: b.end))"
@@ -239,12 +262,14 @@ public enum CoachDay {
             return line
         }
         let images = pack.imageLabels.enumerated().map { "Image \($0.offset + 1): \($0.element)" }
-        return evidence(dayName: dayName.string(from: pack.day), commitment: pack.commitment, totals: totals,
+        let asOf = pack.asOf.map { clock.string(from: $0) }
+        return evidence(dayName: dayName.string(from: pack.day), asOf: asOf, commitment: pack.commitment, totals: totals,
                         timeline: timeline, blocks: blocks, images: images, observations: pack.observations) + """
 
-        Write: a one-sentence headline; a timeline of the whole waking day (merge to roughly 15–30 entries, \
+        Write: a one-sentence headline; a timeline of the \(asOf == nil ? "whole waking day" : "day so far") (merge to roughly 15–30 entries, \
         specific, times as HH:MM); per course or subject studied, the topics, a 3–6 sentence digest of what was \
-        actually covered, and what looked shaky (repeated questions, confusion); 3 retrieval questions for \
+        actually covered, and what looked shaky (the student's own repeated questions, confusion; problem \
+        statements on screen are not confusion); 3 retrieval questions for \
         tomorrow morning from the study material (the most useful ideas that are easiest to forget first); the \
         rest of the day by category in one line each; plan vs actual if there was a commitment; 2–4 honest \
         observations about how time was used (passive review vs practice, fragmentation, drift), without moralizing.
@@ -257,10 +282,10 @@ public enum CoachDay {
         return full.components(separatedBy: "\n\nWrite: ").first ?? full
     }
 
-    private static func evidence(dayName: String, commitment: String?, totals: String, timeline: [String],
+    private static func evidence(dayName: String, asOf: String?, commitment: String?, totals: String, timeline: [String],
                                  blocks: [String], images: [String], observations: [String]) -> String {
         """
-        Day: \(dayName)
+        Day: \(dayName)\(asOf.map { "\nSo far: evidence up to \($0); the day isn't over." } ?? "")
         Morning commitment: \(commitment?.isEmpty == false ? commitment! : "(none)")
 
         Tracked minutes by category: \(totals.isEmpty ? "(nothing tracked)" : totals)
@@ -273,7 +298,9 @@ public enum CoachDay {
         \(blocks.isEmpty ? "(none)" : blocks.joined(separator: "\n"))
 
         Observations (a vision model read the screenshot and text at each screen change; more reliable than the \
-        on-device notes, but still not the student's own words):
+        on-device notes, but still not the student's own words. "you asked" quotes the student's own questions; \
+        "on screen" lists problem statements that were shown or pasted, which aren't the student's questions; \
+        "(inferred)" marks a course taken from nearby observations or the category rather than this screen):
         \(observations.isEmpty ? "(none)" : observations.joined(separator: "\n"))
 
         Screenshots attached, in order:
@@ -282,14 +309,23 @@ public enum CoachDay {
     }
 
     /// One line per stretch of the same topic: consecutive observations with
-    /// the same topic less than 10 minutes apart are merged.
-    public static func observationLines(_ records: [CoachEpisode.Record], calendar: Calendar = .current,
-                                        limit: Int = 150) -> [String] {
+    /// the same topic less than 10 minutes apart are merged. `courses` comes
+    /// from `CoachCourse.attribute`; without it the model's course is used.
+    public static func observationLines(_ records: [CoachEpisode.Record],
+                                        courses: [UUID: CoachCourse.Attribution]? = nil,
+                                        calendar: Calendar = .current, limit: Int = 150) -> [String] {
         let clock = DateFormatter()
         clock.calendar = calendar
         clock.timeZone = calendar.timeZone
         clock.dateFormat = "HH:mm"
-        struct Run { var first: CoachEpisode.Record; var end: Date; var concepts: [String]; var questions: [String] }
+        struct Run {
+            var first: CoachEpisode.Record; var end: Date; var concepts: [String]; var asked: [String]
+            var prompts: [String]; var courses: [CoachCourse.Attribution]
+        }
+        func attribution(_ r: CoachEpisode.Record) -> CoachCourse.Attribution? {
+            if let courses { return courses[r.source.id] }
+            return r.understanding.course.map { CoachCourse.Attribution(course: $0, basis: .model) }
+        }
         var runs: [Run] = []
         for r in records.sorted(by: { $0.source.at < $1.source.at }) {
             let u = r.understanding
@@ -297,18 +333,27 @@ public enum CoachDay {
                r.source.at.timeIntervalSince(last.end) < 600 {
                 last.end = max(last.end, r.source.end)
                 last.concepts += u.concepts.filter { !last.concepts.contains($0) }
-                last.questions += u.questions.filter { !last.questions.contains($0) }
+                last.asked += u.askedByUser.filter { !last.asked.contains($0) }
+                last.prompts += u.onScreenPrompts.filter { !last.prompts.contains($0) }
+                if let a = attribution(r) { last.courses.append(a) }
                 runs[runs.count - 1] = last
             } else {
-                runs.append(Run(first: r, end: r.source.end, concepts: u.concepts, questions: u.questions))
+                runs.append(Run(first: r, end: r.source.end, concepts: u.concepts, asked: u.askedByUser,
+                                prompts: u.onScreenPrompts, courses: attribution(r).map { [$0] } ?? []))
             }
         }
         return runs.suffix(limit).map { run in
             let u = run.first.understanding
+            var votes: [String: Int] = [:]
+            for a in run.courses { votes[a.course, default: 0] += 1 }
+            let best = votes.max { $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key }?.key
+            let direct = run.courses.contains { $0.course == best && $0.basis.isDirect }
+            let course = best.map { direct ? $0 : "\($0) (inferred)" } ?? "no course"
             var line = "- \(clock.string(from: run.first.source.at))–\(clock.string(from: run.end)) \(run.first.source.app)"
-                + " · \(u.course ?? "no course") · \(u.activity) · \(u.topic)"
+                + " · \(course) · \(u.activity) · \(u.topic)"
             if !run.concepts.isEmpty { line += " — concepts: " + run.concepts.prefix(8).joined(separator: ", ") }
-            if !run.questions.isEmpty { line += " — asked: " + run.questions.prefix(4).joined(separator: "; ") }
+            if !run.asked.isEmpty { line += " — you asked: " + run.asked.prefix(4).joined(separator: "; ") }
+            if !run.prompts.isEmpty { line += " — on screen: " + run.prompts.prefix(4).joined(separator: "; ") }
             if let s = u.struggle, !s.isEmpty { line += " — struggle: \(s)" }
             if u.unreadable { line += " — (partly unreadable)" }
             line += " — " + String(u.summary.prefix(240))

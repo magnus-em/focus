@@ -11,12 +11,14 @@ final class WhereWasITests: XCTestCase {
         calendar.date(from: DateComponents(year: 2026, month: 10, day: 15, hour: h, minute: m))!
     }
     private func rec(_ h: Int, _ m: Int, tracked: String, topic: String, activity: String = "solving",
-                     questions: [String] = [], privacy: ScreenJournal.Privacy = .notBrowser, url: String? = nil) -> CoachEpisode.Record {
+                     questions: [String] = [], prompts: [String] = [], privacy: ScreenJournal.Privacy = .notBrowser, url: String? = nil,
+                     course: String? = nil) -> CoachEpisode.Record {
         let row = ScreenJournal.Row(at: at(h, m), end: at(h, m).addingTimeInterval(15), app: "ChatGPT", bundle: "com.openai.chat",
                                     windowID: "1:2", title: "t", url: url, category: tracked, trackedCategory: tracked,
                                     active: true, idleSeconds: 0, privacy: privacy, evidenceImageID: nil, text: "x")
-        let u = CoachEpisode.Understanding(topic: topic, course: tracked == "Math" ? "MATH 244" : nil, activity: activity,
-                                           concepts: [], summary: "", notes: [], questions: questions, transcription: nil,
+        let u = CoachEpisode.Understanding(topic: topic, course: course ?? (tracked == "Math" ? "MATH 244" : nil), activity: activity,
+                                           concepts: [], summary: "", notes: [], askedByUser: questions,
+                                           onScreenPrompts: prompts, transcription: nil,
                                            diagram: false, unreadable: false, struggle: nil, confidence: .high)
         return CoachEpisode.Record(source: row, understanding: u, model: "grok-4.3", usage: [], needsReview: false)
     }
@@ -42,5 +44,12 @@ final class WhereWasITests: XCTestCase {
         XCTAssertEqual(WhereWasI.line([ok], running: "SWE", now: at(14, 0), calendar: calendar)?.url?.host, "leetcode.com")
         let file = rec(12, 0, tracked: "SWE", topic: "Notes", privacy: .regular, url: "file:///Users/x/notes.pdf")
         XCTAssertNil(WhereWasI.line([file], running: "SWE", now: at(14, 0), calendar: calendar)?.url)
+    }
+
+    func testQuotesOnlyTheUsersOwnQuestionAndTheInferredCourse() {
+        let sheet = rec(12, 39, tracked: "Math", topic: "Derangements", activity: "reading",
+                        prompts: ["How many rearrangements have no student in their usual seat?"], course: "")
+        let line = WhereWasI.line([sheet], running: "Math", now: at(14, 0), course: { _ in "MATH 244" }, calendar: calendar)
+        XCTAssertEqual(line?.text, "Last time on MATH 244 (12:39 PM): Derangements")
     }
 }

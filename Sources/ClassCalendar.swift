@@ -103,6 +103,20 @@ final class ClassCalendar: ObservableObject {
                             options: .regularExpression) == nil
     }
 
+    /// Classes (and exams) on any day, one per title and start.
+    func classes(on day: Date) -> [(title: String, start: Date, end: Date)] {
+        guard authorized else { return [] }
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: day)
+        let events = store.events(matching: store.predicateForEvents(
+            withStart: start, end: cal.date(byAdding: .day, value: 1, to: start)!, calendars: nil))
+        var seen = Set<String>()
+        return events.filter(Self.isClass)
+            .map { (title: $0.title ?? "", start: $0.startDate!, end: $0.endDate!) }
+            .filter { seen.insert("\($0.title)|\($0.start.timeIntervalSince1970)").inserted }
+            .sorted { $0.start < $1.start }
+    }
+
     /// Exams that took place on `day` (for the morning-after debrief).
     func exams(on day: Date) -> [Exam] {
         guard authorized else { return [] }

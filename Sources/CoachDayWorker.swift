@@ -182,11 +182,16 @@ final class CoachDayWorker: ObservableObject {
         let focus = Set(settings.tags).subtracting(settings.lifeTags)
         let facts = await Task.detached { Self.journalFacts(for: day) }.value
 
-        let sessions = store.sessions
+        let now = Date()
+        func session(_ s: WorkSession) -> CoachDay.Session {
+            CoachDay.Session(start: s.startTime, end: s.startTime.addingTimeInterval(s.durationMinutes * 60),
+                             label: s.type != .work ? "Break" : (s.label ?? "Focus"))
+        }
+        let saved = store.sessions
             .filter { $0.startTime < end && $0.startTime.addingTimeInterval($0.durationMinutes * 60) > start }
-            .sorted { $0.startTime < $1.startTime }
-            .map { CoachDay.Session(start: $0.startTime, end: $0.startTime.addingTimeInterval($0.durationMinutes * 60),
-                                    label: $0.type != .work ? "Break" : ($0.label ?? "Focus")) }
+            .map(session)
+        let live = QuickSwitch.shared?.inProgress.map(session).flatMap { $0.start < end && now > start ? $0 : nil }
+        let sessions = CoachDay.trackedSessions(saved: saved, running: live, now: now)
         func tracked(_ a: Date, _ b: Date) -> String? {
             var overlap: [String: TimeInterval] = [:]
             for s in sessions {
@@ -239,18 +244,32 @@ final class CoachDayWorker: ObservableObject {
             labels.append("\(clock.string(from: e.at)) \(e.bundle.split(separator: ".").last ?? ""): \(e.title)")
         }
         let observations = await Task.detached { Self.episodes(for: day) }.value
+        let courses = CoachCourse.attribute(observations, context: Self.courseContext(for: [day]))
         let pack = CoachDay.Pack(day: day, commitment: days?.record(for: day)?.commitmentText, sessions: sessions,
                                  blocks: blocks, imageLabels: labels,
-                                 observations: CoachDay.observationLines(observations))
+                                 observations: CoachDay.observationLines(observations, courses: courses),
+                                 asOf: now < end ? now : nil)
         return (pack, images)
+    }
+
+    /// The semester's courses and the calendar's classes on those days.
+    static func courseContext(for days: [Date]) -> CoachCourse.Context {
+        let calendar = ClassCalendar.shared
+        return CoachCourse.Context(coursePrefixes: calendar.coursePrefixes,
+                                   classes: days.flatMap(calendar.classes(on:)).map {
+                                       CoachCourse.ClassEvent(start: $0.start, end: $0.end, title: $0.title)
+                                   })
     }
 
     /// Where the running subject was left, from the last three days of observations.
     nonisolated static func whereWasI(running: String) async -> WhereWasI.Line? {
-        await Task.detached {
-            let today = Calendar.current.startOfDay(for: Date())
-            let days = (0...2).compactMap { Calendar.current.date(byAdding: .day, value: -$0, to: today) }
-            return WhereWasI.line(days.flatMap(episodes(for:)), running: running, now: Date())
+        let today = Calendar.current.startOfDay(for: Date())
+        let days = (0...2).compactMap { Calendar.current.date(byAdding: .day, value: -$0, to: today) }
+        let context = await MainActor.run { courseContext(for: days) }
+        return await Task.detached {
+            let episodes = days.flatMap(episodes(for:))
+            return WhereWasI.line(episodes, running: running, now: Date(),
+                                  course: CoachCourse.resolver(episodes, context: context))
         }.value
     }
 

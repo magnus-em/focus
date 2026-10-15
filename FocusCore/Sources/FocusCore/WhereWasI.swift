@@ -20,6 +20,7 @@ public enum WhereWasI {
     }
 
     public static func line(_ episodes: [CoachEpisode.Record], running: String, now: Date,
+                            course: (CoachEpisode.Record) -> String? = { $0.understanding.course },
                             calendar: Calendar = .current) -> Line? {
         let latest = episodes
             .filter { $0.source.trackedCategory == running && $0.understanding.activity != "admin"
@@ -32,8 +33,8 @@ public enum WhereWasI {
         clock.calendar = calendar
         clock.timeZone = calendar.timeZone
         clock.dateFormat = calendar.isDate(e.source.end, inSameDayAs: now) ? "h:mm a" : "EEE h:mm a"
-        var text = "Last time on \(u.course ?? running) (\(clock.string(from: e.source.end))): \(u.topic)"
-        if let q = u.questions.first, !q.isEmpty {
+        var text = "Last time on \(course(e) ?? running) (\(clock.string(from: e.source.end))): \(u.topic)"
+        if let q = u.askedByUser.first, !q.isEmpty {
             text += "; you asked: \(q)"
         } else if let s = u.struggle, !s.isEmpty {
             text += "; stuck on: \(s)"
