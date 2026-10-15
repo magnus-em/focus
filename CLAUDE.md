@@ -241,6 +241,8 @@ Read `DESIGN.md` first: principles, type/spacing/corner scale, color roles and t
 - A Claude scheduled task (`focus-prompt-log-tuning`, daily 8:30) reads `prompt-log.jsonl` and the debug dump and tunes the screen rules; it commits to main too.
 
 ### Ranked roadmap (2026-10-14, Claude + Codex, from an accounting of what's built, what's been asked for and actual usage; drafts in `agent-bus-state/planning/`)
+
+Next: the coach, see COACH.md (phase 0 = study-only morning recall cues, no API).
 Usage finding behind it: features that run on their own or ride a habit get used (tracking ~24 h/day since 10/10, blocking, the morning commitment 18 of 23 days); features that need a separate visit don't (End of Day 0, Recall 0 cards, 7 problems ever, 1 ✓/✗ check). New loops go into the morning commitment, the popover or one notification. No Apple Watch app for now (user, 10/14).
 
 **Tier 1: make the log true**
