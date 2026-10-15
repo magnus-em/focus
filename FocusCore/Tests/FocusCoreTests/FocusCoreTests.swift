@@ -253,3 +253,68 @@ final class WideOverlapTests: XCTestCase {
         XCTAssertEqual(id, wide.id)
     }
 }
+
+final class LogCorrectionTests: XCTestCase {
+    private var cal: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/New_York")!
+        return c
+    }()
+    private func t(_ day: Int, _ h: Int, _ m: Int) -> Date {
+        cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: h, minute: m))!
+    }
+
+    func testTwelveHourTimesPickTheLatestPastOne() {
+        let now = t(14, 15, 12)
+        XCTAssertEqual(LogCorrection.resolve("1:40", now: now, calendar: cal), t(14, 13, 40))
+        XCTAssertEqual(LogCorrection.resolve("13:00", now: now, calendar: cal), t(14, 13, 0))
+        XCTAssertEqual(LogCorrection.resolve("now", now: now, calendar: cal), now)
+        XCTAssertNil(LogCorrection.resolve("25:00", now: now, calendar: cal))
+    }
+
+    func testLateTimesSaidAfterMidnightAreLastNight() {
+        XCTAssertEqual(LogCorrection.resolve("23:30", now: t(15, 0, 10), calendar: cal), t(14, 23, 30))
+    }
+
+    // The 10/14 case: "I was in class 1–1:40, the rest was leisure", said at 3:12 PM.
+    func testTheUsersSentenceBecomesTwoBlocks() {
+        let raw = [LogCorrection.Raw(from: "13:00", to: "13:40", category: "Class"),
+                   LogCorrection.Raw(from: "13:40", to: "now", category: "Leisure")]
+        let blocks = LogCorrection.validate(raw, now: t(14, 15, 12), categories: ["Class", "Leisure"], calendar: cal)
+        XCTAssertEqual(blocks, [LogCorrection.Block(start: t(14, 13, 0), end: t(14, 13, 40), category: "Class"),
+                                LogCorrection.Block(start: t(14, 13, 40), end: t(14, 15, 12), category: "Leisure")])
+    }
+
+    func testNonsenseIsDropped() {
+        let raw = [LogCorrection.Raw(from: "14:00", to: "13:00", category: "Math"),
+                   LogCorrection.Raw(from: "10:00", to: "11:00", category: "Juggling"),
+                   LogCorrection.Raw(from: "10:00", to: "11:00", category: "Break"),
+                   LogCorrection.Raw(from: "10:30", to: "10:45", category: "Math")]
+        let blocks = LogCorrection.validate(raw, now: t(14, 15, 0), categories: ["Math"], calendar: cal)
+        XCTAssertEqual(blocks, [LogCorrection.Block(start: t(14, 10, 0), end: t(14, 11, 0), category: nil)])
+    }
+}
+
+final class LogCorrectionParseTests: XCTestCase {
+    private let cats = ["Quant", "SWE", "AI", "HW", "Class", "Meals", "Leisure", "Sleep", "Chores", "Exercise",
+                        "Social", "Commute", "Admin", "Reading", "Math"]
+    private func read(_ s: String) -> [String]? {
+        LogCorrection.parse(s, categories: cats)?.map { "\($0.from)|\($0.to)|\($0.category)" }
+    }
+
+    func testCommonPhrasings() {
+        XCTAssertEqual(read("I was in class 1-1:40, the rest was leisure"), ["1:00|1:40|Class", "||Leisure"])
+        XCTAssertEqual(read("lunch from 12:20 to 12:50 then class until 1:40"), ["12:20|12:50|Meals", "|1:40|Class"])
+        XCTAssertEqual(read("math since 2"), ["2:00|now|Math"])
+        XCTAssertEqual(read("took a break 2:30 to 2:45"), ["2:30|2:45|Break"])
+        XCTAssertEqual(read("gym 7am-8:15am then breakfast"), ["7:00|8:15|Exercise", "||Meals"])
+        XCTAssertEqual(read("homework from 9pm"), ["21:00||HW"])
+        XCTAssertEqual(read("i ate around 12:30 for half an hour"), ["12:30|13:00|Meals"])
+        XCTAssertEqual(read("leetcode at 9pm for 45 min"), ["21:00|21:45|SWE"])
+    }
+
+    func testFallsBackToTheModelWhenItCantRead() {
+        XCTAssertNil(read("the usual stuff this afternoon"))
+        XCTAssertNil(read("class then leisure"))
+    }
+}

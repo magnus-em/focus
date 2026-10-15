@@ -74,6 +74,9 @@ struct TimerView: View {
                 dayStrip
                 onScreenNow
                 todayLog
+                if #available(macOS 26.0, *), LogCorrection.available {
+                    LogFixView(timer: timer, store: store, categories: settings.tags)
+                }
             }
             controlBar
             detailsButton
@@ -764,5 +767,142 @@ struct OverlapFixView: View {
 
     private func apply(keep: WorkSession?, removing: WorkSession? = nil) {
         if let u = store.fixOverlap(overlap, keep: keep, removing: removing) { undo = u } else { failed = true }
+    }
+}
+
+
+/// "class 1–1:40, then leisure" → a preview of the blocks → Apply. Past
+/// stretches are repainted (Undo restores them); a part reaching into what's
+/// running now switches or carves the running block, which Undo can't revert,
+/// so the preview says so.
+@available(macOS 26.0, *)
+struct LogFixView: View {
+    @ObservedObject var timer: TimerManager
+    @ObservedObject var store: SessionStore
+    let categories: [String]
+
+    private enum Step {
+        case typing(String?)
+        case reading
+        case preview([LogCorrection.Block])
+        case done([SessionStore.ReviewUndo], changedRunning: Bool, failed: Bool)
+    }
+    @State private var text = ""
+    @State private var step: Step = .typing(nil)
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch step {
+            case .typing(let note):
+                HStack(spacing: 8) {
+                    Image(systemName: "text.bubble").foregroundStyle(Color.secondaryText)
+                    TextField("Fix the log: “class 1–1:40, then leisure”", text: $text)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+                        .onSubmit(read)
+                }
+                if let note { Text(note).font(.system(size: 11)).foregroundStyle(Color.secondaryText) }
+            case .reading:
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Reading “\(text)”…").font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
+                }
+            case .preview(let blocks):
+                Text("“\(text)”").font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(2)
+                ForEach(blocks, id: \.start) { b in
+                    HStack(spacing: 8) {
+                        Text("\(clock(b.start))–\(clock(b.end))").font(.system(size: 12).monospacedDigit())
+                            .frame(width: 128, alignment: .leading)
+                        Circle().fill(b.category.map(categoryColor) ?? TimerView.breakBlue).frame(width: 8, height: 8)
+                        Text(b.category ?? "Break").font(.system(size: 13, weight: .medium))
+                        if touchesRunning(b) {
+                            Text("now").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                        }
+                    }
+                }
+                if blocks.contains(where: touchesRunning) {
+                    Text("This changes what's running now too; Undo won't revert that part.")
+                        .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack {
+                    Button("Apply") { apply(blocks) }.keyboardShortcut(.defaultAction)
+                    Button("Cancel") { step = .typing(nil) }
+                }
+            case .done(let undos, let changedRunning, let failed):
+                HStack {
+                    Label(failed ? "Partly fixed" : "Fixed", systemImage: failed ? "exclamationmark.circle" : "checkmark.circle.fill")
+                        .foregroundStyle(failed ? .orange : .green)
+                    Spacer()
+                    if !undos.isEmpty && !changedRunning {
+                        Button("Undo") {
+                            let ok = undos.reversed().allSatisfy { store.undoReview($0) }
+                            step = .typing(ok ? nil : "Couldn't undo all of it: the log changed since.")
+                        }
+                    }
+                    Button("New") { text = ""; step = .typing(nil) }
+                }
+                .font(.system(size: 12, weight: .medium))
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(scheme == .dark ? .white.opacity(0.07) : .white.opacity(0.5)))
+    }
+
+    private func clock(_ d: Date) -> String { d.formatted(date: .omitted, time: .shortened) }
+
+    private func touchesRunning(_ b: LogCorrection.Block) -> Bool {
+        guard timer.isActive, let start = timer.sessionStartTime else { return false }
+        return b.end.timeIntervalSince(max(b.start, start)) >= 60
+    }
+
+    private func read() {
+        let said = text.trimmingCharacters(in: .whitespaces)
+        guard !said.isEmpty else { return }
+        step = .reading
+        let now = Date()
+        let live = [timer.currentInProgressSession, timer.currentInProgressBreak].compactMap { $0 }
+            .map { WorkSession(startTime: $0.startTime, durationMinutes: now.timeIntervalSince($0.startTime) / 60,
+                               type: $0.type, label: $0.label) }
+        let log = (store.sessions + live)
+            .filter { TimeIntegrity.end(of: $0) > now.addingTimeInterval(-24 * 3600) }
+            .sorted { $0.startTime < $1.startTime }
+            .map { (start: $0.startTime, end: TimeIntegrity.end(of: $0), label: $0.type.isBreak ? "Break" : ($0.label ?? "Focus")) }
+        Task { @MainActor in
+            let blocks = await LogCorrection.propose(said, log: log, now: now, categories: categories)
+            guard let blocks else { return step = .typing("Couldn't read that. Try times like 1:00–1:40.") }
+            step = blocks.isEmpty ? .typing("Didn't find any times in that. Try “Class 1–1:40, then Leisure”.") : .preview(blocks)
+        }
+    }
+
+    private func apply(_ blocks: [LogCorrection.Block]) {
+        var undos: [SessionStore.ReviewUndo] = []
+        var changedRunning = false
+        var failed = false
+        let now = Date()
+        for b in blocks.sorted(by: { $0.start < $1.start }) {
+            let runStart = timer.isActive ? timer.sessionStartTime : nil
+            let savedEnd = min(b.end, runStart ?? b.end)
+            if savedEnd.timeIntervalSince(b.start) >= 60 {
+                if let u = store.paintForReview(start: b.start, end: savedEnd, label: b.category) { undos.append(u) } else { failed = true }
+            }
+            guard let rs = runStart, b.end.timeIntervalSince(max(b.start, rs)) >= 60 else { continue }
+            let from = max(b.start, rs)
+            let running: String? = timer.isOnBreak ? nil : timer.currentLabel
+            if b.end >= now.addingTimeInterval(-90) {
+                guard b.category != running || from.timeIntervalSince(rs) > 60 else { continue }
+                if let c = b.category { timer.switchTo(c, at: from) } else { timer.startManualBreak(minutes: 0, at: from) }
+                changedRunning = true
+            } else if timer.isRunning {
+                timer.carveOut(from: from, to: b.end, as: b.category)
+                changedRunning = true
+            } else {
+                failed = true
+            }
+        }
+        step = .done(undos, changedRunning: changedRunning, failed: failed)
     }
 }
