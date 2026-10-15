@@ -14,34 +14,36 @@ final class WeekStoryModel: ObservableObject {
     private var task: Task<Void, Never>?
     private var key = ""
 
-    func refresh(endDay: Date, sessions: [WorkSession], focus: Set<String>) {
+    func refresh(endDay: Date, sessions: [WorkSession], live: Set<UUID>, focus: Set<String>) {
         let cal = Calendar.current
         let dates = (0..<7).reversed().compactMap { cal.date(byAdding: .day, value: -$0, to: cal.startOfDay(for: endDay)) }
         let newKey = "\(endDay.timeIntervalSince1970)|\(sessions.count)|\(Int(Date().timeIntervalSince1970 / 300))"
         guard newKey != key else { return }
         key = newKey
         let now = Date()
-        let inputs: [(Date, [DayStory.Tracked], CoachDay.Record?, [DayStory.CalendarEvent])] = dates.map { day in
+        let inputs: [(Date, [DayStory.Tracked], CoachDay.Record?, [DayStory.CalendarEvent], [DayStory.Screen], [DayStory.Note])] = dates.map { day in
             let end = cal.date(byAdding: .day, value: 1, to: day)!
             let tracked = sessions.filter { $0.startTime < end && $0.startTime.addingTimeInterval($0.durationMinutes * 60) > day }
                 .map { DayStory.Tracked(start: $0.startTime, end: $0.startTime.addingTimeInterval($0.durationMinutes * 60),
-                                        label: $0.type == .work ? ($0.label ?? "Focus") : "Break") }
+                                        label: $0.type == .work ? ($0.label ?? "Focus") : "Break",
+                                        running: live.contains($0.id)) }
             CoachDayWorker.shared.load(day)
             let events = ClassCalendar.shared.classes(on: day).map {
                 DayStory.CalendarEvent(start: $0.start, end: $0.end, title: $0.title)
             }
-            return (day, tracked, CoachDayWorker.shared.record(for: day), events)
+            let (screen, notes) = DayStoryModel.screen(from: day, to: min(end, now))
+            return (day, tracked, CoachDayWorker.shared.record(for: day), events, screen, notes)
         }
         let prefixes = ClassCalendar.shared.coursePrefixes
         let context = CoachDayWorker.courseContext(for: dates)
         task?.cancel()
         task = Task { [weak self] in
             let built = await Task.detached(priority: .utility) {
-                inputs.map { day, tracked, record, events in
+                inputs.map { day, tracked, record, events, screen, notes in
                     let observations = DayStoryModel.observations(for: day)
                     return Day(date: day, story: DayStory.build(day: day, now: now, tracked: tracked, record: record,
-                                                                observations: observations, events: events, focus: focus,
-                                                                coursePrefixes: prefixes,
+                                                                observations: observations, events: events, screen: screen,
+                                                                notes: notes, focus: focus, coursePrefixes: prefixes,
                                                                 course: CoachCourse.resolver(observations, context: context)))
                 }
             }.value
@@ -56,6 +58,7 @@ final class WeekStoryModel: ObservableObject {
 struct WeekPage: View {
     let endDay: Date
     let sessions: [WorkSession]
+    let live: Set<UUID>
     let problems: [ProblemEntry]
     let focus: Set<String>
     @ObservedObject var settings: AppSettings
@@ -83,16 +86,20 @@ struct WeekPage: View {
         }
     }
 
+    /// One row per course across the week; a day that called it "CPSC 323" and
+    /// one that called it "CPSC 3231" land on the same row, under the name with more time.
     private var courses: [CourseRow] {
+        let names = DayStory.weekCourseNames(model.days.map(\.story.courses))
         var rows: [String: CourseRow] = [:]
         for d in model.days {
             for c in d.story.courses {
-                var row = rows[c.code] ?? CourseRow(code: c.code, category: c.category, minutes: 0, days: 0, activity: [:], shaky: 0)
+                let code = names[c.code] ?? c.code
+                var row = rows[code] ?? CourseRow(code: code, category: c.category, minutes: 0, days: 0, activity: [:], shaky: 0)
                 row.minutes += c.minutes
                 row.days += c.minutes >= 5 ? 1 : 0
                 row.shaky += c.shaky.count
                 for (k, v) in c.activity { row.activity[k, default: 0] += v }
-                rows[c.code] = row
+                rows[code] = row
             }
         }
         return rows.values.filter { $0.minutes >= 10 }.sorted { $0.minutes > $1.minutes }
@@ -124,17 +131,20 @@ struct WeekPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             if let line = headline {
-                Text(line)
-                    .font(.system(size: 22, weight: .medium)).lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 720, alignment: .leading)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("The week in short").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                    Text(line)
+                        .font(.system(size: 22, weight: .medium)).lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 720, alignment: .leading)
+                }
             }
             coursesCard
             fixesCard
         }
-        .onAppear { model.refresh(endDay: endDay, sessions: sessions, focus: focus) }
-        .onChange(of: endDay) { _, _ in model.refresh(endDay: endDay, sessions: sessions, focus: focus) }
-        .onChange(of: sessions.count) { _, _ in model.refresh(endDay: endDay, sessions: sessions, focus: focus) }
+        .onAppear { model.refresh(endDay: endDay, sessions: sessions, live: live, focus: focus) }
+        .onChange(of: endDay) { _, _ in model.refresh(endDay: endDay, sessions: sessions, live: live, focus: focus) }
+        .onChange(of: sessions.count) { _, _ in model.refresh(endDay: endDay, sessions: sessions, live: live, focus: focus) }
     }
 
     private var headline: String? {
@@ -163,7 +173,7 @@ struct WeekPage: View {
 
     private var coursesCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Courses and goals").font(.system(size: 15, weight: .semibold))
+            SectionTitle("Courses and goals", subtitle: "How long each course was on your screen this week, as the coach saw it, and its next exam. Below: what your timer logged and goals that went quiet.")
             let rows = courses
             if rows.isEmpty {
                 Text("No course work seen this week. Course time shows up once the cloud coach has watched some study.")
@@ -185,7 +195,7 @@ struct WeekPage: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 6) {
-                Text("Tracked focus: " + (trackedByCategory.isEmpty ? "none"
+                Text("Your timer's focus time: " + (trackedByCategory.isEmpty ? "none"
                      : trackedByCategory.map { "\($0.label) \(durationText(minutes: $0.minutes))" }.joined(separator: " · ")))
                     .font(.system(size: 12)).foregroundStyle(Color.secondaryText).fixedSize(horizontal: false, vertical: true)
                 ForEach(quiet.prefix(4), id: \.label) { q in
@@ -209,15 +219,15 @@ struct WeekPage: View {
 
     private func how(_ row: CourseRow) -> String {
         var bits: [String] = []
-        bits.append(row.days == 1 ? "1 day" : "\(row.days) days")
+        bits.append(row.days == 1 ? "on 1 day" : "on \(row.days) days")
         if let p = row.practice {
             let top = row.activity.max { $0.value < $1.value }?.key
             let mostly = ["asking-ai": "mostly asking AI", "reading": "mostly reading", "watching": "mostly watching",
                           "solving": "mostly solving", "writing": "mostly writing", "coding": "mostly coding"][top ?? ""]
-            bits.append("\(Int((p * 100).rounded()))% solving on your own")
+            bits.append("\(Int((p * 100).rounded()))% solving problems yourself")
             if let mostly, p < 0.5 { bits.append(mostly) }
         }
-        if row.shaky > 0 { bits.append(row.shaky == 1 ? "1 shaky point" : "\(row.shaky) shaky points") }
+        if row.shaky > 0 { bits.append(row.shaky == 1 ? "1 thing looked shaky" : "\(row.shaky) things looked shaky") }
         return bits.joined(separator: " · ")
     }
 
@@ -252,7 +262,7 @@ struct WeekPage: View {
         }
         if !days.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Days with something to fix").font(.system(size: 15, weight: .semibold))
+                SectionTitle("Days with something to fix", subtitle: "Days where your log disagrees with your calendar or with what the screen saw. Open one to fix it on its Day page.")
                 ForEach(days, id: \.0) { day, fixes in
                     HStack(spacing: 12) {
                         Text(day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
@@ -275,9 +285,11 @@ struct WeekPage: View {
         let minutes = fixes.reduce(0) { $0 + $1.minutes }
         let calendarCount = fixes.filter { if case .calendar = $0.kind { return true }; return false }.count
         let untracked = fixes.filter { if case .untracked = $0.kind { return true }; return false }.count
-        var bits = ["\(fixes.count) to fix, \(durationText(minutes: minutes))"]
+        let screen = fixes.count - calendarCount - untracked
+        var bits = ["\(fixes.count == 1 ? "1 thing" : "\(fixes.count) things"), \(durationText(minutes: minutes)) in all"]
         if calendarCount > 0 { bits.append(calendarCount == 1 ? "a class tracked as something else" : "\(calendarCount) classes tracked as something else") }
-        if untracked > 0 { bits.append(untracked == 1 ? "1 gap" : "\(untracked) gaps") }
+        if untracked > 0 { bits.append(untracked == 1 ? "1 gap with nothing logged" : "\(untracked) gaps with nothing logged") }
+        if screen > 0 { bits.append(screen == 1 ? "1 stretch the screen saw differently" : "\(screen) stretches the screen saw differently") }
         return bits.joined(separator: " · ")
     }
 }

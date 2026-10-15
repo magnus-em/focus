@@ -114,13 +114,10 @@ struct WhereTimeWentSection: View {
 
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Where time went").font(.system(size: 15, weight: .semibold))
+                SectionTitle("Where time went", subtitle: "Every hour of the last 7 days by category, against the week before. Underlines mark time away from the Mac; click a day to open it.")
                 Spacer()
-                Text("\(week.from.formatted(.dateTime.month(.abbreviated).day())) – \(week.days.last!.formatted(.dateTime.month(.abbreviated).day()))")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
                 Text("\(Int((coverage * 100).rounded()))% tracked")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(coverage >= 0.9 ? green : coverage >= 0.6 ? Color.orange : red)
                     .help("Share of the week's hours (so far) that have a category or Break")
             }
@@ -131,8 +128,8 @@ struct WhereTimeWentSection: View {
             Divider().opacity(0.5)
             statsGrid(week, prev)
         }
-        .padding(12)
-        .glassCard(cornerRadius: 10)
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
     }
 
     // MARK: - 7 × 24h strips

@@ -171,6 +171,18 @@ final class DayStoryTests: XCTestCase {
         XCTAssertEqual(DayStory.canonical("MATH 244", known: ["CPSC 323"]), "MATH 244")
     }
 
+    func testWeekMergesOneCourseNamedTwoWaysUnderTheLongerName() {
+        func course(_ code: String, _ minutes: Double) -> DayStory.Course {
+            DayStory.Course(code: code, category: "SWE", minutes: minutes, topics: [], shaky: [], digest: nil, activity: [:])
+        }
+        let names = DayStory.weekCourseNames([[course("CPSC 3231", 471)], [course("CPSC 323", 57), course("CPSC 171", 262)],
+                                              [course("MATH 244", 448)]])
+        XCTAssertEqual(names["CPSC 323"], "CPSC 3231")
+        XCTAssertEqual(names["CPSC 3231"], "CPSC 3231")
+        XCTAssertEqual(names["CPSC 171"], "CPSC 171", "a different number in the same subject stays its own course")
+        XCTAssertEqual(names["MATH 244"], "MATH 244")
+    }
+
     func testCoachOffFallsBackToTrackedSessionsAndNotes() {
         let s = DayStory.build(day: day, now: at(12, 0),
                                tracked: [.init(start: at(9, 0), end: at(10, 0), label: "SWE")],

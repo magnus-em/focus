@@ -345,7 +345,7 @@ struct DashboardView: View {
         .background {
             Color(nsColor: .windowBackgroundColor)
                 .overlay(alignment: .topLeading) {
-                    LinearGradient(colors: [accent.opacity(0.09), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    LinearGradient(colors: [accent.opacity(0.09), .clear], startPoint: .top, endPoint: .bottom)
                         .frame(height: 360)
                         .allowsHitTesting(false)
                 }
@@ -409,7 +409,7 @@ struct DashboardView: View {
                 Text(destination == .week ? (Calendar.current.isDateInToday(weekEndDay) ? "This week" : "Week")
                      : isSelectedDayToday ? "Today" : selectedDay.formatted(.dateTime.weekday(.wide)))
                     .font(.system(size: 26, weight: .semibold))
-                Text(destination == .week ? weekRangeText : selectedDay.formatted(.dateTime.month(.wide).day()))
+                Text(destination == .week ? "\(weekRangeText), 7 days" : selectedDay.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
             }
             Spacer(minLength: 16)
@@ -428,6 +428,8 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(item == destination ? Color.primary : Color.secondaryText)
+                    .help(item == .day ? "One day's story: what you did, what the screen saw, what to fix"
+                          : "The last 7 days: courses, exams and days that need fixing")
                     .accessibilityAddTraits(item == destination ? .isSelected : [])
                 }
             }
@@ -595,7 +597,7 @@ struct DashboardView: View {
                 case .week: weekContent
                 }
             }
-            .frame(maxWidth: destination == .day ? 1080 : 980)
+            .frame(maxWidth: 1080)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
@@ -633,7 +635,7 @@ struct DashboardView: View {
                      categories: settings.tags + ["Break"], apply: applyFix,
                      openCoach: { CoachChatWindow.shared.open() })
         if isSelectedDayToday { NextBlockSummary(day: selectedDay) }
-        DisclosureGroup("What the screen saw, minute by minute", isExpanded: $showTimeline) {
+        DisclosureGroup(isExpanded: $showTimeline) {
             if showTimeline {
                 VStack(alignment: .leading, spacing: 24) {
                     ScreenTimelineSection(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
@@ -642,13 +644,15 @@ struct DashboardView: View {
                 }
                 .padding(.top, 12)
             }
+        } label: {
+            SectionTitle("What the screen saw, minute by minute",
+                         subtitle: "Every screenshot's label, the activity log with its notes, and the editable day timeline")
         }
-        .font(.system(size: 15, weight: .semibold))
     }
 
     @ViewBuilder
     private var weekContent: some View {
-        WeekPage(endDay: weekEndDay, sessions: liveSessions, problems: problemStore.problems,
+        WeekPage(endDay: weekEndDay, sessions: liveSessions, live: Set(liveBlocks.map(\.id)), problems: problemStore.problems,
                  focus: focusCategories, settings: settings,
                  onSelectDay: { selectedDay = $0; destination = .day })
         ExamRadarSection(sessions: liveSessions)
@@ -656,7 +660,7 @@ struct DashboardView: View {
                             endDay: weekEndDay, selectedDay: selectedDay,
                             onSelectDay: { selectedDay = $0; destination = .day })
         InsightsSection(watcher: screenWatcher, sessions: sessionStore.sessions)
-        DisclosureGroup("Tracking accuracy", isExpanded: $showAccuracy) {
+        DisclosureGroup(isExpanded: $showAccuracy) {
             if showAccuracy {
                 VStack(alignment: .leading, spacing: 24) {
                     TrustScorecardView(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
@@ -668,9 +672,11 @@ struct DashboardView: View {
                 }
                 .padding(.top, 12)
             }
+        } label: {
+            SectionTitle("Tracking accuracy",
+                         subtitle: "How often the screen's guesses matched your log, the cards it showed you, and stretches to review")
         }
-        .font(.system(size: 15, weight: .semibold))
-        DisclosureGroup("Older charts", isExpanded: $showAllTime) {
+        DisclosureGroup(isExpanded: $showAllTime) {
             if showAllTime {
                 VStack(alignment: .leading, spacing: 24) {
                     DistractionSection(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
@@ -691,8 +697,10 @@ struct DashboardView: View {
                 }
                 .padding(.top, 12)
             }
+        } label: {
+            SectionTitle("More charts",
+                         subtitle: "Weekly totals, focus split, heatmaps, problems, commitments, awards, browsing and all-time stats")
         }
-        .font(.system(size: 15, weight: .semibold))
     }
 
     // MARK: - 18-week heatmap
@@ -2827,7 +2835,7 @@ struct ExamRadarSection: View {
     var body: some View {
         if !calendar.exams.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Exams").font(.system(size: 15, weight: .semibold))
+                SectionTitle("Exams", subtitle: "Coming up on your calendar, with how much of that subject you tracked this week")
                 ForEach(calendar.exams.prefix(4)) { exam in
                     let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()),
                                                                to: Calendar.current.startOfDay(for: exam.date)).day ?? 0
@@ -2923,7 +2931,7 @@ struct InsightsSection: View {
         let peak = max(list.map(\.focus).max() ?? 1, 1)
         let best = bestWindow(list)
         VStack(alignment: .leading, spacing: 12) {
-            Text("When you focus best").font(.system(size: 15, weight: .semibold))
+            SectionTitle("When you focus best", subtitle: "Focus by hour of day over the last 4 weeks. Orange marks time the screen showed you off-task.")
             if let best {
                 Text("\(clock(best.start))–\(clock(best.start + 3)): the most focus with the fewest drifts over the last 4 weeks (\(String(format: "%.1f", best.rate)) min off-task per focus hour). Put the hardest work there.")
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText).fixedSize(horizontal: false, vertical: true)

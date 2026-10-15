@@ -550,6 +550,26 @@ public enum DayStory {
         StudyRecall.courseCodes(in: text, prefixes: prefixes)
     }
 
+    /// Codes that name one course across a week ("CPSC 323" one day, "CPSC 3231"
+    /// another: same subject, one number a prefix of the other), mapped to the
+    /// name with the most minutes. Codes with nothing to merge map to themselves.
+    public static func weekCourseNames(_ days: [[Course]]) -> [String: String] {
+        var minutes: [String: Double] = [:]
+        for c in days.joined() { minutes[c.code, default: 0] += c.minutes }
+        let ranked = minutes.keys.sorted { minutes[$0]! != minutes[$1]! ? minutes[$0]! > minutes[$1]! : $0 < $1 }
+        var names: [String: String] = [:]
+        for code in ranked {
+            names[code] = names.values.first { sameCourse($0, code) } ?? code
+        }
+        return names
+    }
+
+    static func sameCourse(_ a: String, _ b: String) -> Bool {
+        let pa = a.split(separator: " "), pb = b.split(separator: " ")
+        guard pa.count == 2, pb.count == 2, pa[0] == pb[0] else { return a == b }
+        return pa[1].hasPrefix(pb[1]) || pb[1].hasPrefix(pa[1])
+    }
+
     /// "CPSC 3231" and "CPSC 323" are one course when either is the record's name for it.
     static func canonical(_ code: String, known: Set<String>) -> String {
         if known.contains(code) { return code }

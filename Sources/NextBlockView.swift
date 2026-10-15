@@ -87,7 +87,7 @@ struct NextBlockSummary: View {
     var body: some View {
         if let plan = plans.plan(for: day) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Your first block").font(.system(size: 15, weight: .semibold))
+                SectionTitle("Your first block", subtitle: "What you planned this morning to start the day with")
                 Text(plan.action).font(.system(size: 14))
                 if let category = plan.category {
                     Text(category + (plan.target.isEmpty ? "" : " · " + plan.target))

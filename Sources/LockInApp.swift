@@ -478,8 +478,6 @@ struct PopoverContent: View {
         let lcBadge = lc.activeProblem.map { "#\($0.number)" } ?? "\(lc.todayCount)/\(lc.dailyGoal)"
         return [
             .init(title: "Settings", icon: "gearshape") { selectedTab = 4 },
-            .init(title: "Problems", icon: "list.bullet.rectangle") { selectedTab = 2 },
-            .init(title: "Notes", icon: "square.and.pencil") { selectedTab = 3 },
             .init(title: "LeetCode", icon: "chevron.left.forwardslash.chevron.right", badge: lcBadge, divider: true, action: openLeetCode),
             .init(title: "Practice", icon: "scope",
                   badge: practiceStore.isActive ? practiceElapsedShort : (dueReviewBadge > 0 ? "\(dueReviewBadge) due" : nil),
@@ -639,10 +637,25 @@ struct PopoverContent: View {
         }
     }
 
+    private var pageSubtitle: String {
+        switch selectedTab {
+        case 1: "Your focus time by day and category"
+        case 2: "Problems you've solved and reviews due"
+        case 3: "A quick checklist for whatever's on your mind"
+        case 5: "Habits and doses, next to your focus"
+        default: "Goal, categories, screen, coach and more"
+        }
+    }
+
     private var openBookContent: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(selectedTab == 0 ? "Focus" : pageTitle).font(.system(size: 15, weight: .semibold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(selectedTab == 0 ? "Focus" : pageTitle).font(.system(size: 15, weight: .semibold))
+                    if selectedTab != 0 {
+                        Text(pageSubtitle).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
+                    }
+                }
                 Spacer()
                 Button(action: openDashboard) {
                     Label("Dashboard", systemImage: "rectangle.grid.2x2")
@@ -685,7 +698,10 @@ struct PageBar: View {
     @Namespace private var selectionNamespace
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private let pages: [(tag: Int, title: String, icon: String)] = [(0, "Now", "timer"), (5, "Health", "heart")]
+    private let pages: [(tag: Int, title: String, icon: String)] = [
+        (0, "Now", "timer"), (1, "Stats", "chart.bar"), (2, "Problems", "list.bullet.rectangle"),
+        (3, "Notes", "square.and.pencil"), (5, "Health", "heart"),
+    ]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -702,12 +718,12 @@ struct PageBar: View {
                     }
                 }
             } label: {
-                item("More", "ellipsis.circle", on: ![0, 5].contains(selected))
+                item("More", "ellipsis.circle", on: selected == 4)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
-            .help("Settings, Problems, Notes, LeetCode, Practice, Recall, Math Sprint, Dashboard, End Day")
+            .help("Settings, LeetCode, Practice, Recall, Math Sprint, Dashboard, End Day")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
