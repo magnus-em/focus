@@ -139,6 +139,13 @@ class SessionStore: ObservableObject {
         let edits = keep.map { TimeIntegrity.resolve(o, keep: $0.id) } ?? TimeIntegrity.merge(o)
         let span = o.union
         do {
+            // The popover shows a snapshot; a sync or edit since then means
+            // the user didn't see what this would change.
+            let current = try [o.first.id, o.second.id].map { try model($0)?.asValue }
+            guard Self.same(current.compactMap { $0 }, [o.first, o.second]) else {
+                refresh()
+                return nil
+            }
             let before = try reviewModels(span.start, span.end).map(\.asValue)
             for edit in edits {
                 switch edit {
