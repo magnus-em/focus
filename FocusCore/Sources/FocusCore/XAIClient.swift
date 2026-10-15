@@ -17,6 +17,8 @@ public struct XAIClient: Sendable {
         public var reasoningTokens: Int
         public var imageTokens: Int
         public var costUSD: Double
+        /// False when xAI sent no cost and `costUSD` was priced from tokens.
+        public var costIsExact: Bool
     }
 
     public struct Reply: Sendable {
@@ -91,15 +93,18 @@ public struct XAIClient: Sendable {
               let json = content.data(using: .utf8),
               (try? JSONSerialization.jsonObject(with: json)) is [String: Any] else { throw Failure.malformed }
         let u = obj["usage"] as? [String: Any] ?? [:]
-        let input = u["prompt_tokens"] as? Int ?? 0
-        let output = u["completion_tokens"] as? Int ?? 0
-        let reasoning = (u["completion_tokens_details"] as? [String: Any])?["reasoning_tokens"] as? Int ?? 0
-        let image = (u["prompt_tokens_details"] as? [String: Any])?["image_tokens"] as? Int ?? 0
-        // xAI reports exact cost in 1e-10 USD ticks; price it from tokens if absent.
-        let cost = (u["cost_in_usd_ticks"] as? NSNumber).map { $0.doubleValue / 1e10 }
-            ?? price(model: model, input: input, output: output + reasoning)
+        let input = u["prompt_tokens"] as? Int ?? u["input_tokens"] as? Int ?? 0
+        let output = u["completion_tokens"] as? Int ?? u["output_tokens"] as? Int ?? 0
+        let outDetails = (u["completion_tokens_details"] ?? u["output_tokens_details"]) as? [String: Any]
+        let inDetails = (u["prompt_tokens_details"] ?? u["input_tokens_details"]) as? [String: Any]
+        let reasoning = outDetails?["reasoning_tokens"] as? Int ?? 0
+        let image = inDetails?["image_tokens"] as? Int ?? 0
+        // xAI reports exact cost in 1e-10 USD ticks (docs.x.ai cost tracking).
+        let ticks = (u["cost_in_usd_ticks"] as? NSNumber).map { $0.doubleValue / 1e10 }
+        let exact = ticks.map { $0.isFinite && $0 >= 0 } ?? false
+        let cost = exact ? ticks! : price(model: model, input: input, output: output + reasoning)
         return Reply(json: json, usage: Usage(inputTokens: input, outputTokens: output, reasoningTokens: reasoning,
-                                              imageTokens: image, costUSD: cost),
+                                              imageTokens: image, costUSD: cost, costIsExact: exact),
                      model: obj["model"] as? String ?? model)
     }
 
@@ -109,13 +114,14 @@ public struct XAIClient: Sendable {
         return (Double(input) * i + Double(output) * o) / 1_000_000
     }
 
-    /// A deliberately high guess for reserving budget: ~2.2k tokens per
-    /// 1600 px screenshot, 4 characters per token, and the reasoning seen in
-    /// the 10/15 test (up to 12k tokens on grok-4.7 at full effort).
-    public static func estimateUSD(model: String, textCharacters: Int, images: Int, outputTokens: Int = 1500,
+    /// An upper bound for reserving budget: a UTF-8 byte per token (tokens
+    /// never outnumber bytes), 2.6k tokens per screenshot (1.5–2.2k seen at
+    /// 1600 px), the call's output limit, and more reasoning than the 10/15
+    /// test showed (up to 12k tokens on grok-4.7 at full effort).
+    public static func estimateUSD(model: String, text: String, images: Int, maxOutputTokens: Int,
                                    reasoningEffort: String? = nil) -> Double {
-        let reasoning = model.hasPrefix("grok-4.3") ? 1000 : (reasoningEffort == "low" ? 3500 : 12000)
-        return price(model: model, input: textCharacters / 4 + images * 2200 + 400, output: outputTokens + reasoning)
+        let reasoning = model.hasPrefix("grok-4.3") ? 2000 : (reasoningEffort == "low" ? 6000 : 16000)
+        return price(model: model, input: text.utf8.count + images * 2600 + 600, output: maxOutputTokens + reasoning)
     }
 }
 
@@ -139,85 +145,104 @@ public enum XAIKey {
 }
 
 /// A daily dollar cap across every cloud call, with a ledger on disk
-/// (`Focus/coach/spend.jsonl`). A call reserves its estimate first, so
-/// concurrent calls can't jointly overshoot; a call that fails without a
-/// reply (timeout, dropped connection) may still have been billed, so its
-/// estimate is recorded as unknown spend rather than dropped.
+/// (`Focus/coach/spend.jsonl`). Each call's estimate is written as a
+/// reservation before it's sent, and the call refuses to go out if that write
+/// fails, so a crash or restart mid-call can't reset the day's spend. A call
+/// that fails without a reply (timeout, dropped connection, 5xx, unreadable
+/// output) may still have been billed, so its estimate stays as unknown spend.
 public actor CoachBudget {
     public struct Entry: Codable, Equatable, Sendable {
+        public enum State: String, Codable, Sendable { case reserved, settled, unknown }
+        public var id: UUID
         public var at: Date
         public var model: String
         public var purpose: String
         public var costUSD: Double
-        /// True when the call's outcome is unknown and `costUSD` is its estimate.
-        public var unknown: Bool
+        public var state: State
     }
 
+    public enum Problem: Error, Equatable { case invalidAmount, ledgerUnwritable(String) }
+
     public let fileURL: URL
-    public var dailyCapUSD: Double
+    public private(set) var dailyCapUSD: Double
     private let calendar: Calendar
-    private var entries: [Entry]
-    private var reserved: [UUID: Double] = [:]
+    /// Latest entry per call.
+    private var latest: [UUID: Entry] = [:]
 
     public init(fileURL: URL, dailyCapUSD: Double, calendar: Calendar = .current) {
         self.fileURL = fileURL
-        self.dailyCapUSD = dailyCapUSD
+        self.dailyCapUSD = dailyCapUSD.isFinite && dailyCapUSD >= 0 ? dailyCapUSD : 0
         self.calendar = calendar
         let lines = (try? String(contentsOf: fileURL, encoding: .utf8))?.split(separator: "\n") ?? []
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        entries = lines.compactMap { try? decoder.decode(Entry.self, from: Data($0.utf8)) }
+        for e in lines.compactMap({ try? decoder.decode(Entry.self, from: Data($0.utf8)) }) { latest[e.id] = e }
     }
 
-    public func setCap(_ usd: Double) { dailyCapUSD = usd }
+    public func setCap(_ usd: Double) {
+        guard usd.isFinite, usd >= 0 else { return }
+        dailyCapUSD = usd
+    }
 
+    /// Settled cost, plus the estimate of anything reserved or unknown
+    /// (a reservation with no outcome is a call that never reported back).
     public func spent(on day: Date = Date()) -> Double {
-        entries.filter { calendar.isDate($0.at, inSameDayAs: day) }.reduce(0) { $0 + $1.costUSD }
+        latest.values.filter { calendar.isDate($0.at, inSameDayAs: day) }.reduce(0) { $0 + $1.costUSD }
     }
 
     public func unknownSpent(on day: Date = Date()) -> Double {
-        entries.filter { $0.unknown && calendar.isDate($0.at, inSameDayAs: day) }.reduce(0) { $0 + $1.costUSD }
+        latest.values.filter { $0.state != .settled && calendar.isDate($0.at, inSameDayAs: day) }
+            .reduce(0) { $0 + $1.costUSD }
     }
 
-    public func entries(on day: Date) -> [Entry] { entries.filter { calendar.isDate($0.at, inSameDayAs: day) } }
+    public func entries(on day: Date) -> [Entry] {
+        latest.values.filter { calendar.isDate($0.at, inSameDayAs: day) }.sorted { $0.at < $1.at }
+    }
 
     /// Runs `call` if its estimate fits under today's cap, and records what it cost.
     public func run(estimateUSD: Double, model: String, purpose: String, now: Date = Date(),
                     _ call: @Sendable () async throws -> XAIClient.Reply) async throws -> XAIClient.Reply {
-        let committed = spent(on: now) + reserved.values.reduce(0, +)
+        guard estimateUSD.isFinite, estimateUSD >= 0 else { throw Problem.invalidAmount }
+        let committed = spent(on: now)
         guard committed + estimateUSD <= dailyCapUSD else {
             throw XAIClient.Failure.overBudget(spent: committed, cap: dailyCapUSD)
         }
         let id = UUID()
-        reserved[id] = estimateUSD
-        defer { reserved[id] = nil }
+        try write(Entry(id: id, at: now, model: model, purpose: purpose, costUSD: estimateUSD, state: .reserved))
         do {
             let reply = try await call()
-            record(Entry(at: now, model: reply.model, purpose: purpose, costUSD: reply.usage.costUSD, unknown: false))
+            let cost = reply.usage.costUSD
+            let settled = cost.isFinite && cost >= 0
+            try? write(Entry(id: id, at: now, model: reply.model, purpose: purpose,
+                             costUSD: settled ? cost : estimateUSD, state: settled && reply.usage.costIsExact ? .settled : .unknown))
             return reply
-        } catch let f as XAIClient.Failure {
-            if case .malformed = f {
-                record(Entry(at: now, model: model, purpose: purpose, costUSD: estimateUSD, unknown: true))
-            }
-            throw f
+        } catch let XAIClient.Failure.http(status, message) where status < 500 {
+            try? write(Entry(id: id, at: now, model: model, purpose: purpose, costUSD: 0, state: .settled))
+            throw XAIClient.Failure.http(status, message)
         } catch {
-            record(Entry(at: now, model: model, purpose: purpose, costUSD: estimateUSD, unknown: true))
+            try? write(Entry(id: id, at: now, model: model, purpose: purpose, costUSD: estimateUSD, state: .unknown))
             throw error
         }
     }
 
-    private func record(_ e: Entry) {
-        entries.append(e)
+    /// Kept in memory even when the disk write fails, so this run still counts it.
+    private func write(_ e: Entry) throws {
+        latest[e.id] = e
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        guard let line = try? encoder.encode(e) else { return }
-        try? FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let h = try? FileHandle(forWritingTo: fileURL) {
-            h.seekToEndOfFile()
-            h.write(line + Data("\n".utf8))
-            try? h.close()
-        } else {
-            try? (line + Data("\n".utf8)).write(to: fileURL)
+        do {
+            let line = try encoder.encode(e) + Data("\n".utf8)
+            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if !FileManager.default.fileExists(atPath: fileURL.path) {
+                try Data().write(to: fileURL)
+            }
+            let h = try FileHandle(forWritingTo: fileURL)
+            defer { try? h.close() }
+            try h.seekToEnd()
+            try h.write(contentsOf: line)
+            try h.synchronize()
+        } catch {
+            throw Problem.ledgerUnwritable(error.localizedDescription)
         }
     }
 }

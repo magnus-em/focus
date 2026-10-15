@@ -30,6 +30,7 @@ final class XAIClientTests: XCTestCase {
         XCTAssertEqual(reply.usage.costUSD, 0.00509435, accuracy: 1e-9)
         XCTAssertEqual(reply.usage.imageTokens, 2102)
         XCTAssertEqual(reply.usage.reasoningTokens, 566)
+        XCTAssertTrue(reply.usage.costIsExact)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: reply.json) as? [String: Any])
         XCTAssertEqual(json["primes"] as? [Int], [2, 3])
     }
@@ -44,9 +45,23 @@ final class XAIClientTests: XCTestCase {
         }
     }
 
+    func testParseOtherUsageNamesAndMissingCost() throws {
+        let raw = #"{"choices":[{"message":{"content":"{}"}}],"usage":{"input_tokens":1000000,"output_tokens":0}}"#
+        let reply = try XAIClient.parse(Data(raw.utf8), status: 200, model: "grok-4.3")
+        XCTAssertEqual(reply.usage.inputTokens, 1_000_000)
+        XCTAssertFalse(reply.usage.costIsExact)
+        XCTAssertEqual(reply.usage.costUSD, 1.25, accuracy: 1e-9)
+    }
+
+    func testEstimateIsAnUpperBound() {
+        let e = XAIClient.estimateUSD(model: "grok-4.3", text: String(repeating: "∑", count: 1000), images: 1, maxOutputTokens: 1000)
+        // 3000 UTF-8 bytes + 2600 + 600 in, 1000 + 2000 out.
+        XCTAssertEqual(e, (6200 * 1.25 + 3000 * 2.5) / 1_000_000, accuracy: 1e-12)
+    }
+
     private func reply(_ cost: Double) -> XAIClient.Reply {
         XAIClient.Reply(json: Data("{}".utf8),
-                        usage: .init(inputTokens: 0, outputTokens: 0, reasoningTokens: 0, imageTokens: 0, costUSD: cost),
+                        usage: .init(inputTokens: 0, outputTokens: 0, reasoningTokens: 0, imageTokens: 0, costUSD: cost, costIsExact: true),
                         model: "grok-4.3")
     }
 
@@ -63,8 +78,18 @@ final class XAIClientTests: XCTestCase {
             XCTAssertEqual(f, .overBudget(spent: 0.06, cap: 0.10))
         }
         do {
-            _ = try await budget.run(estimateUSD: 0.02, model: "grok-4.3", purpose: "test", now: now) {
+            _ = try await budget.run(estimateUSD: 0.01, model: "grok-4.3", purpose: "test", now: now) {
                 throw URLError(.timedOut)
+            }
+        } catch {}
+        do {
+            _ = try await budget.run(estimateUSD: 0.01, model: "grok-4.3", purpose: "test", now: now) {
+                throw XAIClient.Failure.http(502, "bad gateway")
+            }
+        } catch {}
+        do {
+            _ = try await budget.run(estimateUSD: 0.01, model: "grok-4.3", purpose: "test", now: now) {
+                throw XAIClient.Failure.http(429, "slow down")
             }
         } catch {}
         let spent = await budget.spent(on: now)
@@ -76,5 +101,39 @@ final class XAIClientTests: XCTestCase {
         XCTAssertEqual(reloadedSpent, 0.08, accuracy: 1e-9)
         let tomorrow = await reloaded.spent(on: now.addingTimeInterval(86400 * 2))
         XCTAssertEqual(tomorrow, 0)
+    }
+
+    func testReservationSurvivesACrashMidCall() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("spend-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let budget = CoachBudget(fileURL: url, dailyCapUSD: 1)
+        let now = Date()
+        let started = expectation(description: "call started")
+        let task = Task {
+            try await budget.run(estimateUSD: 0.4, model: "grok-4.7", purpose: "test", now: now) {
+                started.fulfill()
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                return self.reply(0.01)
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        let afterRestart = CoachBudget(fileURL: url, dailyCapUSD: 1)
+        let inFlight = await afterRestart.spent(on: now)
+        XCTAssertEqual(inFlight, 0.4, accuracy: 1e-9)
+        task.cancel()
+    }
+
+    func testRefusesWhenTheLedgerCantBeWritten() async {
+        let budget = CoachBudget(fileURL: URL(fileURLWithPath: "/dev/null/spend.jsonl"), dailyCapUSD: 1)
+        do {
+            _ = try await budget.run(estimateUSD: 0.01, model: "grok-4.3", purpose: "test") { self.reply(0.01) }
+            XCTFail("sent without a reservation on disk")
+        } catch let p as CoachBudget.Problem {
+            if case .ledgerUnwritable = p {} else { XCTFail("\(p)") }
+        } catch { XCTFail("\(error)") }
+        do {
+            _ = try await budget.run(estimateUSD: .nan, model: "grok-4.3", purpose: "test") { self.reply(0.01) }
+            XCTFail("NaN estimate accepted")
+        } catch {}
     }
 }
