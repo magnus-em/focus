@@ -44,6 +44,10 @@ https://claude.ai/artifact/TUGjQvhE5CH8LJ4oUzNPSH
    "60m done · +58m".
 6. **Calm by default.** Corner cards are rare, small and never steal focus;
    nothing pops over the user's work.
+7. **Every screen says what it is.** Each page and section has a title and a
+   one-line description in plain words (`SectionTitle`); every number says
+   where it comes from (your timer, the screen, the coach). Review new
+   screens as someone who has never seen the app (user, 10/15).
 
 ## Scale
 
