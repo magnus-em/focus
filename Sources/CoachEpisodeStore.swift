@@ -120,9 +120,10 @@ final class CoachEpisodeStore: ObservableObject {
                 do {
                     guard let source = try await source(job) else { try await queue.set(job.id, phase: .skipped); continue }
                     guard !Task.isCancelled, token == generation, allowed(source.row) else { return }
-                    let text = try CoachEpisode.prompt(row: source.row, text: source.text)
+                    let prefixes = ClassCalendar.shared.coursePrefixes
+                    let text = try CoachEpisode.prompt(row: source.row, text: source.text, coursePrefixes: prefixes)
                     if dryRun {
-                        try await queue.preview(job.id, payload: CoachEpisode.preview(row: source.row, text: source.text, image: source.image))
+                        try await queue.preview(job.id, payload: CoachEpisode.preview(row: source.row, text: source.text, image: source.image, coursePrefixes: prefixes))
                         status = "Dry run: payload ready, nothing sent"
                         continue
                     }
