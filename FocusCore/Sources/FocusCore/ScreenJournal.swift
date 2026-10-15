@@ -36,7 +36,10 @@ public enum ScreenJournal {
     }
 
     public static func hash(_ text: String) -> String {
-        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+        hash(Data(text.utf8))
+    }
+    public static func hash(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     public static func difference(from old: String, to new: String) -> Delta {
@@ -88,11 +91,12 @@ public final class ScreenJournalWriter: @unchecked Sendable {
     public var token: Int { lock.lock(); defer { lock.unlock() }; return generation }
     public func invalidate() { lock.lock(); generation += 1; lock.unlock() }
 
-    public func append(_ baseline: ScreenJournal.Row, token expected: Int, now: Date = Date()) async throws {
+    @discardableResult
+    public func append(_ baseline: ScreenJournal.Row, token expected: Int, now: Date = Date()) async throws -> Bool {
         try await perform {
-            guard self.token == expected else { return }
+            guard self.token == expected else { return false }
             guard let text = baseline.text, baseline.at <= now, baseline.end >= baseline.at,
-                  baseline.at >= now.addingTimeInterval(-self.keepSeconds), baseline.idleSeconds.isFinite else { return }
+                  baseline.at >= now.addingTimeInterval(-self.keepSeconds), baseline.idleSeconds.isFinite else { return false }
             try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true,
                                                      attributes: [.posixPermissions: 0o700])
             let day = Self.dayKey(baseline.at)
@@ -129,7 +133,7 @@ public final class ScreenJournalWriter: @unchecked Sendable {
                 guard data.count <= self.byteBudget else { throw CocoaError(.fileWriteOutOfSpace) }
                 try self.pruneFiles(now: now, reserving: data.count)
             }
-            guard self.token == expected else { return }
+            guard self.token == expected else { return false }
             do {
                 if FileManager.default.fileExists(atPath: url.path) {
                     let handle = try FileHandle(forWritingTo: url)
@@ -144,12 +148,13 @@ public final class ScreenJournalWriter: @unchecked Sendable {
             if self.token != expected {
                 try self.rewrite(excluding: { $0.id == row.id })
                 self.resetMemory()
-                return
+                return false
             }
             self.previousBytes -= self.previous[row.windowKey].map { Data($0.text.utf8).count } ?? 0
             self.previous[row.windowKey] = (row, text)
             self.previousBytes += Data(text.utf8).count
             if self.previous.count > 100 || self.previousBytes > 8 * 1024 * 1024 { self.resetMemory() }
+            return true
         }
     }
 

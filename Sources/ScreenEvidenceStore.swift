@@ -20,6 +20,7 @@ final class ScreenEvidenceStore: ObservableObject {
     @Published var enabled: Bool {
         didSet {
             worker.invalidatePendingRecords()
+            CoachEpisodeStore.shared.invalidate()
             UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
         }
     }
@@ -59,6 +60,16 @@ final class ScreenEvidenceStore: ObservableObject {
 
     func thumbnail(for entry: Entry, maxPixelSize: Int = 1400) async -> CGImage? {
         await worker.thumbnail(for: entry, maxPixelSize: maxPixelSize)
+    }
+
+    func imageData(for entry: Entry) async -> Data? {
+        let generation = worker.recordGeneration
+        guard enabled, !deleting, !ScreenWatcher.privateApps.contains(entry.bundle), ScreenWatcher.userIgnored[entry.bundle] == nil,
+              entry.bundle != ScreenWatcher.ownBundle else { return nil }
+        let data = await worker.imageData(for: entry)
+        guard enabled, !deleting, generation == worker.recordGeneration,
+              !ScreenWatcher.privateApps.contains(entry.bundle), ScreenWatcher.userIgnored[entry.bundle] == nil else { return nil }
+        return data
     }
 
     func deleteAll() {
@@ -194,6 +205,14 @@ final class ScreenEvidenceWorker: @unchecked Sendable {
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceShouldCacheImmediately: true,
             ] as CFDictionary)
+        }
+    }
+
+    func imageData(for entry: Entry) async -> Data? {
+        await perform {
+            do { try self.load() } catch { return nil }
+            guard entry.at >= Date().addingTimeInterval(-self.keepSeconds), self.index.contains(where: { $0.id == entry.id }) else { return nil }
+            return try? Data(contentsOf: self.url(entry.id))
         }
     }
 

@@ -17,7 +17,15 @@ public enum BrowserWindowPrivacy {
         if report.incognito || report.windowID == -1 { return .incognito }
         guard report.windowID >= 0, !report.title.isEmpty else { return .unknown }
         let suffix = " - Google Chrome"
-        let normalized = capturedTitle.hasSuffix(suffix) ? String(capturedTitle.dropLast(suffix.count)) : capturedTitle
-        return normalized == report.title ? .regular : .unknown
+        var normalized = capturedTitle.hasSuffix(suffix) ? String(capturedTitle.dropLast(suffix.count)) : capturedTitle
+        for indicator in [" 🔊", " 🔇", " ▶️", " ⏸️", " ▶", " ⏸"] where normalized.hasSuffix(indicator) {
+            normalized = String(normalized.dropLast(indicator.count))
+        }
+        if normalized == report.title { return .regular }
+        if let ellipsis = normalized.range(of: "…") {
+            let prefix = String(normalized[..<ellipsis.lowerBound]), suffix = String(normalized[ellipsis.upperBound...])
+            if !prefix.isEmpty, !suffix.isEmpty, report.title.hasPrefix(prefix), report.title.hasSuffix(suffix) { return .regular }
+        }
+        return .unknown
     }
 }

@@ -19,6 +19,20 @@ final class BrowserWindowPrivacyTests: XCTestCase {
         XCTAssertEqual(decide(title: "Other article"), .unknown)
         XCTAssertEqual(decide(title: ""), .unknown)
     }
+    func testChromeAudioAndMiddleTruncationStillRequireFreshWindowBinding() {
+        let report = BrowserWindowPrivacy.Report(windowID: 2, incognito: false, title: "Amazon.com: Countertop Ice Maker : Appliances", at: at.addingTimeInterval(-5))
+        for title in ["Amazon.com: Countertop Ice Maker : Appliances 🔊", "Amazon.com: Countertop… : Appliances", "Amazon.com: Countertop… : Appliances 🔊 - Google Chrome"] {
+            XCTAssertEqual(BrowserWindowPrivacy.decide(report: report, capturedTitle: title, windowChangedAt: at.addingTimeInterval(-10),
+                capturedAt: at, nativeWindowMatches: true, isChrome: true), .regular)
+            XCTAssertEqual(BrowserWindowPrivacy.decide(report: report, capturedTitle: title, windowChangedAt: at,
+                capturedAt: at, nativeWindowMatches: true, isChrome: true), .unknown)
+        }
+        for title in ["…Appliances", "Amazon.com:…", "Wrong…Appliances"] {
+            XCTAssertEqual(BrowserWindowPrivacy.decide(report: report, capturedTitle: title, windowChangedAt: at.addingTimeInterval(-10),
+                capturedAt: at, nativeWindowMatches: true, isChrome: true), .unknown)
+        }
+    }
+
     func testPrivateOrUnobservableFocusNeverReusesOldRegularTab() {
         XCTAssertEqual(decide(id: -1), .incognito)
         XCTAssertEqual(decide(incognito: true), .incognito)

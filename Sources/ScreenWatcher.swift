@@ -199,6 +199,7 @@ final class ScreenWatcher: ObservableObject {
 
     func start(settings: AppSettings) {
         self.settings = settings
+        CoachEpisodeStore.shared.startDryRun()
         guard tick == nil else { return }
         watchSetting = settings.$screenWatch.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] enabled in
             if !enabled { self?.resetEvidence(); ScreenJournalStore.shared.invalidate() }
@@ -305,7 +306,7 @@ final class ScreenWatcher: ObservableObject {
     /// reasoning as JSON in `Focus/screen-debug.json`, for Claude to read.
     func dumpDebug() {
         let iso = ISO8601DateFormatter()
-        var d: [String: Any] = ["journalError": ScreenJournalStore.shared.lastError ?? "", "status": status, "coach": coachStatus, "ignored": Self.userIgnored,
+        var d: [String: Any] = ["episodeStatus": CoachEpisodeStore.shared.status, "episodeError": CoachEpisodeStore.shared.lastError ?? "", "episodeDryRun": CoachEpisodeStore.shared.dryRun, "journalError": ScreenJournalStore.shared.lastError ?? "", "status": status, "coach": coachStatus, "ignored": Self.userIgnored,
                                 "modelError": { if #available(macOS 26.0, *) { return ScreenLabeler.lastError ?? "" }; return "" }()]
         if let x = lastSnapshot {
             d["snapshot"] = ["at": iso.string(from: x.date), "app": x.app, "bundle": x.bundle, "title": x.title,
@@ -836,8 +837,12 @@ final class ScreenWatcher: ObservableObject {
             // Text scrolled under the translucent bar reads as sentences; titles don't.
             .filter { (6...60).contains($0.count) && !$0.contains(". ") && !$0.hasSuffix(".") }
             .max { $0.count < $1.count }
-        let fullText = (request.results ?? []).sorted { $0.boundingBox.minY > $1.boundingBox.minY }
-            .compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+        let fullLines = (request.results ?? []).compactMap { observation -> ScreenTextLayout.Line? in
+            guard let text = observation.topCandidates(1).first?.string else { return nil }
+            let box = observation.boundingBox
+            return .init(text: text, minX: box.minX, maxX: box.maxX, minY: box.minY, maxY: box.maxY)
+        }
+        let fullText = ScreenTextLayout.ordered(fullLines).joined(separator: "\n")
         return (String(lines.joined(separator: "\n").prefix(2500)), fullText, header)
     }
 
