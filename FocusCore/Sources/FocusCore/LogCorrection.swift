@@ -37,13 +37,20 @@ public enum LogCorrection {
     /// after `now` (so "1:40" said at 3:12 PM is 1:40 PM, and "23:30" said
     /// just after midnight is last night). "now" → `now`.
     public static func resolve(_ clock: String, now: Date, calendar: Calendar = .current) -> Date? {
-        let s = clock.trimmingCharacters(in: .whitespaces).lowercased()
+        var s = clock.trimmingCharacters(in: .whitespaces).lowercased()
         if s == "now" { return now }
+        let meridiem = ["am", "pm"].first { s.hasSuffix($0) }
+        if let meridiem { s = String(s.dropLast(2)).trimmingCharacters(in: .whitespaces) }
         let parts = s.split(separator: ":")
         guard (1...2).contains(parts.count), let h = Int(parts[0]), (0...23).contains(h) else { return nil }
         let m = parts.count == 2 ? Int(parts[1]) : 0
         guard let m, (0...59).contains(m) else { return nil }
-        let hours = h < 12 ? [h, h + 12] : [h]
+        let hours: [Int]
+        switch meridiem {
+        case "am": hours = [h == 12 ? 0 : h]
+        case "pm": hours = [h < 12 ? h + 12 : h]
+        default: hours = h < 12 ? [h, h + 12] : [h]
+        }
         let latest = now.addingTimeInterval(5 * 60)
         let today = calendar.startOfDay(for: now)
         let candidates = [0, -1].flatMap { dayOffset -> [Date] in
@@ -96,25 +103,21 @@ public enum LogCorrection {
                     return (c.distance(from: c.startIndex, to: r.lowerBound), cat)
                 })
                 .min(by: { $0.0 < $1.0 })?.1 else { return nil }
-            let ns = c as NSString
-            let times = time.matches(in: c, range: NSRange(location: 0, length: ns.length)).compactMap { m -> String? in
-                guard var h = Int(ns.substring(with: m.range(at: 1))), h <= 23 else { return nil }
+            // "for 20 min" is a length, not a clock time.
+            let clockText = c.replacingOccurrences(of: Self.durationPattern, with: " ", options: .regularExpression)
+            let ns = clockText as NSString
+            let times = time.matches(in: clockText, range: NSRange(location: 0, length: ns.length)).compactMap { m -> String? in
+                guard let h = Int(ns.substring(with: m.range(at: 1))), h <= 23 else { return nil }
                 let min = m.range(at: 2).location == NSNotFound ? "00" : ns.substring(with: m.range(at: 2))
-                if m.range(at: 3).location != NSNotFound {
-                    let ampm = ns.substring(with: m.range(at: 3))
-                    if ampm == "pm", h < 12 { h += 12 }
-                    if ampm == "am", h == 12 { h = 0 }
-                }
-                return "\(h):\(min)"
+                let ampm = m.range(at: 3).location == NSNotFound ? "" : ns.substring(with: m.range(at: 3))
+                return "\(h):\(min)\(ampm)"
             }
             anyTime = anyTime || !times.isEmpty
             let has = { (w: String) in c.range(of: "\\b\(w)\\b", options: .regularExpression) != nil }
             switch times.count {
             case 0: out.append(Raw(from: "", to: has("now") ? "now" : "", category: category))
             case 1 where duration(c) != nil:
-                let parts = times[0].split(separator: ":").compactMap { Int($0) }
-                let end = (parts[0] * 60 + parts[1] + duration(c)!) % (24 * 60)
-                out.append(Raw(from: times[0], to: "\(end / 60):\(String(format: "%02d", end % 60))", category: category))
+                out.append(Raw(from: times[0], to: "+\(duration(c)!)", category: category))
             case 1:
                 if has("since") || has("from") || has("starting") || has("at") || has("around") || has("about") {
                     out.append(Raw(from: times[0], to: has("since") ? "now" : "", category: category))
@@ -126,6 +129,8 @@ public enum LogCorrection {
         }
         return anyTime && !out.isEmpty ? out : nil
     }
+
+    static let durationPattern = #"\bfor (\d+(?:\.\d+)?) ?(min|mins|minutes|m|hour|hours|hr|hrs|h)\b|\bfor (half an hour|half hour|an hour)\b"#
 
     /// Minutes in "for 20 min", "for 2 hours", "for half an hour", "for an hour".
     static func duration(_ clause: String) -> Int? {
@@ -158,6 +163,8 @@ public enum LogCorrection {
             if to.isEmpty {
                 let containing = log.last { $0.start <= a && $0.end > a }
                 b = containing.map { $0.end >= now.addingTimeInterval(-90) ? now : $0.end } ?? now
+            } else if to.hasPrefix("+"), let minutes = Double(to.dropFirst()) {
+                b = a.addingTimeInterval(minutes * 60)
             } else if let resolved = resolve(to, now: now, calendar: calendar) {
                 b = resolved
                 if b <= a, to.lowercased() != "now", let next = calendar.date(byAdding: .day, value: 1, to: b), next <= now { b = next }

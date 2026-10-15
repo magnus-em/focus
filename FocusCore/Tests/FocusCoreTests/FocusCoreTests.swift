@@ -272,6 +272,16 @@ final class LogCorrectionTests: XCTestCase {
         XCTAssertNil(LogCorrection.resolve("25:00", now: now, calendar: cal))
     }
 
+    // Codex: an explicit am must survive ("1am" said at 3 PM is 1 AM, not 1 PM).
+    func testExplicitMeridiemIsKept() {
+        let now = t(14, 15, 12)
+        XCTAssertEqual(LogCorrection.resolve("1:00am", now: now, calendar: cal), t(14, 1, 0))
+        XCTAssertEqual(LogCorrection.resolve("9:00pm", now: t(14, 22, 0), calendar: cal), t(14, 21, 0))
+        let blocks = LogCorrection.validate([LogCorrection.Raw(from: "1:00", to: "+20", category: "Class")],
+                                            now: now, categories: ["Class"], calendar: cal)
+        XCTAssertEqual(blocks, [LogCorrection.Block(start: t(14, 13, 0), end: t(14, 13, 20), category: "Class")])
+    }
+
     func testLateTimesSaidAfterMidnightAreLastNight() {
         XCTAssertEqual(LogCorrection.resolve("23:30", now: t(15, 0, 10), calendar: cal), t(14, 23, 30))
     }
@@ -307,10 +317,12 @@ final class LogCorrectionParseTests: XCTestCase {
         XCTAssertEqual(read("lunch from 12:20 to 12:50 then class until 1:40"), ["12:20|12:50|Meals", "|1:40|Class"])
         XCTAssertEqual(read("math since 2"), ["2:00|now|Math"])
         XCTAssertEqual(read("took a break 2:30 to 2:45"), ["2:30|2:45|Break"])
-        XCTAssertEqual(read("gym 7am-8:15am then breakfast"), ["7:00|8:15|Exercise", "||Meals"])
-        XCTAssertEqual(read("homework from 9pm"), ["21:00||HW"])
-        XCTAssertEqual(read("i ate around 12:30 for half an hour"), ["12:30|13:00|Meals"])
-        XCTAssertEqual(read("leetcode at 9pm for 45 min"), ["21:00|21:45|SWE"])
+        XCTAssertEqual(read("gym 7am-8:15am then breakfast"), ["7:00am|8:15am|Exercise", "||Meals"])
+        XCTAssertEqual(read("homework from 9pm"), ["9:00pm||HW"])
+        XCTAssertEqual(read("i ate around 12:30 for half an hour"), ["12:30|+30|Meals"])
+        XCTAssertEqual(read("leetcode at 9pm for 45 min"), ["9:00pm|+45|SWE"])
+        // Codex: a length's number isn't a clock time.
+        XCTAssertEqual(read("Class at 1 for 20 min"), ["1:00|+20|Class"])
     }
 
     func testFallsBackToTheModelWhenItCantRead() {

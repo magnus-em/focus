@@ -810,10 +810,16 @@ struct LogFixView: View {
     @ObservedObject var store: SessionStore
     let categories: [String]
 
+    /// What the preview was computed against; Apply refuses if it moved.
+    private struct Basis: Equatable {
+        let rows: [String]
+        let running: String
+    }
+
     private enum Step {
         case typing(String?)
         case reading
-        case preview([LogCorrection.Block])
+        case preview([LogCorrection.Block], Basis)
         case done([SessionStore.ReviewUndo], changedRunning: Bool, failed: Bool)
     }
     @State private var text = ""
@@ -837,7 +843,7 @@ struct LogFixView: View {
                     ProgressView().controlSize(.small)
                     Text("Reading “\(text)”…").font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
                 }
-            case .preview(let blocks):
+            case .preview(let blocks, let basis):
                 Text("“\(text)”").font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(2)
                 ForEach(blocks, id: \.start) { b in
                     HStack(spacing: 8) {
@@ -856,7 +862,7 @@ struct LogFixView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack {
-                    Button("Apply") { apply(blocks) }.keyboardShortcut(.defaultAction)
+                    Button("Apply") { apply(blocks, basis: basis) }.keyboardShortcut(.defaultAction)
                     Button("Cancel") { step = .typing(nil) }
                 }
             case .done(let undos, let changedRunning, let failed):
@@ -903,11 +909,24 @@ struct LogFixView: View {
         Task { @MainActor in
             let blocks = await LogCorrection.propose(said, log: log, now: now, categories: categories)
             guard let blocks else { return step = .typing("Couldn't read that. Try times like 1:00–1:40.") }
-            step = blocks.isEmpty ? .typing("Didn't find any times in that. Try “Class 1–1:40, then Leisure”.") : .preview(blocks)
+            step = blocks.isEmpty ? .typing("Didn't find any times in that. Try “Class 1–1:40, then Leisure”.")
+                : .preview(blocks, basis(for: blocks))
         }
     }
 
-    private func apply(_ blocks: [LogCorrection.Block]) {
+    /// Saved rows the blocks touch, plus what's running and how.
+    private func basis(for blocks: [LogCorrection.Block]) -> Basis {
+        let lo = blocks.map(\.start).min() ?? Date(), hi = blocks.map(\.end).max() ?? Date()
+        let rows = store.sessions.filter { TimeIntegrity.end(of: $0) > lo && $0.startTime < hi }
+            .map { "\($0.id)|\($0.startTime.timeIntervalSince1970)|\($0.durationMinutes)|\($0.label ?? "")|\($0.type)" }
+        let running = "\(timer.isActive)|\(timer.isRunning)|\(timer.isOnBreak)|\(timer.currentLabel)|\(timer.sessionStartTime?.timeIntervalSince1970 ?? 0)"
+        return Basis(rows: rows.sorted(), running: running)
+    }
+
+    private func apply(_ blocks: [LogCorrection.Block], basis: Basis) {
+        guard self.basis(for: blocks) == basis else {
+            return step = .typing("The log changed while this was open. Press Return to read it again.")
+        }
         var undos: [SessionStore.ReviewUndo] = []
         var changedRunning = false
         var failed = false
@@ -916,7 +935,11 @@ struct LogFixView: View {
             let runStart = timer.isActive ? timer.sessionStartTime : nil
             let savedEnd = min(b.end, runStart ?? b.end)
             if savedEnd.timeIntervalSince(b.start) >= 60 {
-                if let u = store.paintForReview(start: b.start, end: savedEnd, label: b.category) { undos.append(u) } else { failed = true }
+                guard let u = store.paintForReview(start: b.start, end: savedEnd, label: b.category) else {
+                    failed = true
+                    break
+                }
+                undos.append(u)
             }
             guard let rs = runStart, b.end.timeIntervalSince(max(b.start, rs)) >= 60 else { continue }
             let from = max(b.start, rs)
