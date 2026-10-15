@@ -165,6 +165,35 @@ public enum CoachDay {
         }.sorted { $0.start < $1.start } + [live]
     }
 
+    /// Today's record is rewritten after this much tracked waking time since
+    /// the last one, at most `rewritesPerDay` times, so the Day page's
+    /// headline keeps up with the day (about 6¢ each, inside the daily cap).
+    public static let rewriteAfterMinutes: Double = 120
+    public static let rewritesPerDay = 4
+
+    /// Tracked minutes after `since` and before `now`, without Sleep and
+    /// Break; overlapping rows (a peer's copy of a session) count once.
+    public static func activeMinutes(_ sessions: [Session], since: Date, now: Date) -> Double {
+        let ranges = sessions.filter { $0.label != "Sleep" && $0.label != "Break" }
+            .map { (max($0.start, since), min($0.end, now)) }.filter { $0.1 > $0.0 }.sorted { $0.0 < $1.0 }
+        var total: TimeInterval = 0
+        var cursor = Date.distantPast
+        for (a, b) in ranges where b > cursor {
+            total += b.timeIntervalSince(max(a, cursor))
+            cursor = b
+        }
+        return total / 60
+    }
+
+    /// Whether today's record should be written again: two active hours since
+    /// the last one (or since midnight), and fewer than four writes today.
+    public static func rewriteDue(sessions: [Session], lastWritten: Date?, dayStart: Date, now: Date,
+                                  writesToday: Int) -> Bool {
+        guard writesToday < rewritesPerDay else { return false }
+        let since = max(lastWritten ?? dayStart, dayStart)
+        return activeMinutes(sessions, since: since, now: now) >= rewriteAfterMinutes
+    }
+
     public struct Pack: Sendable {
         public var day: Date
         public var commitment: String?

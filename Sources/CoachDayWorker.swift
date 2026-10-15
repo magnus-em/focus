@@ -1,8 +1,9 @@
 import Foundation
 import FocusCore
 
-/// Writes a day's coach record (`Focus/days/DATE.json`) once: for yesterday
-/// after 4 AM, or as soon as the morning recall asks. Input is the tracked
+/// Writes a day's coach record (`Focus/days/DATE.json`): for yesterday after
+/// 4 AM, or as soon as the morning recall asks, and today's again after every
+/// two active hours (at most four a day) so the Day page stays current. Input is the tracked
 /// log, the screen's activity blocks with their notes, and up to eight
 /// screenshots of study time. A browser window counts only when the journal
 /// confirmed it wasn't private; otherwise its title, notes and screenshots
@@ -45,7 +46,7 @@ final class CoachDayWorker: ObservableObject {
         self.days = days
         self.settings = settings
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1800, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
         }
         Task { [weak self] in
@@ -88,8 +89,38 @@ final class CoachDayWorker: ObservableObject {
     }
 
     private func tick() {
+        rewriteTodayIfDue()
         guard Calendar.current.component(.hour, from: Date()) >= 4 else { return }
         ensure(yesterday)
+    }
+
+    private static let writesKey = "coachDayWrites"
+
+    /// Today's record, again, once two active hours have passed since the last one.
+    private func rewriteTodayIfDue() {
+        guard let store, Coach.client != nil else { return }
+        let now = Date()
+        let today = Calendar.current.startOfDay(for: now)
+        let key = CoachDay.dayKey(today)
+        load(today)
+        let saved = store.sessions.filter { $0.startTime.addingTimeInterval($0.durationMinutes * 60) > today }.map(Self.session)
+        let sessions = CoachDay.trackedSessions(saved: saved, running: QuickSwitch.shared?.inProgress.map(Self.session), now: now)
+        let writes = (UserDefaults.standard.dictionary(forKey: Self.writesKey) as? [String: Int])?[key] ?? 0
+        guard CoachDay.rewriteDue(sessions: sessions, lastWritten: records[key]?.generatedAt, dayStart: today, now: now,
+                                  writesToday: writes) else { return }
+        ensure(today, rewrite: true)
+    }
+
+    private func countWrite(_ key: String) {
+        var writes = UserDefaults.standard.dictionary(forKey: Self.writesKey) as? [String: Int] ?? [:]
+        writes[key, default: 0] += 1
+        UserDefaults.standard.set(writes.filter { $0.key >= CoachDay.dayKey(Date().addingTimeInterval(-7 * 86400)) },
+                                  forKey: Self.writesKey)
+    }
+
+    private static func session(_ s: WorkSession) -> CoachDay.Session {
+        CoachDay.Session(start: s.startTime, end: s.startTime.addingTimeInterval(s.durationMinutes * 60),
+                         label: s.type != .work ? "Break" : (s.label ?? "Focus"))
     }
 
     /// The saved record, if there is one; reads the file on first use.
@@ -111,13 +142,14 @@ final class CoachDayWorker: ObservableObject {
     }
 
     /// Writes the record unless it exists for the whole day, is being written,
-    /// failed in the last hour, or the cloud coach is off.
-    func ensure(_ day: Date, force: Bool = false) {
+    /// failed in the last hour, or the cloud coach is off. `rewrite` replaces
+    /// today's partial record but still waits an hour after a failure.
+    func ensure(_ day: Date, force: Bool = false, rewrite: Bool = false) {
         load(day)
         let key = CoachDay.dayKey(day)
         if force { lastAttempt[key] = nil }
         let over = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: day)).map { Date() >= $0 } ?? false
-        guard records[key] == nil || force || (isPartial(day) && over), status[key] != .working,
+        guard records[key] == nil || force || rewrite || (isPartial(day) && over), status[key] != .working,
               Date().timeIntervalSince(lastAttempt[key] ?? .distantPast) > 3600,
               let client = Coach.client, store != nil else { return }
         lastAttempt[key] = Date()
@@ -147,6 +179,7 @@ final class CoachDayWorker: ObservableObject {
             try CoachDay.save(record, to: Self.directory)
             records[key] = record
             status[key] = nil
+            if Calendar.current.isDateInToday(day) { countWrite(key) }
         } catch {
             status[key] = .failed(Self.describe(error))
         }
@@ -183,14 +216,10 @@ final class CoachDayWorker: ObservableObject {
         let facts = await Task.detached { Self.journalFacts(for: day) }.value
 
         let now = Date()
-        func session(_ s: WorkSession) -> CoachDay.Session {
-            CoachDay.Session(start: s.startTime, end: s.startTime.addingTimeInterval(s.durationMinutes * 60),
-                             label: s.type != .work ? "Break" : (s.label ?? "Focus"))
-        }
         let saved = store.sessions
             .filter { $0.startTime < end && $0.startTime.addingTimeInterval($0.durationMinutes * 60) > start }
-            .map(session)
-        let live = QuickSwitch.shared?.inProgress.map(session).flatMap { $0.start < end && now > start ? $0 : nil }
+            .map(Self.session)
+        let live = QuickSwitch.shared?.inProgress.map(Self.session).flatMap { $0.start < end && now > start ? $0 : nil }
         let sessions = CoachDay.trackedSessions(saved: saved, running: live, now: now)
         func tracked(_ a: Date, _ b: Date) -> String? {
             var overlap: [String: TimeInterval] = [:]

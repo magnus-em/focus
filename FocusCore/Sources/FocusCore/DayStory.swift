@@ -215,7 +215,8 @@ public enum DayStory {
                 end = min(end, cutoff)
                 guard end > start else { continue }
                 let found = codes(e.what, prefixes: coursePrefixes).map { canonical($0, known: known) }
-                items.append(Item(start: start, end: end, category: e.category, course: found.first,
+                items.append(Item(start: start, end: end, category: e.category,
+                                  course: found.first { fits($0, category: e.category) },
                                   moment: Moment(start: start, end: end, text: e.what, category: e.category),
                                   evidence: true))
             }
@@ -255,8 +256,9 @@ public enum DayStory {
         let fixes = fixList(missed: missed, tracked: tracked, events: events, screen: screen, items: items, focus: focus,
                             dayStart: dayStart, dayEnd: dayEnd)
         var blocks = group(items, focus: focus)
-        for (i, b) in blocks.enumerated() {
-            blocks[i].fixes = fixes.filter { $0.start < b.end && $0.end > b.start && !isUntracked($0) }
+        for f in fixes where !isUntracked(f) {
+            let spans = blocks.indices.map { overlap((blocks[$0].start, blocks[$0].end), (f.start, f.end)) }
+            if let i = spans.indices.max(by: { spans[$0] < spans[$1] }), spans[i] > 0 { blocks[i].fixes.append(f) }
         }
         for f in fixes where isUntracked(f) {
             blocks.append(Block(start: f.start, end: f.end, category: nil, course: nil, event: nil, study: false,
@@ -328,26 +330,41 @@ public enum DayStory {
         }
     }
 
+    /// "In-context learning as Bayesian inference (777 class)" and "… (CPSC 7770)" are one topic.
+    static func baseTopic(_ topic: String) -> String {
+        guard topic.hasSuffix(")"), let open = topic.lastIndex(of: "("), open > topic.startIndex else { return topic }
+        return topic[..<open].trimmingCharacters(in: .whitespaces)
+    }
+
     static func sameSubject(_ a: CoachEpisode.Record, _ b: CoachEpisode.Record) -> Bool {
         let ua = a.understanding, ub = b.understanding
         if (ua.activity == "admin") != (ub.activity == "admin") { return false }
         if ua.activity == "admin" { return true }
-        if ua.topic.caseInsensitiveCompare(ub.topic) == .orderedSame { return true }
+        if baseTopic(ua.topic).caseInsensitiveCompare(baseTopic(ub.topic)) == .orderedSame { return true }
         if let ca = ua.course, let cb = ub.course, ca != cb { return false }
         let sa = Set(ua.concepts.map { $0.lowercased() }), sb = Set(ub.concepts.map { $0.lowercased() })
         return !sa.isDisjoint(with: sb)
     }
 
-    /// Study items without a course take the course of the nearest study item
-    /// in the same category, so "Math" stretches between MATH 244 ones read as MATH 244.
+    /// Study items up to an hour long without a course take the course of a
+    /// study item in the same category less than 30 minutes away (passed along
+    /// a run of them), so "Math" stretches between MATH 244 ones read as
+    /// MATH 244. Longer ones keep none: 10/13's "11:01–15:54 long tracked SWE
+    /// block, no problems on screen" became 4h 53m of CPSC 3231 by borrowing
+    /// from a 13-minute entry before it.
     static func fillCourses(_ items: inout [Item], focus: Set<String>) {
-        for i in items.indices where items[i].course == nil && items[i].evidence {
-            guard let c = items[i].category, focus.contains(c) else { continue }
-            let candidates = items.indices.filter { items[$0].course != nil && items[$0].category == c }
-            if let nearest = candidates.min(by: {
-                abs(items[$0].start.timeIntervalSince(items[i].start)) < abs(items[$1].start.timeIntervalSince(items[i].start))
-            }) {
-                items[i].course = items[nearest].course
+        var changed = true
+        while changed {
+            changed = false
+            for i in items.indices where items[i].course == nil && items[i].evidence && items[i].minutes <= 60 {
+                guard let c = items[i].category, focus.contains(c) else { continue }
+                let it = items[i]
+                func gap(_ o: Item) -> TimeInterval { max(0, max(o.start, it.start).timeIntervalSince(min(o.end, it.end))) }
+                if let nearest = items.filter({ $0.course != nil && $0.category == c && gap($0) < 30 * 60 })
+                    .min(by: { gap($0) < gap($1) }) {
+                    items[i].course = nearest.course
+                    changed = true
+                }
             }
         }
         for i in items.indices where items[i].course == nil && !items[i].evidence {
@@ -503,7 +520,8 @@ public enum DayStory {
         var order: [String] = []
         func touch(_ code: String, category: String) {
             if byCode[code] == nil {
-                byCode[code] = Course(code: code, category: category, minutes: 0, topics: [], shaky: [], digest: nil,
+                let known = CoachCourse.known.first { sameCourse($0.code, code) }?.category
+                byCode[code] = Course(code: code, category: known ?? category, minutes: 0, topics: [], shaky: [], digest: nil,
                                       activity: [:])
                 order.append(code)
             }
@@ -545,6 +563,17 @@ public enum DayStory {
     }
 
     // MARK: Helpers
+
+    private static let courseCategories = Set(CoachCourse.known.compactMap(\.category))
+
+    /// A course named in an entry's text counts for it unless the entry is
+    /// another course's subject: 10/13's "SWE: … planning MATH 244 prep" was
+    /// an hour of SWE chats, not MATH 244. HW and the like hold any course.
+    static func fits(_ code: String, category: String) -> Bool {
+        guard courseCategories.contains(category),
+              let own = CoachCourse.known.first(where: { sameCourse($0.code, code) })?.category else { return true }
+        return own == category
+    }
 
     static func codes(_ text: String, prefixes: [String: String]) -> [String] {
         StudyRecall.courseCodes(in: text, prefixes: prefixes)

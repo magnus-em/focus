@@ -120,6 +120,28 @@ final class CoachDayTests: XCTestCase {
                                        calendar: calendar).contains("So far"))
     }
 
+    func testTodaysRecordIsRewrittenAfterTwoActiveHoursAtMostFourTimes() {
+        let d = at(0, 0, day: 15)
+        let sessions: [CoachDay.Session] = [
+            .init(start: at(0, 0, day: 15), end: at(10, 10, day: 15), label: "Sleep"),
+            .init(start: at(10, 8, day: 15), end: at(11, 51, day: 15), label: "Math"),
+            .init(start: at(10, 30, day: 15), end: at(11, 0, day: 15), label: "Math"),
+            .init(start: at(11, 51, day: 15), end: at(11, 53, day: 15), label: "Break"),
+            .init(start: at(11, 53, day: 15), end: at(13, 0, day: 15), label: "Math", running: true),
+        ]
+        XCTAssertEqual(CoachDay.activeMinutes(sessions, since: d, now: at(13, 0, day: 15)), 170,
+                       "sleep and breaks don't count, and an overlapping copy counts once")
+        XCTAssertTrue(CoachDay.rewriteDue(sessions: sessions, lastWritten: nil, dayStart: d, now: at(13, 0, day: 15), writesToday: 0))
+        XCTAssertFalse(CoachDay.rewriteDue(sessions: sessions, lastWritten: at(11, 30, day: 15), dayStart: d,
+                                           now: at(13, 0, day: 15), writesToday: 1), "88 active minutes since the last one")
+        XCTAssertTrue(CoachDay.rewriteDue(sessions: sessions, lastWritten: at(10, 50, day: 15), dayStart: d,
+                                          now: at(13, 0, day: 15), writesToday: 1))
+        XCTAssertFalse(CoachDay.rewriteDue(sessions: sessions, lastWritten: nil, dayStart: d, now: at(13, 0, day: 15),
+                                           writesToday: CoachDay.rewritesPerDay))
+        XCTAssertFalse(CoachDay.rewriteDue(sessions: sessions, lastWritten: nil, dayStart: d, now: at(11, 0, day: 15), writesToday: 0),
+                       "only 52 active minutes by 11")
+    }
+
     func testRunningBlockWinsOverlapsAndNothingRunningChangesNothing() {
         let saved: [CoachDay.Session] = [
             .init(start: at(11, 40, day: 15), end: at(12, 0, day: 15), label: "Break"),

@@ -171,6 +171,52 @@ final class DayStoryTests: XCTestCase {
         XCTAssertEqual(DayStory.canonical("MATH 244", known: ["CPSC 323"]), "MATH 244")
     }
 
+    /// 10/13: a vague five-hour SWE entry borrowed CPSC 3231 from a 13-minute
+    /// one and the Week page showed 7h 51m of CPSC 3231; an hour of SWE chats
+    /// that mentioned "planning MATH 244 prep" counted as MATH 244.
+    func testLongVagueEntriesAndOtherSubjectsDontCountAsACourse() {
+        let content = CoachDay.Content(
+            headline: "Mostly SWE chats.",
+            timeline: [
+                entry("10:47", "11:00", "SWE", "ChatGPT on CPSC 3231 C basics: stdio, main, printf."),
+                entry("11:01", "15:54", "SWE", "Long tracked SWE block, mostly ChatGPT. Specific problems were not on screen."),
+                entry("15:55", "16:10", "SWE", "Back to ChatGPT under tracked SWE."),
+                entry("18:53", "19:59", "SWE", "ChatGPT titles for reviewing C and planning MATH 244 prep."),
+                entry("19:59", "20:10", "Math", "MATH 244 prep: minimal elements of a poset."),
+            ],
+            study: [], questions: [], other: [], planVsActual: nil, observations: [])
+        let rec = CoachDay.Record(day: "2026-10-15", content: content, generatedAt: at(23, 59), model: "grok-4.7",
+                                  costUSD: 0.05, images: 0, promptVersion: 4)
+        let s = DayStory.build(day: day, now: at(23, 59), tracked: [.init(start: at(10, 30), end: at(20, 10), label: "SWE")],
+                               record: rec, observations: [], focus: focus, calendar: calendar)
+        XCTAssertEqual(s.courses.map(\.code), ["CPSC 3231", "MATH 244"])
+        XCTAssertEqual(s.courses.first?.minutes, 13)
+        XCTAssertEqual(s.courses.last?.minutes, 11)
+        XCTAssertEqual(s.courses.last?.category, "Math")
+    }
+
+    func testAFixSpanningSeveralBlocksShowsOnTheOneItCoversMost() {
+        let tracked: [DayStory.Tracked] = [.init(start: at(13, 0), end: at(13, 20), label: "Admin"),
+                                           .init(start: at(13, 20), end: at(14, 30), label: "Leisure")]
+        let events: [DayStory.CalendarEvent] = [.init(start: at(13, 5), end: at(14, 20), title: "MATH 244 Midterm 1")]
+        let s = DayStory.build(day: day, now: at(15, 0), tracked: tracked, record: nil, observations: [], events: events,
+                               focus: focus, calendar: calendar)
+        XCTAssertEqual(s.fixes.count, 2)
+        for f in s.fixes {
+            XCTAssertEqual(s.blocks.filter { $0.fixes.contains(f) }.count, 1, "each fix sits on one row")
+        }
+    }
+
+    func testTopicsThatDifferOnlyInAParentheticalAreOneRun() {
+        XCTAssertEqual(DayStory.baseTopic("In-context learning as Bayesian inference (777 class)"),
+                       "In-context learning as Bayesian inference")
+        XCTAssertEqual(DayStory.baseTopic("(untitled)"), "(untitled)")
+        let runs = DayStory.runs([obs(16, 6, tracked: "Class", screen: nil, topic: "In-context learning as Bayesian inference (777 class)"),
+                                  obs(16, 7, tracked: "Class", screen: "AI", topic: "In-context learning as Bayesian inference (CPSC 7770)")],
+                                 asked: { $0.understanding.askedByUser })
+        XCTAssertEqual(runs.count, 1)
+    }
+
     func testWeekMergesOneCourseNamedTwoWaysUnderTheLongerName() {
         func course(_ code: String, _ minutes: Double) -> DayStory.Course {
             DayStory.Course(code: code, category: "SWE", minutes: minutes, topics: [], shaky: [], digest: nil, activity: [:])
