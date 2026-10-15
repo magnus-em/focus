@@ -149,6 +149,13 @@ final class QuickSwitch {
             timer.sessionStore?.paint(start: from, end: to, label: label)
             toast.show(icon: "pencil", title: "Logged \(label ?? "Break")",
                        detail: "\(from.formatted(date: .omitted, time: .shortened))–\(to.formatted(date: .omitted, time: .shortened))")
+        case "set-end":
+            // focus://set-end?id=<session UUID>&end=<unix seconds>: end one
+            // saved block at that time (repairs, through the app so it syncs).
+            guard let id = param("id").flatMap(UUID.init(uuidString:)),
+                  let end = param("end").flatMap(Double.init).map(Date.init(timeIntervalSince1970:)),
+                  timer.sessionStore?.setEnd(id: id, end: end) == true else { return }
+            toast.show(icon: "scissors", title: "Block shortened", detail: "")
         case "unlog":
             // focus://unlog?id=<session UUID> deletes one saved session.
             guard let id = param("id").flatMap(UUID.init(uuidString:)) else { return }

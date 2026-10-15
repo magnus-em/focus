@@ -304,9 +304,13 @@ public enum RemoteStop {
     /// shared session and later stopped a newer one, we can't know where ours
     /// really ended, and whoever replaced it saved it (as `skipStaleSegment`).
     /// A peer stopping an *older* session says nothing about ours, so we keep it.
+    /// A peer that stopped a *later* session means ours was replaced at a
+    /// time we don't know, and saving it up to anything risks stretching the
+    /// real row through same-start dedup (10/14: Math 5:22 → 6:24 became
+    /// 5:22 → 10:44 PM). Skip it whether or not we slept; prefer the gap.
     public static func savedEnd(mine start: Date, stoppedStart: Date?, stoppedAt: Date, now: Date = Date(),
                                 stale: Bool, shared: Bool) -> Date? {
-        if let theirs = stoppedStart, theirs.timeIntervalSince(start) > 3, stale, shared { return nil }
+        if let theirs = stoppedStart, theirs.timeIntervalSince(start) > 3 { return nil }
         return end(mine: start, stoppedStart: stoppedStart, stoppedAt: stoppedAt, now: now)
     }
 
@@ -325,6 +329,12 @@ public enum SharedSessionMemory {
     public static func mark(_ start: Date?) {
         guard let start else { return }
         UserDefaults.standard.set(start.timeIntervalSince1970, forKey: key)
+    }
+
+    /// The last session start this device saw shared, kept across relaunches.
+    public static var lastStart: Date? {
+        let t = UserDefaults.standard.double(forKey: key)
+        return t > 0 ? Date(timeIntervalSince1970: t) : nil
     }
 
     public static func wasShared(_ start: Date) -> Bool {

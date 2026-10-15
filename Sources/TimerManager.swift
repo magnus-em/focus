@@ -440,10 +440,20 @@ class TimerManager: ObservableObject {
     /// A peer announcing a session that began before ours is behind (e.g. an
     /// app relaunched with its old checkpoint): keep ours and re-announce it.
     private func rejectOlder(_ theirStart: Date?, source: String) -> Bool {
-        guard isActive, let mine = sessionStartTime, let theirStart,
-              theirStart < mine.addingTimeInterval(-3) else { return false }
-        SyncLog.event("rejectOlderPeer", ["source": source, "theirs": "\(theirStart)", "mine": "\(mine)"])
-        pushSharedState()
+        guard let theirStart else { return false }
+        if isActive, let mine = sessionStartTime {
+            guard theirStart < mine.addingTimeInterval(-3) else { return false }
+            SyncLog.event("rejectOlderPeer", ["source": source, "theirs": "\(theirStart)", "mine": "\(mine)"])
+            pushSharedState()
+            return true
+        }
+        // Stopped: a peer announcing a session that began before the last one
+        // we saw has been asleep since (10/14: an iPad re-sent Math from 5:22
+        // PM at 10:43, and the stopped Mac took it). Ignore it; it will catch
+        // up from the shared state.
+        guard let last = lastSessionStart ?? SharedSessionMemory.lastStart,
+              theirStart < last.addingTimeInterval(-3) else { return false }
+        SyncLog.event("rejectOlderPeer", ["source": source, "theirs": "\(theirStart)", "lastSeen": "\(last)", "idle": true])
         return true
     }
 

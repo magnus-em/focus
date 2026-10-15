@@ -217,9 +217,10 @@ final class RemoteStopSaveTests: XCTestCase {
                                          stale: true, shared: true))
     }
 
-    func testAwakeDeviceSavesUpToTheLaterSessionsStart() {
-        XCTAssertEqual(RemoteStop.savedEnd(mine: at(0), stoppedStart: at(25), stoppedAt: at(173), now: at(174),
-                                           stale: false, shared: true), at(25))
+    // 10/14 night: saving "up to the later start" stretched Math 5:22 → 6:24 to 10:44 PM via dedup.
+    func testAwakeDeviceAlsoSkipsWhenALaterSessionStopped() {
+        XCTAssertNil(RemoteStop.savedEnd(mine: at(0), stoppedStart: at(25), stoppedAt: at(173), now: at(174),
+                                         stale: false, shared: true))
     }
 }
 

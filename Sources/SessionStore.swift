@@ -184,6 +184,16 @@ class SessionStore: ObservableObject {
         refresh()
     }
 
+    /// Ends one saved block at `end` (after its start, before its current end).
+    func setEnd(id: UUID, end: Date) -> Bool {
+        guard let m = try? model(id), end > m.startTime,
+              end < m.startTime.addingTimeInterval(m.durationMinutes * 60) else { return false }
+        m.durationMinutes = end.timeIntervalSince(m.startTime) / 60
+        save()
+        refresh()
+        return saveError == nil
+    }
+
     func updateLabel(id: UUID, label: String?) {
         let target = id
         let predicate = #Predicate<StoredWorkSession> { $0.id == target }
