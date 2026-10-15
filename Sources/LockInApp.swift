@@ -236,6 +236,9 @@ struct FocusApp: App {
                 DesignGallery.show(CommitmentView(settings: appSettings, dayStore: days, store: store, timer: timer,
                                                   isShowing: .constant(true), previewMorningReview: true),
                                    name: name, dark: dark, size: NSSize(width: 360, height: 850))
+            case "learned-labels":
+                DesignGallery.show(ScrollView { LearnedLabelReviewView(preview: true).padding(16) },
+                                   name: name, dark: dark, size: NSSize(width: 360, height: 650))
             default:
                 var spec = name.replacingOccurrences(of: "popover-", with: "")
                 let detent: TimerView.Detent? = switch spec.last {

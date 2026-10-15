@@ -1010,6 +1010,10 @@ private struct ScreenSettings: View {
 
     var body: some View {
         ToggleRow(label: "Watch what's on screen", isOn: $settings.screenWatch)
+        DisclosureGroup("Review learned labels (\(ScreenWatcher.suspiciousLabels.count))") {
+            LearnedLabelReviewView().padding(.vertical, 8)
+        }
+        .font(.system(size: 13))
         ToggleRow(label: "Keep screenshots for review on this Mac", isOn: $evidence.enabled)
         HStack {
             Text("Seven days · up to 256 MB · \(ByteCountFormatter.string(fromByteCount: Int64(evidence.storedBytes), countStyle: .file)) stored")

@@ -424,6 +424,7 @@ final class ScreenWatcher: ObservableObject {
         lastSampled = "\(bundle)|\(shot.title)"
         let learned = category != nil && !Self.isGeneric(title: title, app: appName)
             && Self.memory[Self.memoryKey(bundle: bundle, title: title)] == category
+            && Self.usableMemoryKey(Self.memoryKey(bundle: bundle, title: title))
             && !labelUncertain
         lastSnapshot = Snapshot(date: now, app: appName, bundle: bundle, title: url.map { "\(title) · \($0)" } ?? title,
                                 text: text, others: otherTexts,
@@ -810,9 +811,59 @@ final class ScreenWatcher: ObservableObject {
     }
 
     private static let memoryDefaultsKey = "screenMemory"
+    private static let keptMemoryDefaultsKey = "screenMemoryKeptTitles"
 
     static var memory: [String: String] {
         UserDefaults.standard.dictionary(forKey: memoryDefaultsKey) as? [String: String] ?? [:]
+    }
+
+    struct SuspiciousLabel: Identifiable {
+        let key: String
+        let title: String
+        let category: String
+        let reason: String
+        var id: String { key }
+    }
+
+    private static var keptTitles: [String: String] {
+        UserDefaults.standard.dictionary(forKey: keptMemoryDefaultsKey) as? [String: String] ?? [:]
+    }
+
+    private static func titleInMemoryKey(_ key: String) -> String? {
+        guard let bar = key.firstIndex(of: "|") else { return nil }
+        return String(key[key.index(after: bar)...])
+    }
+
+    static func usableMemoryKey(_ key: String) -> Bool {
+        guard let title = titleInMemoryKey(key) else { return false }
+        if LearnedTitlePolicy.reason(title) == nil { return true }
+        guard let category = memory[key] else { return false }
+        return keptTitles[key] == category
+    }
+
+    static var suspiciousLabels: [SuspiciousLabel] {
+        memory.compactMap { key, category in
+            let title = titleInMemoryKey(key) ?? key
+            guard let reason = titleInMemoryKey(key) == nil ? "Has no app/window separator" : LearnedTitlePolicy.reason(title),
+                  keptTitles[key] != category else { return nil }
+            return SuspiciousLabel(key: key, title: title, category: category, reason: reason)
+        }.sorted { $0.key < $1.key }
+    }
+
+    static func reviewLearnedLabel(_ entry: SuspiciousLabel, keep: Bool) -> Bool {
+        var labels = memory
+        guard labels[entry.key] == entry.category else { return false }
+        var kept = keptTitles
+        if keep {
+            kept[entry.key] = entry.category
+        } else {
+            labels.removeValue(forKey: entry.key)
+            kept.removeValue(forKey: entry.key)
+            UserDefaults.standard.set(labels, forKey: memoryDefaultsKey)
+        }
+        UserDefaults.standard.set(kept, forKey: keptMemoryDefaultsKey)
+        shared.objectWillChange.send()
+        return true
     }
 
     // MARK: - Few-shot examples
@@ -828,7 +879,7 @@ final class ScreenWatcher: ObservableObject {
         for (key, label) in Self.memory where categories.contains(label) {
             guard let bar = key.firstIndex(of: "|") else { continue }
             let t = String(key[key.index(after: bar)...])
-            guard t.count >= 4, t != title.lowercased() else { continue }
+            guard t.count >= 4, t != title.lowercased(), LearnedTitlePolicy.reason(t) == nil else { continue }
             guard let v = titleVectors[t] ?? emb.vector(for: t) else { continue }
             titleVectors[t] = v
             scored.append((Self.cosine(q, v), t, label))
@@ -852,10 +903,21 @@ final class ScreenWatcher: ObservableObject {
 
     /// The user's answer for these windows beats the model next time.
     static func learn(_ keys: Set<String>, as category: String) {
+        let accepted = keys.filter { titleInMemoryKey($0).map { LearnedTitlePolicy.reason($0) == nil } ?? false }
+        guard !accepted.isEmpty else { return }
         var m = memory
-        for k in keys { m[k] = category }
-        if m.count > 800 { m = Dictionary(uniqueKeysWithValues: m.shuffled().prefix(800).map { ($0.key, $0.value) }) }
+        for k in accepted { m[k] = category }
+        if m.count > 800 {
+            let protected = m.filter { titleInMemoryKey($0.key).map { LearnedTitlePolicy.reason($0) != nil } ?? true }
+            let ordinary = m.filter { protected[$0.key] == nil }.sorted {
+                if accepted.contains($0.key) != accepted.contains($1.key) { return accepted.contains($0.key) }
+                return $0.key < $1.key
+            }
+            let retained = ordinary.prefix(max(0, 800 - protected.count)).map { ($0.key, $0.value) }
+            m = protected.merging(Dictionary(uniqueKeysWithValues: retained)) { a, _ in a }
+        }
         UserDefaults.standard.set(m, forKey: memoryDefaultsKey)
+        shared.objectWillChange.send()
     }
 
     private func classify(app: String, bundle: String, title: String, text: String, url: String? = nil) async -> (String?, String) {
@@ -870,7 +932,8 @@ final class ScreenWatcher: ObservableObject {
             labelReason = "Your rule: work on the Focus project is Admin"
             return ("Admin", fallbackSummary)
         }
-        if !generic, let known = Self.memory[Self.memoryKey(bundle: bundle, title: title)], candidates.contains(known) {
+        if !generic, Self.usableMemoryKey(Self.memoryKey(bundle: bundle, title: title)),
+           let known = Self.memory[Self.memoryKey(bundle: bundle, title: title)], candidates.contains(known) {
             let decision = ScreenClassificationPolicy.evaluate(category: known, app: app, title: title, text: text, source: .learned)
             if decision.category == known {
                 labelSource = "your earlier answer for this window"
@@ -900,7 +963,7 @@ final class ScreenWatcher: ObservableObject {
         } ?? title
         let window = Self.memoryKey(bundle: bundle, title: title)
         nearMatch = nil
-        let shots = generic ? [] : examples(like: title, among: candidates)
+        let shots = generic || LearnedTitlePolicy.reason(title) != nil ? [] : examples(like: title, among: candidates)
         if let near = nearMatch {
             let decision = ScreenClassificationPolicy.evaluate(category: near.category, app: app, title: title, text: text, source: .learned)
             if !decision.uncertain {

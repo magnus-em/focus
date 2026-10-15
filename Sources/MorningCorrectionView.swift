@@ -35,7 +35,7 @@ struct MorningCorrectionView: View {
     private static let skippedKey = "morningCorrectionSkippedDay"
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
             if loaded, !skipped, startingCount > 0 {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .firstTextBaseline) {

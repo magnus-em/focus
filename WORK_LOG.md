@@ -1,5 +1,12 @@
 # Focus implementation work log
 
+## Learned-title guard and morning lifecycle repair — 2026-10-14
+
+- Added pure title-shape checks and raw/lowercase regression examples for timestamp/process/compiler output, terminal commands, code, multiline text and very long strings. Ordinary study topics and Focus source-file titles remain eligible. Targeted policy tests pass.
+- Screen learning rejects those keys. Existing suspect entries are retained, excluded from trusted exact matching and few-shot examples, and reviewed with Keep/Remove in Settings → Screen. Keep explicitly re-enables only the stored exact title/category; suspicious titles still cannot become new training examples. Review does not repaint sessions or edit checks.
+- Hidden QA of the prior morning build showed no review card. Its onAppear loader was attached to an empty conditional Group; replaced it with a mounted VStack. The gallery fixtures do not change user data. Signed deployment and repeated synthetic visual QA remain pending.
+- Reviewed Claude's 735ec23 before installation: requested protection against discarding a newer session on an older remote stop, overwriting third rows when merging a pair, and using the transport timestamp for a backdated stop. Claude is implementing those changes; his claimed files are untouched.
+
 ## Morning correction pass — 2026-10-14
 
 - The user requires Claude and Codex to follow each other's Focus-project instructions exactly. Updated AGENTS.md and both mailbox/queue preambles to match; direct user instructions retain precedence.
