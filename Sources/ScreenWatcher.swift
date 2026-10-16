@@ -1203,7 +1203,7 @@ final class ScreenCoach {
     /// Two misses in a row, a 60s hole (sleep, away, paused) or the moment you
     /// picked the current category ends it: what was on screen before your
     /// own choice isn't evidence against it.
-    private func trailingRun(notBefore floor: Date?) -> Run? {
+    private func trailingRun(notBefore floor: Date?, running: String?) -> Run? {
         let samples = watcher.samples.filter { $0.bundleID != ScreenWatcher.ownBundle && $0.summary != "Private" }
         guard let last = samples.last, last.active, !last.uncertain, let c = last.category else { return nil }
         var start = last.date, hits = 0, total = 0, missStreak = 0
@@ -1227,7 +1227,11 @@ final class ScreenCoach {
                 if missStreak >= 2 { total -= 2; break }
             }
         }
-        let followsYourRule = allLearned || allProjectAdmin
+        // A learned life label during focus is a side trip until it lasts
+        // (10/15: three Admin cards for glances at agent chats mid-Math, all
+        // kept; learned focus→life cards had never been taken).
+        let leavesFocus = running.map { $0 != "Break" && !FocusCategories.isLife($0) } ?? false
+        let followsYourRule = (allLearned || allProjectAdmin) && !(leavesFocus && FocusCategories.isLife(c))
         let needed = settings.screenEverySwitch ? 25 : followsYourRule ? Self.learnedRunSeconds : Double(settings.screenSuggestMinutes) * 60
         guard hits >= (settings.screenEverySwitch ? 2 : followsYourRule ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
               last.date.timeIntervalSince(start) >= needed else { return nil }
@@ -1256,7 +1260,8 @@ final class ScreenCoach {
             if s.category == c { start = s.date } else { break }
         }
         let have = Int(last.date.timeIntervalSince(start))
-        let need = settings.screenEverySwitch ? 25 : last.learned ? Int(Self.learnedRunSeconds) : settings.screenSuggestMinutes * 60
+        let sideTrip = running.map { $0 != "Break" && !FocusCategories.isLife($0) } ?? false && FocusCategories.isLife(c)
+        let need = settings.screenEverySwitch ? 25 : last.learned && !sideTrip ? Int(Self.learnedRunSeconds) : settings.screenSuggestMinutes * 60
         return "Screen says \(c) for \(have)s; a card needs \(need)s of mostly \(c)"
     }
 
@@ -1284,7 +1289,7 @@ final class ScreenCoach {
             return
         }
         let running: String? = timer.isActive ? (timer.isOnBreak ? "Break" : timer.currentLabel) : nil
-        guard let run = trailingRun(notBefore: timer.isActive ? timer.sessionStartTime : nil) else {
+        guard let run = trailingRun(notBefore: timer.isActive ? timer.sessionStartTime : nil, running: running) else {
             return say(evidenceStatus(running: running))
         }
         if timer.isActive && !timer.isRunning { return say("Timer paused") }
