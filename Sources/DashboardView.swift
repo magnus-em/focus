@@ -630,6 +630,7 @@ struct DashboardView: View {
             .padding(.horizontal, 16).frame(minHeight: 44)
             .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.background.secondary))
         }
+        if !sessionStore.overlaps.isEmpty { OverlapsSection(store: sessionStore) }
         DayStoryPage(model: dayModel, day: selectedDay, focusMinutes: selectedDayFocusMinutes,
                      goalHours: Double(settings.dailyGoal), commitment: selectedDayCommitmentText,
                      categories: settings.tags + ["Break"], apply: applyFix,
@@ -3044,5 +3045,30 @@ struct InsightsSection: View {
                                       maxOutputTokens: 2000, timeout: 240)
         }
         return ((try? JSONSerialization.jsonObject(with: reply.json)) as? [String: Any])?["letter"] as? String ?? ""
+    }
+}
+
+/// Blocks logged twice or on top of each other in the last 7 days. Only here:
+/// the popover stays free of them (user, 10/16).
+private struct OverlapsSection: View {
+    @ObservedObject var store: SessionStore
+    @State private var fixing: SessionOverlap?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionTitle("Overlapping blocks", subtitle: "Time logged twice in the last 7 days, so it counts double until you pick one")
+            ForEach(store.overlaps, id: \.key) { o in
+                HStack(spacing: 8) {
+                    Image(systemName: "square.on.square").font(.system(size: 13, weight: .medium)).foregroundStyle(Color.attention)
+                    Text(OverlapFixView.summary(o)).font(.system(size: 13))
+                    Spacer(minLength: 4)
+                    Button(o.sameLabel ? "Merge" : "Pick one") { fixing = o }
+                        .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.accentColor)
+                        .popover(isPresented: Binding(get: { fixing?.key == o.key }, set: { if !$0 { fixing = nil } }),
+                                 arrowEdge: .bottom) { OverlapFixView(overlap: o, store: store) }
+                }
+                .frame(minHeight: 32)
+            }
+        }
     }
 }

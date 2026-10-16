@@ -31,7 +31,6 @@ struct TimerView: View {
     @ObservedObject private var watcher = ScreenWatcher.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var savedFocusTotals: [String: Double] = [:]
-    @State private var fixingOverlap: SessionOverlap?
     @State private var whereWasI: WhereWasI.Line?
     /// Minutes today the screen showed a life category during focus blocks.
     @State private var possibleDrift: Double = 0
@@ -373,7 +372,6 @@ struct TimerView: View {
         case screen(category: String, since: Date)
         case storage(String)
         case sync(String)
-        case overlap(SessionOverlap)
         case fix(DayStory.Fix)
         case yesterday(Double)
     }
@@ -407,7 +405,6 @@ struct TimerView: View {
         }
         if syncMonitor.health == .failing { return .sync("iCloud sync is failing. See Settings.") }
         if syncMonitor.health == .stale { return .sync("iCloud hasn't synced in 3 days.") }
-        if let o = store.overlaps.first { return .overlap(o) }
         if let f = todayFix { return .fix(f) }
         let holes = store.untrackedMinutes(on: store.reviewWindow().from)
         if holes >= 15, Calendar.current.component(.hour, from: now) < 12 { return .yesterday(holes) }
@@ -424,14 +421,6 @@ struct TimerView: View {
             attentionRow(color: .red, icon: "externaldrive.badge.exclamationmark", text: text, action: nil) {}
         case .sync(let text):
             attentionRow(color: .orange, icon: "exclamationmark.icloud", text: text, action: nil) {}
-        case .overlap(let o):
-            attentionRow(color: .orange, icon: "square.on.square", text: overlapText(o), action: o.sameLabel ? "Merge" : "Pick one") {
-                fixingOverlap = o
-            }
-            .popover(isPresented: Binding(get: { fixingOverlap != nil }, set: { if !$0 { fixingOverlap = nil } }),
-                     arrowEdge: .bottom) {
-                if let o = fixingOverlap { OverlapFixView(overlap: o, store: store) }
-            }
         case .fix(let f):
             attentionRow(color: .orange, icon: "exclamationmark.circle", text: fixText(f), action: "Review") {
                 if let url = URL(string: "focus://dashboard") { NSWorkspace.shared.open(url) }
@@ -450,15 +439,6 @@ struct TimerView: View {
         case .untracked: return "\(hm(f.minutes)) not logged at \(clock(f.start))"
         case .screenDiffers(let seen): return "Screen showed \(seen) at \(clock(f.start))"
         }
-    }
-
-    private func overlapText(_ o: SessionOverlap) -> String {
-        let name = { (s: WorkSession) in s.type.isBreak ? "Break" : (s.label ?? "Focus") }
-        let short = Date.FormatStyle().hour(.defaultDigits(amPM: .omitted)).minute()
-        let sameHalf = Calendar.current.component(.hour, from: o.start) / 12 == Calendar.current.component(.hour, from: o.end) / 12
-        let when = OverlapFixView.day(o.start) + (sameHalf ? o.start.formatted(short) : clock(o.start)) + "–" + clock(o.end)
-        return o.sameLabel ? "\(name(o.first)) saved twice, \(when)"
-            : "\(name(o.first)) and \(name(o.second)) both logged, \(when)"
     }
 
     private func attentionRow(color: Color, icon: String, text: String, action: String?, perform: @escaping () -> Void) -> some View {
@@ -851,6 +831,16 @@ struct OverlapFixView: View {
         if cal.isDateInToday(d) { return "" }
         if cal.isDateInYesterday(d) { return "yesterday " }
         return d.formatted(.dateTime.weekday(.abbreviated)) + " "
+    }
+
+    static func summary(_ o: SessionOverlap) -> String {
+        let name = { (s: WorkSession) in s.type.isBreak ? "Break" : (s.label ?? "Focus") }
+        let clock = { (d: Date) in d.formatted(date: .omitted, time: .shortened) }
+        let short = Date.FormatStyle().hour(.defaultDigits(amPM: .omitted)).minute()
+        let sameHalf = Calendar.current.component(.hour, from: o.start) / 12 == Calendar.current.component(.hour, from: o.end) / 12
+        let when = day(o.start) + (sameHalf ? o.start.formatted(short) : clock(o.start)) + "–" + clock(o.end)
+        return o.sameLabel ? "\(name(o.first)) saved twice, \(when)"
+            : "\(name(o.first)) and \(name(o.second)) both logged, \(when)"
     }
 
     private func clock(_ d: Date) -> String { d.formatted(date: .omitted, time: .shortened) }
