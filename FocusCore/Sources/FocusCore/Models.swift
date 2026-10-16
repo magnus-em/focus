@@ -164,13 +164,18 @@ public struct WorkSession: Codable, Identifiable, Sendable {
 /// The life set lives in synced defaults under `lifeTags`.
 public enum FocusCategories {
     public static let lifeTagsKey = "lifeTags"
+    public static let wellbeingTags = ["Reading", "Journaling", "Exercise"]
+
+    public static func isWellbeing(_ label: String) -> Bool {
+        wellbeingTags.contains(label)
+    }
 
     /// Life blocks and focus overtime carry this much runway so the shared
     /// timer state never shows an expired endTime, which peers treat as over.
     public static let openEndedSeconds: TimeInterval = 24 * 3600
 
     /// Until a device has received the synced list, assume these.
-    public static let defaultLifeTags = ["Class", "Meals", "Leisure", "Sleep", "Chores", "Exercise", "Social", "Commute", "Admin"]
+    public static let defaultLifeTags = ["Class", "Meals", "Leisure", "Sleep", "Chores", "Exercise", "Social", "Commute", "Admin", "Reading", "Journaling"]
 
     /// Never a screen label: done away from the screen (Sleep, Meals…), or
     /// known from elsewhere (Class from the calendar). Offered as a choice,

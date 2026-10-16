@@ -255,7 +255,7 @@ private struct SwitcherView: View {
 
     private var allItems: [Item] {
         var out: [Item] = quick.tags.enumerated().map { i, tag in
-            Item(title: tag, detail: FocusCategories.isLife(tag) ? "life" : "", color: categoryColor(tag),
+            Item(title: tag, detail: FocusCategories.isWellbeing(tag) ? "wellbeing" : (FocusCategories.isLife(tag) ? "life" : "focus"), color: categoryColor(tag),
                  hint: i < QuickSwitch.categoryKeys.count ? "⌃⌥⌘\(String(QuickSwitch.categoryKeys[i].key).uppercased())" : "",
                  current: tag == quick.currentLabel) { quick.switchTo(tag) }
         }

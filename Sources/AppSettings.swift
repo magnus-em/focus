@@ -290,10 +290,12 @@ class AppSettings: ObservableObject {
             if !tags.contains("Journaling") { tags.append("Journaling") }
             d.set(true, forKey: "didAddJournalingCategory")
         }
-        if !d.bool(forKey: "didMakeReadingJournalingFocus") {
-            for tag in ["Reading", "Journaling"] where !tags.contains(tag) { tags.append(tag) }
-            lifeTags.removeAll { ["Reading", "Journaling"].contains($0) }
-            d.set(true, forKey: "didMakeReadingJournalingFocus")
+        if !d.bool(forKey: "didAddWellbeingGroup") {
+            for tag in FocusCategories.wellbeingTags {
+                if !tags.contains(tag) { tags.append(tag) }
+                if !lifeTags.contains(tag) { lifeTags.append(tag) }
+            }
+            d.set(true, forKey: "didAddWellbeingGroup")
         }
         // didSet doesn't fire in init, so the migrations above only wrote locally.
         sd.set(tags, forKey: "tags")

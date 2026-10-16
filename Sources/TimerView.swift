@@ -30,7 +30,7 @@ struct TimerView: View {
     @ObservedObject private var syncMonitor = CloudSyncMonitor.shared
     @ObservedObject private var watcher = ScreenWatcher.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var savedFocusTotals: [String: Double] = [:]
+    @State private var savedCategoryTotals: [String: Double] = [:]
     @State private var whereWasI: WhereWasI.Line?
     /// Minutes today the screen showed a life category during focus blocks.
     @State private var possibleDrift: Double = 0
@@ -57,9 +57,13 @@ struct TimerView: View {
     }
 
     private var todayFocusByCategory: [String: Double] {
-        var totals = savedFocusTotals
+        todayCategoryTotals.filter { !settings.lifeTags.contains($0.key) }
+    }
+
+    private var todayCategoryTotals: [String: Double] {
+        var totals = savedCategoryTotals
         let live = FocusStats.focusCategoryMinutes([], live: timer.currentInProgressSession,
-                                                  on: Date(), through: Date(), lifeTags: Set(settings.lifeTags))
+                                                  on: Date(), through: Date(), lifeTags: [])
         for (label, minutes) in live { totals[label, default: 0] += minutes }
         return totals
     }
@@ -70,6 +74,7 @@ struct TimerView: View {
         VStack(spacing: 14) {
             hero
             focusTotals
+            wellbeingTotals
             if !timer.isActive {
                 if !FocusCategories.isLife(timer.currentLabel) { presets }
                 startChips
@@ -130,7 +135,7 @@ struct TimerView: View {
     }
 
     private func refreshFocusTotals(_ sessions: [WorkSession]) {
-        savedFocusTotals = FocusStats.focusCategoryMinutes(sessions, on: Date(), through: Date(), lifeTags: Set(settings.lifeTags))
+        savedCategoryTotals = FocusStats.focusCategoryMinutes(sessions, on: Date(), through: Date(), lifeTags: [])
     }
 
     @ViewBuilder
@@ -147,7 +152,7 @@ struct TimerView: View {
                     if possibleDrift >= 1 {
                         Text("\(hm(possibleDrift)) off-task, per the screen")
                             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-                            .help("The screen showed Leisure, Reading or Admin during focus blocks. Not taken off your focus time: the screen can be wrong, and work on paper or the iPad doesn't show here.")
+                            .help("The screen showed a non-focus category during focus blocks. Not taken off your focus time: the screen can be wrong, and work on paper or the iPad doesn't show here.")
                     }
                 }
                 if labels.count > 1 { FlowLayout(spacing: 8) {
@@ -165,6 +170,27 @@ struct TimerView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var wellbeingTotals: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Wellbeing today · separate from your focus goal")
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+            FlowLayout(spacing: 8) {
+                ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { label in
+                    HStack(spacing: 6) {
+                        Circle().fill(categoryColor(label)).frame(width: 7, height: 7)
+                        Text(label).font(.system(size: 13, weight: .medium))
+                        Text(hm(todayCategoryTotals[label] ?? 0))
+                            .font(.system(size: 13).monospacedDigit()).foregroundStyle(Color.secondaryText)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .background(Capsule().fill(Color.primary.opacity(0.05)))
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Hero
@@ -238,10 +264,18 @@ struct TimerView: View {
         Menu {
             let focus = settings.tags.filter { !settings.lifeTags.contains($0) }
             let life = settings.tags.filter { settings.lifeTags.contains($0) }
-            ForEach(focus, id: \.self) { t in Button(t) { pick(t) } }
+            Section("Focus · counts toward your goal") {
+                ForEach(focus, id: \.self) { t in Button(t) { pick(t) } }
+            }
+            Section("Wellbeing · counts up") {
+                ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { t in
+                    Button(t) { pick(t) }
+                }
+            }
             if !life.isEmpty {
-                Divider()
-                ForEach(life, id: \.self) { t in Button(t) { pick(t) } }
+                Section("Life · counts up") {
+                    ForEach(life.filter { !FocusCategories.isWellbeing($0) }, id: \.self) { t in Button(t) { pick(t) } }
+                }
             }
             Divider()
             Button("Break") { if !onBreak { timer.startManualBreak(minutes: 0) } }
@@ -330,14 +364,22 @@ struct TimerView: View {
         }
     }
 
-    /// Nothing running: the focus categories, since picking one is next.
-    /// Life categories are in the title menu.
     private var startChips: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Pick what to focus on").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
-            FlowLayout(spacing: 6) {
-                ForEach(settings.tags.filter { !settings.lifeTags.contains($0) }, id: \.self) { tag in
-                    chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Focus · counts toward your goal").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                FlowLayout(spacing: 6) {
+                    ForEach(settings.tags.filter { !settings.lifeTags.contains($0) }, id: \.self) { tag in
+                        chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
+                    }
+                }
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Wellbeing · counts up").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                FlowLayout(spacing: 6) {
+                    ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { tag in
+                        chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
+                    }
                 }
             }
         }

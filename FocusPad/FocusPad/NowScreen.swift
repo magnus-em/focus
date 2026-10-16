@@ -162,7 +162,7 @@ struct NowScreen: View {
                 }
             } else {
                 Text("Nothing tracked").font(.title2.weight(.semibold))
-                Text("Tap what you're doing below. Focus categories count toward your \(settings.dailyGoalHours)h goal; life categories and Break just log the time.")
+                Text("Tap what you're doing below. Focus categories count toward your \(settings.dailyGoalHours)h goal; Wellbeing, Life and Break count up separately.")
                     .font(.subheadline).foregroundStyle(Color.secondaryText)
             }
         }
@@ -175,19 +175,29 @@ struct NowScreen: View {
 
     private var switchGrid: some View {
         let focusTags = settings.tags.filter { !FocusCategories.isLife($0) }
-        let lifeTags = settings.tags.filter { FocusCategories.isLife($0) }
+        let lifeTags = settings.tags.filter { FocusCategories.isLife($0) && !FocusCategories.isWellbeing($0) }
         let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: sizeClass == .regular ? 4 : 3)
         return VStack(alignment: .leading, spacing: 8) {
             Text("Switch to").font(.headline)
             Text("Tap to switch now. Touch and hold one to pick an earlier start.")
                 .font(.footnote).foregroundStyle(Color.secondaryText)
+            Text("Focus · counts toward your goal").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 6)
+            LazyVGrid(columns: columns, spacing: 8) { ForEach(focusTags, id: \.self) { tile($0) } }
+            Text("Wellbeing · counts up").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 4)
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { tag in
+                    VStack(spacing: 4) {
+                        tile(tag)
+                        Text(durationText(minutes: todayRows.filter { $0.label == tag }.reduce(0) { $0 + $1.minutes }))
+                            .font(.footnote.monospacedDigit()).foregroundStyle(Color.secondaryText)
+                    }
+                }
+            }
             Text("Life").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 4)
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(lifeTags, id: \.self) { tile($0) }
                 breakTile
             }
-            Text("Study · counts toward your goal").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 6)
-            LazyVGrid(columns: columns, spacing: 8) { ForEach(focusTags, id: \.self) { tile($0) } }
         }
     }
 

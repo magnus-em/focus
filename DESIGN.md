@@ -91,6 +91,8 @@ lightness, not only hue; check new ones against the neighbours in grayscale.
 
 ## When information shows (popover)
 
+Categories have three presentation groups: Focus (goal-counting), Wellbeing (Reading, Journaling, Exercise, each with its own daily total), Life. Wellbeing counts up without site blocking and has no combined goal, score or streak; show it above Life and alongside Focus in the idle picker. Keep the existing goal ring focus-only.
+
 Quick Panel (chosen 2026-10-14): visible Dashboard action; running category and timer beside the Fitness-style focus-goal ring; daily cumulative focus-category totals only above two minutes; one attention line; native glass Stop / Pause / Resume / Start / Break controls; labeled Details disclosure; Now / Stats / Problems / Notes / Health / More navigation stays visible. Compact default, no drag handle or gesture requirement. Details holds the day strip, screen context and recent log.
 
 Use shared `FocusTransportControls` on the panel and dashboard: system `.glass` / `.glassProminent` buttons inside `GlassEffectContainer`, stable `glassEffectID` values, symbol replacement and restrained state transitions. Category totals are plain content capsules, not extra glass layers. Respect Reduce Motion.

@@ -162,3 +162,9 @@ User-approved scope: local screenshot evidence for review, clearer corrections, 
 
 - User corrected the initial Journaling life-category assumption and explicitly requested Reading as focus too. Added one-time settings migration removing both from synced lifeTags, ensuring both category names exist, and corrected the Journaling default. Existing saved blocks derive focus status from the category settings.
 - Validation: 169 core tests passed. Signed clean-main Mac deployment f049c1a succeeded, preserving 394 sessions; installed defaults confirm the migration completed and neither Reading nor Journaling remains in lifeTags. Device settings sync uses the existing path; device round-trip not exercised.
+
+
+## Wellbeing group — 2026-10-16 (Codex)
+
+- User approved Wellbeing: Reading, Journaling, Exercise, separate daily totals, prominent category group, no aggregate score/goal. Kept existing non-focus engine behavior through synced lifeTags, with one-time Mac/iOS migration. Mac menu and idle chips distinguish Focus/Wellbeing; daily totals include saved and live time. Phone Now grid groups Focus/Wellbeing/Life and shows each Wellbeing total. Switcher search labels Wellbeing explicitly.
+- Verification pending core tests, signed clean-main builds and hidden visual review.

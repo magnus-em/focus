@@ -65,7 +65,7 @@ The user picked direction A ("Day story") from https://claude.ai/artifact/TUGjQv
 
 ## Next up
 
-- Reading and Journaling are focus categories by explicit user correction (10/16, Codex). Mac launch removes both from synced lifeTags; iPhone/iPad receive the settings through normal sync.
+- Wellbeing group approved 10/16: Reading, Journaling, Exercise count up separately and do not count toward focus goals or site blocking. Mac/iOS category grouping, separate daily totals, one-time synced non-focus migration. Verification in WORK_LOG.md.
 
 Landed Codex work: local screenshot evidence and correction controls, task context and AI-category safeguards, and Today / Review / Trends dashboard. See WORK_LOG.md for ownership, validation and remaining work. Keep test mode on. Next: check Health import/device sync and gather user feedback on the updated tracker.
 

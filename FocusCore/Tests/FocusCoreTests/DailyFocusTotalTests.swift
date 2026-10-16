@@ -38,4 +38,16 @@ final class DailyFocusTotalTests: XCTestCase {
         XCTAssertTrue(totals(live: .init(start: date(14, 10), activeSeconds: .nan, label: "Math", isBreak: false), now: date(14, 11)).isEmpty)
         XCTAssertTrue(totals(live: .init(start: date(14, 12), activeSeconds: 600, label: "Math", isBreak: false), now: date(14, 11)).isEmpty)
     }
+    func testWellbeingIsTrackedSeparatelyFromFocusGoal() {
+        let now = date(14, 14)
+        let saved = ["Math", "Reading", "Journaling", "Exercise"].enumerated().map { i, label in
+            WorkSession(startTime: date(14, 9 + i), durationMinutes: 30, type: .work, label: label)
+        }
+        let focus = FocusStats.focusCategoryMinutes(saved, on: now, through: now,
+                                                    lifeTags: Set(FocusCategories.defaultLifeTags), calendar: calendar)
+        XCTAssertEqual(focus, ["Math": 30])
+        let all = FocusStats.focusCategoryMinutes(saved, on: now, through: now, lifeTags: [], calendar: calendar)
+        XCTAssertEqual(all.filter { FocusCategories.isWellbeing($0.key) }, ["Reading": 30, "Journaling": 30, "Exercise": 30])
+    }
+
 }

@@ -114,6 +114,17 @@ final class PadSettings: ObservableObject {
         cloudKitSyncEnabled = d.bool(forKey: "cloudKitSyncEnabled")
         hasCompletedOnboarding = d.bool(forKey: "hasCompletedOnboarding")
 
+        if !d.bool(forKey: "didAddWellbeingGroup") {
+            var lifeTags = d.stringArray(forKey: FocusCategories.lifeTagsKey) ?? FocusCategories.defaultLifeTags
+            for tag in FocusCategories.wellbeingTags {
+                if !tags.contains(tag) { tags.append(tag) }
+                if !lifeTags.contains(tag) { lifeTags.append(tag) }
+            }
+            sd.set(tags, forKey: "tags")
+            sd.set(lifeTags, forKey: FocusCategories.lifeTagsKey)
+            d.set(true, forKey: "didAddWellbeingGroup")
+        }
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(reloadFromDefaults),
