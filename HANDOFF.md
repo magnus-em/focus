@@ -52,6 +52,8 @@ The user picked direction A ("Day story") from https://claude.ai/artifact/TUGjQv
 
 ## State
 
+- 10/16 stale-checkpoint fix (Codex): removed confirmed phantom 25h Math row from yesterday, leaving real 71.7m row. Both engines now restore overtime without inserting a completed checkpoint; delayed resume respects incoming peer changes. Build/device verification in WORK_LOG.md.
+
 - Codex morning correction pass was signed/deployed at 7fb52b0; hidden QA caught its loader attached to an empty conditional Group. The loader now has a mounted VStack; synthetic light/dark QA needs repeating before calling the feature visually verified. Atomic Undo's isolated CloudKit-disabled checks passed.
 - Claude resolved the store incident: iCloud re-imported all old sessions, with 366 total reported (363 old + 3 new); the restriction on opening the live store is lifted. The switch-card outline/keyboard fix is deployed at 9b2d589: ⌃⌥⌘Return accepts the first option, ⌃⌥⌘Delete dismisses, Return/Escape after clicking the card.
 - Junk-title learning guard/review landed at 542a0dd; Reading refinement at 848377b. Saved/manual blocks stay unchanged. Mac installed through96296db includes both and the repaired morning loader; synthetic hidden QA passed for learned labels and morning correction. Card shortcut-hint contrast and morning wording/accessibility fixed in5e01162; Claude owns Mac deployment and the final hidden screenshot check.

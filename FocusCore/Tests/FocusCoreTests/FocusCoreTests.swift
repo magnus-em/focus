@@ -382,3 +382,26 @@ final class LogCorrectionParseTests: XCTestCase {
         XCTAssertNil(LogCorrection.spanMinutes("night"))
     }
 }
+
+final class CheckpointRunwayTests: XCTestCase {
+    func testExpiredOvertimeRestoresRunwayInsteadOfCompletingTwentyFiveHours() {
+        let total = FocusCategories.recoveryRunway(total: 25 * 3600, elapsed: 26 * 3600)!
+        XCTAssertGreaterThan(total, 26 * 3600)
+        XCTAssertEqual(FocusCategories.countdown(total: total), 3600)
+    }
+
+    func testCountdownExpiryAndMultipleDaysKeepTheOriginalTarget() {
+        XCTAssertEqual(FocusCategories.recoveryRunway(total: 1500, elapsed: 600), 1500)
+        let total = FocusCategories.recoveryRunway(total: 1500, elapsed: 3 * 86400)!
+        XCTAssertGreaterThan(total, 3 * 86400)
+        XCTAssertEqual(FocusCategories.countdown(total: total), 1500)
+        XCTAssertGreaterThan(FocusCategories.recoveryRunway(total: 1500, elapsed: 1500)!, 1500)
+    }
+
+    func testInvalidCheckpointCannotRestore() {
+        XCTAssertNil(FocusCategories.recoveryRunway(total: .infinity, elapsed: 600))
+        XCTAssertNil(FocusCategories.recoveryRunway(total: 1500, elapsed: .nan))
+        XCTAssertNil(FocusCategories.recoveryRunway(total: 0, elapsed: 600))
+        XCTAssertNil(FocusCategories.recoveryRunway(total: 1500, elapsed: -1))
+    }
+}

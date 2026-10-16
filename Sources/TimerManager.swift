@@ -1021,27 +1021,12 @@ class TimerManager: ObservableObject {
         }()
         let kindsRaw = (data["currentBreakKinds"] as? [String]) ?? []
         let restoredKinds = kindsRaw.compactMap { BreakKind(rawValue: $0) }
-        let remaining = total - elapsed
+        guard let runway = FocusCategories.recoveryRunway(total: total, elapsed: elapsed) else { return }
 
-        // If the session would have finished while the app was dead, save it as completed.
-        if elapsed >= total {
-            if total >= 60 {
-                let sessionType: WorkSession.SessionType = restoredPhase == .work ? .work : .shortBreak
-                store.addSession(WorkSession(
-                    startTime: Date(timeIntervalSince1970: startEpoch),
-                    durationMinutes: total / 60.0, type: sessionType,
-                    label: restoredPhase == .work ? label : nil,
-                    breakKinds: restoredPhase == .work ? nil : (restoredKinds.isEmpty ? nil : restoredKinds)
-                ))
-            }
-            return
-        }
-
-        // Session still has time left — restore the live timer state.
         currentPhase       = restoredPhase
         currentBreakKinds  = restoredKinds
-        totalTime          = total
-        timeRemaining      = remaining
+        totalTime          = runway
+        timeRemaining      = runway - elapsed
         elapsedBeforePause = elapsed
         sessionStartTime   = Date(timeIntervalSince1970: startEpoch)
         knowledgeStale = true
@@ -1050,7 +1035,9 @@ class TimerManager: ObservableObject {
         if wasRunning {
             // Auto-resume after a short delay so the UI and settings are fully initialised.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                self?.start()
+                guard let self, self.knowledgeStale,
+                      self.sessionStartTime == Date(timeIntervalSince1970: startEpoch) else { return }
+                self.start()
             }
         }
         // If it was paused before the kill, leave it in the paused state.

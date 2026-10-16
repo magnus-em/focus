@@ -190,6 +190,12 @@ public enum FocusCategories {
     // MARK: Timer display, derived only from (total, remaining) so every
     // device renders a shared state the same way.
 
+    public static func recoveryRunway(total: TimeInterval, elapsed: TimeInterval) -> TimeInterval? {
+        guard total.isFinite, total > 0, elapsed.isFinite, elapsed >= 0 else { return nil }
+        guard elapsed >= total else { return total }
+        return total + (floor((elapsed - total) / openEndedSeconds) + 1) * openEndedSeconds
+    }
+
     public static func isOpenEnded(total: TimeInterval) -> Bool { total >= openEndedSeconds }
 
     /// Countdown length before overtime; 0 for a life block.

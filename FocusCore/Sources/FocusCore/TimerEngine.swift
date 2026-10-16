@@ -898,30 +898,20 @@ public final class FocusTimerEngine: ObservableObject {
         }
         let label = (data["currentLabel"] as? String).flatMap { $0.isEmpty ? nil : $0 }
 
-        if elapsed >= total {
-            if total >= 60 {
-                let ctx = context
-                ctx.insert(StoredWorkSession(value: WorkSession(
-                    startTime: Date(timeIntervalSince1970: startEpoch),
-                    durationMinutes: total / 60.0,
-                    type: .work,
-                    label: label
-                )))
-                try? ctx.save()
-            }
-            return
-        }
+        guard let runway = FocusCategories.recoveryRunway(total: total, elapsed: elapsed) else { return }
 
         phase = .work
-        totalTime = total
-        timeRemaining = total - elapsed
+        totalTime = runway
+        timeRemaining = runway - elapsed
         elapsedBeforePause = elapsed
         sessionStartTime = Date(timeIntervalSince1970: startEpoch)
         knowledgeStale = true
         currentLabel = label ?? ""
         if wasRunning {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                self?.start()
+                guard let self, self.knowledgeStale,
+                      self.sessionStartTime == Date(timeIntervalSince1970: startEpoch) else { return }
+                self.start()
             }
         }
     }

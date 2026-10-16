@@ -132,6 +132,7 @@ Tests: `cd FocusCore && swift test` (recall scheduler, timer display, duration t
 ## Key behaviours
 
 ### Timer
+- Checkpoint recovery (10/16): never insert a completed session merely because the checkpoint elapsed time exceeds its total. That total can contain the 24h overtime runway: stale iPad Math from 10/15 11:53 with total90000 became a phantom1500-minute row on 10/16 relaunch, duplicating the real71.7-minute row and adding12h53 to today's focus. Both engines now restore live overtime via `FocusCategories.recoveryRunway`, mark knowledge stale and let normal peer reconciliation decide ownership. Delayed auto-resume checks the restored start and stale flag so a newer remote stop/pause/switch can't be restarted. The phantom UUID8A853759-FFDC-4D6F-89BA-FC7343A25ED4 was deleted through the app; real row retained.
 - **Phases**: focus → break → focus. No long-break cycle anymore (single break duration in settings, default 10m).
 - **Nothing ends on its own.** When a countdown hits 0 the session rolls into overtime (`extendRunway`): chime + Keep Going / Take a Break panel, menu bar shows `+MM:SS`, tracking continues until a switch/stop. Breaks do the same. Only pause grace ends a session automatically.
 - **Open-ended encoding**: life blocks and overtime add `FocusCategories.openEndedSeconds` (24h) to `totalTime`, so the shared state's `endTime` is always in the future (peers treat a past `endTime` as finished). Display derives from `(total, remaining)` via `FocusCategories.timeString/progress`; `countdown(total:)` = total mod 24h (0 = life block).
