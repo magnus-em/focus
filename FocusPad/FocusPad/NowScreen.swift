@@ -183,7 +183,7 @@ struct NowScreen: View {
                 .font(.footnote).foregroundStyle(Color.secondaryText)
             Text("Focus · counts toward your goal").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 6)
             LazyVGrid(columns: columns, spacing: 8) { ForEach(focusTags, id: \.self) { tile($0) } }
-            Text("Wellbeing · counts up").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 4)
+            Text("Wellbeing · today’s totals").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 4)
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { tag in
                     VStack(spacing: 4) {
