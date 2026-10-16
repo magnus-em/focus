@@ -372,6 +372,7 @@ struct FocusHistorySection: View {
             }
             facts
             chart.frame(height: 200)
+            legend
         }
         .onAppear(perform: refresh)
         .onChange(of: range) { _, _ in selected = nil; refresh() }
@@ -443,6 +444,21 @@ struct FocusHistorySection: View {
             case .quarter: AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated)) }
             case .year: AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month(.narrow)) }
             }
+        }
+    }
+
+    private var legend: some View {
+        var minutes: [String: Double] = [:]
+        for b in summary.bars { minutes[b.label, default: 0] += b.hoursPerDay }
+        return HStack(spacing: 14) {
+            ForEach(minutes.sorted { $0.value > $1.value }.map(\.key), id: \.self) { label in
+                HStack(spacing: 5) {
+                    Circle().fill(categoryColor(label)).frame(width: 7, height: 7)
+                    Text(label).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                }
+            }
+            Spacer(minLength: 0)
+            Text("Hover a bar for its breakdown").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
         }
     }
 
