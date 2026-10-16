@@ -42,9 +42,10 @@ struct TimerView: View {
     private var onBreak: Bool { timer.isActive && timer.isOnBreak }
 
     /// The running category's color: ring, primary button, wash.
+    /// Neutral with nothing picked: the system blue reads as Math.
     var accent: Color {
         if onBreak { return Self.breakBlue }
-        return timer.currentLabel.isEmpty ? .accentColor : categoryColor(timer.currentLabel)
+        return timer.currentLabel.isEmpty ? .primary : categoryColor(timer.currentLabel)
     }
 
     private var isCountingUp: Bool {
@@ -141,7 +142,7 @@ struct TimerView: View {
         if labels.count > 1 || possibleDrift >= 1 {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(labels.count > 1 ? "Focus today" : labels.first.map { "All of today's focus was \($0)" } ?? "Focus today")
+                    Text(labels.count > 1 ? "Focus today" : labels.first.map { "Today's focus: \($0)" } ?? "Focus today")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                     Spacer()
                     if possibleDrift >= 1 {
@@ -463,7 +464,7 @@ struct TimerView: View {
     private func attentionRow(color: Color, icon: String, text: String, action: String?, perform: @escaping () -> Void) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon).font(.system(size: 13, weight: .medium)).foregroundStyle(color)
-            Text(text).font(.system(size: 13)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            Text(text).font(.system(size: 13)).lineLimit(3).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
             if let action {
                 Button(action, action: perform)
