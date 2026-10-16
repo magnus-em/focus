@@ -49,8 +49,8 @@ struct TodayScreen: View {
         let rows = self.rows
         List {
             Section {
-                Text("Your log for the day. Fix what's wrong here; it syncs to your Mac.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                Text("\(day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())) · Your log for the day. Fix what's wrong here; it syncs to your Mac.")
+                    .font(.subheadline).foregroundStyle(Color.secondaryText)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
             }
@@ -61,6 +61,7 @@ struct TodayScreen: View {
             logSection(rows)
         }
         .listStyle(.insetGrouped)
+        .readableWidth()
         .navigationTitle(title)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -113,7 +114,7 @@ struct TodayScreen: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(change.text)
                     if change.movedTimer {
-                        Text("The running timer moved too; Undo doesn't move it back.").font(.footnote).foregroundStyle(.secondary)
+                        Text("The running timer moved too; Undo doesn't move it back.").font(.footnote).foregroundStyle(Color.secondaryText)
                     }
                 }
                 Spacer()
@@ -151,8 +152,8 @@ struct TodayScreen: View {
         } header: {
             Label("Focus noticed", systemImage: "sparkles")
         } footer: {
-            Text(brief.headlineAsOf.map { "Written at \(clock($0)) from your Mac's screen and timer; fixes checked at \(clock(brief.written))." }
-                 ?? "From your Mac, checked at \(clock(brief.written)).")
+            Text(brief.headlineAsOf.map { "Written at \(clock($0)) from your Mac's screen and timer; fixes as of \(clock(brief.written))." }
+                 ?? "From your Mac, as of \(clock(brief.written)).")
         }
     }
 
@@ -163,21 +164,21 @@ struct TodayScreen: View {
                     HStack {
                         Text(course.code).fontWeight(.semibold)
                         Spacer()
-                        Text(durationText(minutes: course.minutes)).foregroundStyle(.secondary).monospacedDigit()
+                        Text(durationText(minutes: course.minutes)).foregroundStyle(Color.secondaryText).monospacedDigit()
                     }
                     if !course.topics.isEmpty {
-                        Text(course.topics.joined(separator: " · ")).font(.subheadline).foregroundStyle(.secondary)
+                        Text(course.topics.joined(separator: " · ")).font(.subheadline).foregroundStyle(Color.secondaryText)
                     }
                     if !course.shaky.isEmpty {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Circle().fill(Color.orange).frame(width: 6, height: 6)
-                            Text("Looked shaky: " + course.shaky.joined(separator: "; ")).font(.subheadline).foregroundStyle(.secondary)
+                            Text("Looked shaky: " + course.shaky.joined(separator: "; ")).font(.subheadline).foregroundStyle(Color.secondaryText)
                         }
                     }
                 }
                 .padding(.vertical, 2)
             }
-            ForEach(brief.noticed, id: \.self) { Text($0).font(.subheadline).foregroundStyle(.secondary) }
+            ForEach(brief.noticed, id: \.self) { Text($0).font(.subheadline).foregroundStyle(Color.secondaryText) }
     }
 
     // MARK: - Fixes
@@ -245,9 +246,13 @@ struct TodayScreen: View {
                 ForEach(list) { fix in fixRow(fix) }
                 if canTell {
                     Button { telling = true } label: {
-                        Label(list.isEmpty ? "Something wrong? Tell Focus what happened" : "Something else wrong? Tell Focus",
-                              systemImage: "text.bubble")
-                            .frame(minHeight: 36)
+                        HStack {
+                            Label(list.isEmpty ? "Something wrong? Tell Focus what happened" : "Something else wrong? Tell Focus",
+                                  systemImage: "text.bubble")
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                        }
+                        .frame(minHeight: 36)
                     }
                 }
             } header: {
@@ -271,7 +276,7 @@ struct TodayScreen: View {
                     }
                     Button("Other…") { filling = Gap(start: f.start, end: f.end) }.buttonStyle(.bordered)
                     Spacer()
-                    Button("Leave it") { dismiss(fix.id) }.font(.subheadline).foregroundStyle(.secondary).frame(minHeight: 44)
+                    Button("Leave it") { dismiss(fix.id) }.font(.subheadline).foregroundStyle(Color.secondaryText).frame(minHeight: 44)
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.large)
@@ -283,7 +288,7 @@ struct TodayScreen: View {
                 HStack(spacing: 10) {
                     Button("Fill in…") { filling = g }.buttonStyle(.borderedProminent).tint(.accentColor)
                     Spacer()
-                    Button("Leave it") { dismiss(fix.id) }.font(.subheadline).foregroundStyle(.secondary).frame(minHeight: 44)
+                    Button("Leave it") { dismiss(fix.id) }.font(.subheadline).foregroundStyle(Color.secondaryText).frame(minHeight: 44)
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.large)
@@ -331,7 +336,7 @@ struct TodayScreen: View {
                         Circle().fill(block.category.map(categoryColor) ?? FocusColors.breakBlue).frame(width: 8, height: 8)
                         Text(block.category ?? "Break").fontWeight(.semibold)
                         Spacer()
-                        Text("\(clock(block.start))–\(clock(block.end))").monospacedDigit().foregroundStyle(.secondary)
+                        Text("\(clock(block.start))–\(clock(block.end))").monospacedDigit().foregroundStyle(Color.secondaryText)
                     }
                 }
                 HStack {
@@ -403,7 +408,7 @@ struct TodayScreen: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(durationText(minutes: focus)).font(.title2.weight(.semibold).monospacedDigit())
-                    Text("focus of your \(settings.dailyGoalHours)h goal").foregroundStyle(.secondary)
+                    Text("focus of your \(settings.dailyGoalHours)h goal").foregroundStyle(Color.secondaryText)
                 }
                 DayStrip(rows: rows, day: day)
                 FlowRows(items: top.map { ($0.key, $0.value) })
@@ -421,7 +426,7 @@ struct TodayScreen: View {
         }
         let items = (rows.map(Item.row) + gaps.map(Item.gap)).sorted { $0.start > $1.start }
         return Section {
-            if items.isEmpty { Text("Nothing logged.").foregroundStyle(.secondary) }
+            if items.isEmpty { Text("Nothing logged.").foregroundStyle(Color.secondaryText) }
             ForEach(items) { item in
                 switch item {
                 case .row(let row):
@@ -431,11 +436,11 @@ struct TodayScreen: View {
                     Button { filling = gap } label: {
                         HStack {
                             RoundedRectangle(cornerRadius: 2).strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3]))
-                                .foregroundStyle(.secondary).frame(width: 4, height: 30)
+                                .foregroundStyle(Color.secondaryText).frame(width: 4, height: 30)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Untracked").foregroundStyle(.secondary)
+                                Text("Untracked").foregroundStyle(Color.secondaryText)
                                 Text("\(clock(gap.start))–\(clock(gap.end)) · \(durationText(minutes: gap.end.timeIntervalSince(gap.start) / 60))")
-                                    .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                                    .font(.footnote).foregroundStyle(Color.secondaryText).monospacedDigit()
                             }
                             Spacer()
                             Text("Fill in").font(.subheadline).foregroundStyle(Color.accentColor)
@@ -502,11 +507,11 @@ private struct LogRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(row.name).fontWeight(.semibold)
-                    if row.running { Text("now").font(.caption.weight(.semibold)).foregroundStyle(.secondary) }
+                    if row.running { Text("now").font(.caption.weight(.semibold)).foregroundStyle(Color.secondaryText) }
                 }
                 Text("\(clock(row.start))–\(row.running ? "now" : clock(row.end)) · \(durationText(minutes: row.minutes))")
-                    .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
-                if let line { Text(line).font(.footnote).foregroundStyle(.secondary).lineLimit(2) }
+                    .font(.footnote).foregroundStyle(Color.secondaryText).monospacedDigit()
+                if let line { Text(line).font(.footnote).foregroundStyle(Color.secondaryText).lineLimit(2) }
             }
             Spacer()
             Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
@@ -527,7 +532,7 @@ private struct FlowRows: View {
                 HStack(spacing: 5) {
                     Circle().fill(item.0 == "Break" ? FocusColors.breakBlue : categoryColor(item.0)).frame(width: 7, height: 7)
                     Text(item.0).font(.footnote)
-                    Text(durationText(minutes: item.1)).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                    Text(durationText(minutes: item.1)).font(.footnote.monospacedDigit()).foregroundStyle(Color.secondaryText)
                 }
             }
         }
@@ -572,7 +577,7 @@ private struct BlockEditSheet: View {
                 if row.running {
                     Section {
                         Text("This block is running. A new category applies from its start; an earlier start relabels the time in between.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                            .font(.footnote).foregroundStyle(Color.secondaryText)
                     }
                 } else {
                     Section {

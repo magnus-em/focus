@@ -84,3 +84,24 @@ struct PadMetric: View {
         )
     }
 }
+
+extension Color {
+    /// DESIGN.md secondary text: #5E606B light, #A9AAB4 dark (the system gray is lighter).
+    static let secondaryText = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 0.663, green: 0.667, blue: 0.706, alpha: 1)
+        : UIColor(red: 0.369, green: 0.376, blue: 0.420, alpha: 1) })
+}
+
+extension View {
+    /// Keeps lists and pages to a readable width on iPad.
+    @ViewBuilder
+    func readableWidth(_ maxWidth: CGFloat = 720) -> some View {
+        GeometryReader { geo in
+            if geo.size.width > maxWidth + 80 {
+                self.contentMargins(.horizontal, (geo.size.width - maxWidth) / 2, for: .scrollContent)
+            } else {
+                self
+            }
+        }
+    }
+}

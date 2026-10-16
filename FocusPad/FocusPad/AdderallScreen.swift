@@ -25,7 +25,7 @@ struct AdderallScreen: View {
         List {
             Section {
                 Text("Log doses and see the time since today's first one. Same log as your Mac.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Color.secondaryText)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
             }
@@ -33,7 +33,7 @@ struct AdderallScreen: View {
             logSection
             Section("Doses today") {
                 if today.isEmpty {
-                    Text("Nothing logged yet.").foregroundStyle(.secondary)
+                    Text("Nothing logged yet.").foregroundStyle(Color.secondaryText)
                 }
                 ForEach(today) { dose in
                     Button { editing = dose } label: { doseRow(dose) }
@@ -54,10 +54,11 @@ struct AdderallScreen: View {
                 Label("Add the Adderall clock to your Lock Screen or Home Screen: touch and hold it, tap Customize or Edit, then pick Focus. The Log Adderall control logs a dose from the Lock Screen or Control Center.",
                       systemImage: "lock.iphone")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryText)
             }
         }
         .listStyle(.insetGrouped)
+        .readableWidth()
         .navigationTitle("Adderall")
         .onAppear {
             takenAt = Date()
@@ -81,16 +82,16 @@ struct AdderallScreen: View {
             if let first = today.first {
                 Text(timerInterval: first.date...Date.distantFuture, countsDown: false)
                     .font(.system(size: 44, weight: .semibold, design: .rounded).monospacedDigit())
-                Text("since first dose at \(time(first.date)) · \(name(first))")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                Text(today.count == 1 ? "\(name(first)) at \(time(first.date))" : "First dose at \(time(first.date))")
+                    .font(.subheadline).foregroundStyle(Color.secondaryText)
                 if today.count > 1, let latest = today.last {
                     Text("Latest: \(name(latest)) at \(time(latest.date))")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.subheadline).foregroundStyle(Color.secondaryText)
                 }
             } else {
                 Text("No dose yet today").font(.title2.weight(.semibold))
                 Text("Log when you took it to start today's clock.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Color.secondaryText)
             }
         }
         .padding(.vertical, 4)
@@ -141,7 +142,7 @@ struct AdderallScreen: View {
     @ViewBuilder
     private var week: some View {
         let days = earlierDays.filter { !doses(on: $0).isEmpty }
-        if days.isEmpty { Text("No doses in the last 6 days.").foregroundStyle(.secondary) }
+        if days.isEmpty { Text("No doses in the last 6 days.").foregroundStyle(Color.secondaryText) }
         ForEach(days, id: \.self) { day in
             let list = doses(on: day)
             HStack {
@@ -150,7 +151,7 @@ struct AdderallScreen: View {
                 if let first = list.first {
                     Text("first \(time(first.date)) · \(list.compactMap { HealthKind(rawValue: $0.kind)?.amount }.reduce(0, +)) mg")
                         .monospacedDigit()
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondaryText)
                 }
             }
         }
@@ -166,7 +167,7 @@ struct AdderallScreen: View {
         HStack {
             Text(time(dose.date)).monospacedDigit()
             Spacer()
-            Text(name(dose)).foregroundStyle(.secondary)
+            Text(name(dose)).foregroundStyle(Color.secondaryText)
             Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
         }
     }

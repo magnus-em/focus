@@ -39,6 +39,7 @@ struct NowScreen: View {
             .padding(.bottom, 24)
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .readableWidth(1100)
         .navigationTitle("Now")
         .sheet(item: $switchAt) { request in
             SwitchAtSheet(request: request, tags: settings.tags) { label, at in
@@ -55,11 +56,11 @@ struct NowScreen: View {
     @ViewBuilder
     private var main: some View {
         Text("What's tracked right now. Switch here when you're away from your Mac.")
-            .font(.subheadline).foregroundStyle(.secondary)
+            .font(.subheadline).foregroundStyle(Color.secondaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
         nowCard
         if let notice {
-            Text(notice).font(.footnote).foregroundStyle(.secondary)
+            Text(notice).font(.footnote).foregroundStyle(Color.secondaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         switchGrid
@@ -81,12 +82,12 @@ struct NowScreen: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Focus noticed", systemImage: "sparkles")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondaryText)
                 Text(brief.headline ?? "")
                     .font(.subheadline)
                     .foregroundStyle(.primary)
                     .multilineTextAlignment(.leading)
-                    .lineLimit(3)
+                    .lineLimit(sizeClass == .regular ? 8 : 3)
                 HStack {
                     Text(brief.headlineAsOf.map { "Written at \(clock($0))" } ?? "From your Mac")
                     Spacer()
@@ -94,7 +95,7 @@ struct NowScreen: View {
                     Image(systemName: "chevron.right").foregroundStyle(.tertiary)
                 }
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
@@ -129,7 +130,7 @@ struct NowScreen: View {
                         .monospacedDigit()
                     if let start = engine.sessionStartTime {
                         Text(isCountdown ? "left · since \(clock(start))" : "since \(clock(start))")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                            .font(.subheadline).foregroundStyle(Color.secondaryText)
                     }
                 }
                 if isCountdown { ProgressView(value: engine.progress).tint(runningColor) }
@@ -139,12 +140,13 @@ struct NowScreen: View {
                             .frame(maxWidth: .infinity).padding(.vertical, 6)
                     }
                     .buttonStyle(.bordered)
+                    .tint(.primary)
                     Button { Haptics.warning(); engine.stop(); notice = nil } label: {
                         Label("Stop", systemImage: "stop.fill").frame(maxWidth: .infinity).padding(.vertical, 6)
                     }
                     .buttonStyle(.bordered)
+                    .tint(.primary)
                 }
-                .tint(.primary)
                 if !engine.isOnBreak {
                     Button {
                         switchAt = SwitchAtRequest(label: engine.currentLabel)
@@ -161,7 +163,7 @@ struct NowScreen: View {
             } else {
                 Text("Nothing tracked").font(.title2.weight(.semibold))
                 Text("Tap what you're doing below. Focus categories count toward your \(settings.dailyGoalHours)h goal; life categories and Break just log the time.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(Color.secondaryText)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -178,13 +180,13 @@ struct NowScreen: View {
         return VStack(alignment: .leading, spacing: 8) {
             Text("Switch to").font(.headline)
             Text("Tap to switch now. Touch and hold one to pick an earlier start.")
-                .font(.footnote).foregroundStyle(.secondary)
-            Text("Life").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 4)
+                .font(.footnote).foregroundStyle(Color.secondaryText)
+            Text("Life").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 4)
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(lifeTags, id: \.self) { tile($0) }
                 breakTile
             }
-            Text("Focus").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 6)
+            Text("Study · counts toward your goal").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 6)
             LazyVGrid(columns: columns, spacing: 8) { ForEach(focusTags, id: \.self) { tile($0) } }
         }
     }
@@ -233,16 +235,12 @@ struct NowScreen: View {
                     Text("Today").font(.headline)
                     Spacer()
                     Text("\(durationText(minutes: focus)) focus of \(settings.dailyGoalHours)h")
-                        .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                        .font(.subheadline.monospacedDigit()).foregroundStyle(Color.secondaryText)
                     Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
                 }
                 DayStrip(rows: rows, day: Date())
-                let gaps = LogRow.gaps(rows, day: Date())
-                if let gap = gaps.last, Date().timeIntervalSince(gap.end) < 120 {
+                if let gap = LogRow.gaps(rows, day: Date()).last, Date().timeIntervalSince(gap.end) < 120 {
                     Text("Nothing tracked since \(clock(gap.start)).").font(.footnote).foregroundStyle(Color.orange)
-                } else if !gaps.isEmpty {
-                    Text(gaps.count == 1 ? "1 untracked stretch. Open to fill it in." : "\(gaps.count) untracked stretches. Open to fill them in.")
-                        .font(.footnote).foregroundStyle(.secondary)
                 }
             }
             .padding(16)
@@ -261,18 +259,18 @@ struct NowScreen: View {
     private var adderallRow: some View {
         Button { tab = .adderall } label: {
             HStack(spacing: 10) {
-                Image(systemName: "pills.fill").foregroundStyle(.orange)
+                Image(systemName: "pills.fill").foregroundStyle(Color.secondaryText)
                 if let first = doses.first {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(timerInterval: first.date...Date.distantFuture, countsDown: false)
                             .font(.title3.weight(.semibold).monospacedDigit())
-                        Text("since first dose at \(clock(first.date))").font(.footnote).foregroundStyle(.secondary)
+                        Text("since first dose at \(clock(first.date))").font(.footnote).foregroundStyle(Color.secondaryText)
                     }
                 } else {
                     Text("No Adderall logged today").foregroundStyle(.primary)
                 }
                 Spacer()
-                Text(doses.isEmpty ? "Log a dose" : "Adderall").font(.subheadline).foregroundStyle(.secondary)
+                Text(doses.isEmpty ? "Log a dose" : "Adderall").font(.subheadline).foregroundStyle(Color.secondaryText)
                 Image(systemName: "chevron.right").font(.footnote).foregroundStyle(.tertiary)
             }
             .padding(16)
@@ -291,7 +289,7 @@ struct NowScreen: View {
         if let commitment {
             Button { showCommitment = true } label: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Today's commitment").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("Today's commitment").font(.footnote.weight(.semibold)).foregroundStyle(Color.secondaryText)
                     Text(commitment).foregroundStyle(.primary).multilineTextAlignment(.leading)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -378,7 +376,7 @@ struct DayStrip: View {
                 }
             }
             .frame(height: 12)
-            .font(.system(size: 10)).foregroundStyle(.secondary)
+            .font(.system(size: 10)).foregroundStyle(Color.secondaryText)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Today's log: " + rows.map { "\($0.name) \(durationText(minutes: $0.minutes))" }.joined(separator: ", "))
@@ -430,7 +428,7 @@ struct SwitchAtSheet: View {
                                displayedComponents: [.date, .hourAndMinute])
                 }
                 Section {
-                    Text(explanation).font(.footnote).foregroundStyle(.secondary)
+                    Text(explanation).font(.footnote).foregroundStyle(Color.secondaryText)
                 }
             }
             .navigationTitle("Started earlier")
@@ -477,7 +475,7 @@ struct CommitmentSheet: View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
                 Text("What will you get done today?").font(.title3.weight(.semibold))
-                Text("Your Mac shows the same commitment.").font(.callout).foregroundStyle(.secondary)
+                Text("Your Mac shows the same commitment.").font(.callout).foregroundStyle(Color.secondaryText)
                 TextEditor(text: $text)
                     .frame(minHeight: 160)
                     .padding(8)

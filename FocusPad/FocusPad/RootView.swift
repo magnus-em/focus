@@ -45,13 +45,24 @@ private struct MoreScreen: View {
     var body: some View {
         List {
             Section {
-                NavigationLink { ScratchpadScreen() } label: { Label("Notes", systemImage: "list.bullet.rectangle") }
-                NavigationLink { SettingsScreen() } label: { Label("Settings", systemImage: "gearshape") }
+                Text("Quick notes and settings for this device.")
+                    .font(.subheadline).foregroundStyle(Color.secondaryText)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+            }
+            Section {
+                NavigationLink { ScratchpadScreen() } label: {
+                    Label { Text("Notes") } icon: { Image(systemName: "list.bullet.rectangle").foregroundStyle(Color.secondaryText) }
+                }
+                NavigationLink { SettingsScreen() } label: {
+                    Label { Text("Settings") } icon: { Image(systemName: "gearshape").foregroundStyle(Color.secondaryText) }
+                }
             } footer: {
                 Text("Stats, recall, problems and the full Day and Week pages are on your Mac.")
             }
         }
         .listStyle(.insetGrouped)
+        .readableWidth()
         .navigationTitle("More")
     }
 }
