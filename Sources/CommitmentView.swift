@@ -7,7 +7,7 @@ struct CommitmentView: View {
     @ObservedObject var store: SessionStore
     let timer: TimerManager
     @Binding var isShowing: Bool
-    var previewMorningReview = false
+    var preview = false
 
     @State private var text = ""
     @State private var firstAction = ""
@@ -40,8 +40,6 @@ struct CommitmentView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        MorningCorrectionView(store: store, settings: settings, timer: timer,
-                                              preview: previewMorningReview)
                         // Written commitment
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Today's commitment")
@@ -77,7 +75,7 @@ struct CommitmentView: View {
 
                 VStack(spacing: 6) {
                     Button {
-                        guard !previewMorningReview else { return }
+                        guard !preview else { return }
                         let cleaned = text.trimmingCharacters(in: .whitespaces)
                         settings.markCommitmentDone(text: cleaned)
                         dayStore.setCommitment(text: cleaned)
@@ -99,7 +97,7 @@ struct CommitmentView: View {
                     .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
 
                     Button {
-                        guard !previewMorningReview else { return }
+                        guard !preview else { return }
                         settings.markCommitmentDone(text: "")
                         dayStore.setCommitment(text: "")
                         isShowing = false
@@ -116,7 +114,7 @@ struct CommitmentView: View {
         }
         .onAppear {
             focused = true
-            guard !previewMorningReview, let plan = NextBlockStore.shared.plan(for: Date()) else { return }
+            guard !preview, let plan = NextBlockStore.shared.plan(for: Date()) else { return }
             firstAction = plan.action
             firstCategory = plan.category.flatMap { settings.tags.contains($0) ? $0 : nil } ?? ""
             firstTarget = plan.target
@@ -124,7 +122,7 @@ struct CommitmentView: View {
     }
 
     private var nextSuggestion: NextBlockPlanner.Plan? {
-        if previewMorningReview {
+        if preview {
             return .init(action: "Work through one example of a partial order", category: "Math", source: "Your start-with note")
         }
         let previous = Calendar.current.date(byAdding: .day, value: -1, to: Date())!

@@ -234,9 +234,9 @@ struct FocusApp: App {
             case "review":
                 DesignGallery.show(EveningReviewView(store: store, days: days, settings: appSettings, timer: timer, recall: recall) {},
                                    name: name, dark: dark, size: NSSize(width: 620, height: 900))
-            case "morning-correction":
+            case "commitment", "morning-correction":
                 DesignGallery.show(CommitmentView(settings: appSettings, dayStore: days, store: store, timer: timer,
-                                                  isShowing: .constant(true), previewMorningReview: true),
+                                                  isShowing: .constant(true), preview: true),
                                    name: name, dark: dark, size: NSSize(width: 360, height: 850))
             case "yesterday-recall", "yesterday-recall-reveal":
                 DesignGallery.show(YesterdayRecallView(
