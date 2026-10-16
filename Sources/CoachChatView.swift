@@ -2,7 +2,7 @@ import AppKit
 import FocusCore
 import SwiftUI
 
-/// "Ask the coach" window: `focus://coach`, the ⌃⌥⌘J switcher, or
+/// "Ask Focus" window: `focus://coach`, the ⌃⌥⌘J switcher, or
 /// "Talk it through" after the morning recall.
 @MainActor
 final class CoachChatWindow: NSObject, NSWindowDelegate {
@@ -16,7 +16,7 @@ final class CoachChatWindow: NSObject, NSWindowDelegate {
             return
         }
         let w = NSWindow(contentViewController: NSHostingController(rootView: CoachChatView()))
-        w.title = "Coach"
+        w.title = "Ask Focus"
         w.setContentSize(NSSize(width: 520, height: 640))
         w.minSize = NSSize(width: 420, height: 460)
         w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -89,7 +89,7 @@ struct CoachChatView: View {
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Turn on the cloud coach") { coachEnabled = true }
+                Button("Turn on cloud AI") { coachEnabled = true }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
             }
@@ -121,7 +121,7 @@ struct CoachChatView: View {
         guard !q.isEmpty, !busy else { return }
         guard let client = Coach.client else {
             error = coachEnabled ? "No xAI key in the Keychain (service \(XAIKey.service))."
-                : "Turn on the cloud coach first (above, or Settings → Coach)."
+                : "Turn on cloud AI first (above, or Settings → AI)."
             return
         }
         let history = turns

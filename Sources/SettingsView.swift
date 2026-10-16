@@ -97,7 +97,7 @@ struct SettingsView: View {
                     .onAppear { probeSync() }
                 }
 
-                SettingsCard("Coach") {
+                SettingsCard("AI") {
                     CoachSettings()
                 }
 
@@ -1014,7 +1014,7 @@ private struct CoachSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ToggleRow(label: "Cloud coach (xAI Grok)", isOn: $enabled)
+            ToggleRow(label: "Cloud AI (xAI Grok)", isOn: $enabled)
             Text(Coach.consent)
                 .font(.system(size: 11))
                 .foregroundStyle(Color.secondaryText)

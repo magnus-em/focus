@@ -162,6 +162,9 @@ public final class FocusTimerEngine: ObservableObject {
     private static let notifIdentifier = "focusTimerCompletion"
 
     private func requestNotificationPermission() {
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("-seedDemo") { return }
+        #endif
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 

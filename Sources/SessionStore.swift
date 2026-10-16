@@ -131,44 +131,10 @@ class SessionStore: ObservableObject {
         }
     }
 
-    /// `keep` nil: merge a block saved twice. Otherwise `keep` takes the
-    /// stretch both cover; with `removing`, that block goes entirely. Only
-    /// the blocks shown change, in one save; reversible with `undoReview`.
     func fixOverlap(_ o: SessionOverlap, keep: WorkSession?, removing: WorkSession? = nil) -> ReviewUndo? {
-        guard !context.hasChanges else { return nil }
-        let edits = removing.map(TimeIntegrity.remove)
-            ?? keep.map { TimeIntegrity.resolve(o, keep: $0.id) } ?? TimeIntegrity.merge(o)
-        let span = o.union
-        do {
-            // The popover shows a snapshot; a sync or edit since then means
-            // the user didn't see what this would change.
-            let current = try [o.first.id, o.second.id].map { try model($0)?.asValue }
-            guard Self.same(current.compactMap { $0 }, [o.first, o.second]) else {
-                refresh()
-                return nil
-            }
-            let before = try reviewModels(span.start, span.end).map(\.asValue)
-            for edit in edits {
-                switch edit {
-                case .setDuration(let id, let minutes):
-                    guard let m = try model(id) else { throw CocoaError(.validationMissingMandatoryProperty) }
-                    m.durationMinutes = minutes
-                case .delete(let id):
-                    guard let m = try model(id) else { throw CocoaError(.validationMissingMandatoryProperty) }
-                    context.delete(m)
-                case .insert(let s):
-                    context.insert(StoredWorkSession(value: s))
-                }
-            }
-            let after = try reviewModels(span.start, span.end).map(\.asValue)
-            try context.save()
-            refresh()
-            return ReviewUndo(start: span.start, end: span.end, before: before, after: after)
-        } catch {
-            context.rollback()
-            refresh()
-            return nil
-        }
+        let undo = LogEdit.fixOverlap(o, keep: keep?.id, removing: removing, in: context)
+        refresh()
+        return undo
     }
 
     private func model(_ id: UUID) throws -> StoredWorkSession? {
@@ -225,104 +191,18 @@ class SessionStore: ObservableObject {
         }
     }
 
-    /// What a review repaint changed: the saved rows touching [start, end]
-    /// before and right after it, so it can be undone exactly.
-    struct ReviewUndo {
-        fileprivate let start: Date
-        fileprivate let end: Date
-        fileprivate let before: [WorkSession]
-        fileprivate let after: [WorkSession]
-    }
+    typealias ReviewUndo = LogEdit.Undo
 
-    /// One save for the entire correction, so a failed replacement cannot
-    /// leave the original rows trimmed without their new middle segment.
     func paintForReview(start: Date, end: Date, label: String?) -> ReviewUndo? {
-        guard end.timeIntervalSince(start) >= 60, !context.hasChanges else { return nil }
-        do {
-            let models = try reviewModels(start, end)
-            let before = models.map(\.asValue)
-            for model in models {
-                let a = model.startTime
-                let b = a.addingTimeInterval(model.durationMinutes * 60)
-                guard a < end, b > start else { continue }
-                if b > end {
-                    context.insert(StoredWorkSession(value: WorkSession(
-                        startTime: end, durationMinutes: b.timeIntervalSince(end) / 60,
-                        type: model.type, label: model.label, breakKinds: model.breakKinds)))
-                }
-                if a < start {
-                    model.durationMinutes = start.timeIntervalSince(a) / 60
-                } else {
-                    context.delete(model)
-                }
-            }
-            var cursor = start
-            while cursor < end {
-                let midnight = Calendar.current.date(byAdding: .day, value: 1,
-                                                      to: Calendar.current.startOfDay(for: cursor))!
-                let until = min(end, midnight)
-                context.insert(StoredWorkSession(value: WorkSession(
-                    startTime: cursor, durationMinutes: until.timeIntervalSince(cursor) / 60,
-                    type: label == nil ? .shortBreak : .work, label: label)))
-                cursor = until
-            }
-            let after = try reviewModels(start, end).map(\.asValue)
-            try context.save()
-            refresh()
-            return ReviewUndo(start: start, end: end, before: before, after: after)
-        } catch {
-            context.rollback()
-            refresh()
-            return nil
-        }
+        let undo = LogEdit.paint(start: start, end: end, label: label, in: context)
+        refresh()
+        return undo
     }
 
-    /// Restores the rows as they were before `paintForReview`, but only if
-    /// nothing touched them since (another edit, a sync); otherwise refuses.
     func undoReview(_ undo: ReviewUndo) -> Bool {
-        guard !context.hasChanges else { return false }
-        do {
-            let models = try reviewModels(undo.start, undo.end)
-            guard Self.same(models.map(\.asValue), undo.after) else { return false }
-            let beforeIDs = Set(undo.before.map(\.id))
-            for m in models where !beforeIDs.contains(m.id) { context.delete(m) }
-            for old in undo.before {
-                if let m = models.first(where: { $0.id == old.id }) {
-                    m.startTime = old.startTime
-                    m.durationMinutes = old.durationMinutes
-                    m.typeRaw = old.type.rawValue
-                    m.label = old.label
-                    m.breakKinds = old.breakKinds
-                } else {
-                    context.insert(StoredWorkSession(value: old))
-                }
-            }
-            try context.save()
-            refresh()
-            return true
-        } catch {
-            context.rollback()
-            refresh()
-            return false
-        }
-    }
-
-    private func reviewModels(_ start: Date, _ end: Date) throws -> [StoredWorkSession] {
-        let descriptor = FetchDescriptor<StoredWorkSession>(predicate: #Predicate { $0.startTime <= end })
-        return try context.fetch(descriptor).filter {
-            !$0.isDeleted && $0.startTime.addingTimeInterval($0.durationMinutes * 60) >= start
-        }
-    }
-
-    private static func same(_ a: [WorkSession], _ b: [WorkSession]) -> Bool {
-        guard a.count == b.count else { return false }
-        let byID = Dictionary(uniqueKeysWithValues: b.map { ($0.id, $0) })
-        return a.allSatisfy { x in
-            guard let y = byID[x.id] else { return false }
-            return abs(x.startTime.timeIntervalSince(y.startTime)) < 0.5
-                && abs(x.durationMinutes - y.durationMinutes) < 0.01
-                && x.type == y.type && x.label == y.label && x.breakKinds == y.breakKinds
-        }
+        let done = LogEdit.undo(undo, in: context)
+        refresh()
+        return done
     }
 
     /// Relabel [start, end) as `label` (nil = break): saved sessions are

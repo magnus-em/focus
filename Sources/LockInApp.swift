@@ -217,6 +217,7 @@ struct FocusApp: App {
         ScreenCoach.shared = ScreenCoach(timer: timer, settings: appSettings, days: days)
         FocusModes.shared.start(timer: timer)
         CoachDayWorker.shared.start(store: store, days: days, settings: appSettings)
+        DayBriefPublisher.shared.start(store: store, timer: timer, settings: appSettings)
         QuickSwitch.shared?.openGallery = { name, dark in
             switch name {
             case "dashboard", "dashboard-review", "dashboard-trends", "dashboard-week":
@@ -644,7 +645,7 @@ struct PopoverContent: View {
         case 2: "Problems you solved, reviews due"
         case 3: "A quick checklist"
         case 5: "Habits and doses you log"
-        default: "Goal, categories, screen, coach"
+        default: "Goal, categories, screen, AI"
         }
     }
 

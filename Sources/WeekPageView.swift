@@ -182,10 +182,10 @@ struct WeekPage: View {
 
     private var coursesCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionTitle("Courses and goals", subtitle: "How long each course was on your screen this week, as the coach saw it, and its next exam. Below: what your timer logged and goals that went quiet.")
+            SectionTitle("Courses and goals", subtitle: "How long each course was on your screen this week, as Focus saw it, and its next exam. Below: what your timer logged and goals that went quiet.")
             let rows = courses
             if rows.isEmpty {
-                Text("No course work seen this week. Course time shows up once the cloud coach has watched some study.")
+                Text("No course work seen this week. Course time shows up once cloud AI has seen some study.")
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText).fixedSize(horizontal: false, vertical: true)
             }
             if !rows.isEmpty {

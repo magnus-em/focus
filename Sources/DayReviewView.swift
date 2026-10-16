@@ -490,7 +490,7 @@ struct YesterdayRecallView: View {
                 }
             }
             if !r.content.observations.isEmpty {
-                sectionLabel("What the coach noticed").padding(.top, 4)
+                sectionLabel("What Focus noticed").padding(.top, 4)
                 ForEach(Array(r.content.observations.enumerated()), id: \.offset) { _, o in
                     Text("• \(o)")
                         .font(.system(size: 10.5))
@@ -541,7 +541,7 @@ struct YesterdayRecallView: View {
             if let study = record?.content.study, !study.isEmpty { coachCues(study) } else if !groups.isEmpty { cueList }
             if record == nil, !coachEnabled, previewRecord == nil {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Turn on the cloud coach for a summary of \(weekday) and questions about it.")
+                    Text("Turn on cloud AI for a summary of \(weekday) and questions about it.")
                         .font(.system(size: 10.5, weight: .medium))
                     Text(Coach.consent)
                         .font(.system(size: 9.5))

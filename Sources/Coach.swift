@@ -9,7 +9,7 @@ enum Coach {
     static let enabledKey = "coachCloudEnabled"
     static var enabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
 
-    static let consent = "Sends screen text, window titles and some screenshots to xAI (Grok) to write your day summaries, morning questions and answers in Ask the coach. Messages, Mail, Passwords, incognito and unconfirmed browser windows are never sent. xAI keeps API requests 30 days for abuse review and doesn't train on them."
+    static let consent = "Sends screen text, window titles and some screenshots to xAI (Grok) to write your day summaries, morning questions and answers in Ask Focus. Messages, Mail, Passwords, incognito and unconfirmed browser windows are never sent. xAI keeps API requests 30 days for abuse review and doesn't train on them."
 
     static let budget = CoachBudget(
         fileURL: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

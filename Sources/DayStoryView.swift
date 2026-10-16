@@ -140,8 +140,8 @@ struct DayStoryPage: View {
                     Text(headlineCaption(story)).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                     if story.hasCoach {
                         Image(systemName: "info.circle").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-                            .help("The coach is an AI (Grok) that reads your timer log and what's on your screen, then writes this summary, the notes under each stretch and what you learned. Settings → Coach turns it off.")
-                            .accessibilityLabel("About the coach")
+                            .help("Focus uses an AI model (xAI's Grok) to read your timer log and what's on your screen, then writes this summary, the notes under each stretch and what you learned. Settings → AI turns it off.")
+                            .accessibilityLabel("About these notes")
                     }
                 }
                 Text(DayStory.twelveHour(line))
@@ -156,8 +156,8 @@ struct DayStoryPage: View {
 
     private func headlineCaption(_ story: DayStory.Story) -> String {
         guard story.headline != nil else { return isToday ? "So far today, from your tracking" : "From your tracking" }
-        if let asOf = story.headlineAsOf { return "The AI coach's summary of your timer and screen, written at \(clock(asOf))" }
-        return "The AI coach's summary of your timer and screen"
+        if let asOf = story.headlineAsOf { return "Focus's summary of your timer and screen, written at \(clock(asOf))" }
+        return "Focus's summary of your timer and screen"
     }
 
     private func fallbackHeadline(_ story: DayStory.Story) -> String? {
@@ -399,7 +399,7 @@ struct DayStoryPage: View {
             }
             if !story.noticed.isEmpty {
                 card {
-                    Text("The coach noticed").font(.system(size: 14, weight: .semibold))
+                    Text("Focus noticed").font(.system(size: 14, weight: .semibold))
                     ForEach(story.noticed.prefix(3), id: \.self) { n in
                         Text(n).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
                     }
@@ -408,20 +408,20 @@ struct DayStoryPage: View {
             if !story.hasCoach {
                 card {
                     Text("Only your tracking").font(.system(size: 14, weight: .semibold))
-                    Text("With the cloud coach on (Settings → Coach), this page also shows what you studied, your own questions and what looked shaky.")
+                    Text("With cloud AI on (Settings → AI), this page also shows what you studied, your own questions and what looked shaky.")
                         .font(.system(size: 13)).foregroundStyle(Color.secondaryText).fixedSize(horizontal: false, vertical: true)
                 }
             }
             HStack(spacing: 12) {
                 Button(action: openCoach) {
-                    Label("Ask the coach", systemImage: "bubble.left.and.text.bubble.right")
+                    Label("Ask Focus", systemImage: "bubble.left.and.text.bubble.right")
                         .font(.system(size: 13, weight: .medium)).padding(.horizontal, 14).frame(height: 36)
                         .background(Capsule().fill(Color.primary.opacity(0.07)))
                 }
                 .buttonStyle(.plain)
-                .help("Talk this day through with the coach")
+                .help("Talk this day through with Focus")
                 if let spent = model.spent {
-                    Text("The coach has cost \(spent < 1 ? "\(Int((spent * 100).rounded()))¢" : String(format: "$%.2f", spent)) today")
+                    Text("AI notes cost \(spent < 1 ? "\(Int((spent * 100).rounded()))¢" : String(format: "$%.2f", spent)) today")
                         .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 }
             }
@@ -433,7 +433,7 @@ struct DayStoryPage: View {
             if first {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("What you learned").font(.system(size: 14, weight: .semibold))
-                    Text("Topics the coach saw you study, by course").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    Text("Topics Focus saw you study, by course").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 }
             }
             HStack(alignment: .firstTextBaseline) {

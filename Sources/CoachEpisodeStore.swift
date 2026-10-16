@@ -55,8 +55,8 @@ final class CoachEpisodeStore: ObservableObject {
         invalidate()
         guard let queue else { return }
         Task {
-            do { try await queue.remove(bundle: bundle); status = "Deleted coach evidence" }
-            catch { lastError = "Couldn't delete coach evidence: \(error.localizedDescription)" }
+            do { try await queue.remove(bundle: bundle); status = "Deleted AI evidence" }
+            catch { lastError = "Couldn't delete AI evidence: \(error.localizedDescription)" }
         }
     }
     private var enabled: Bool {
@@ -122,7 +122,7 @@ final class CoachEpisodeStore: ObservableObject {
                         status = "Dry run: payload ready, nothing sent"
                         continue
                     }
-                    guard Coach.enabled else { status = "Cloud coach is turned off"; return }
+                    guard Coach.enabled else { status = "Cloud AI is turned off"; return }
                     guard let client = Coach.client else { status = "Add an xAI key to enable understanding"; return }
                     try await queue.set(job.id, phase: .inFlight)
                     guard !Task.isCancelled, token == generation, allowed(source.row) else { return }

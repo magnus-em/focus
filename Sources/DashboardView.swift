@@ -2984,7 +2984,7 @@ struct InsightsSection: View {
                 if !error.isEmpty { Text(error).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1) }
             }
         } else {
-            Text("Turn on the cloud coach in Settings → Coach for a weekly letter written from your week.")
+            Text("Turn on cloud AI in Settings → AI for a weekly letter written from your week.")
                 .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
         }
     }
@@ -3013,7 +3013,7 @@ struct InsightsSection: View {
                 let days = CoachDayWorker.shared.recentRecords(days: 7).reversed().map { r in
                     "\(r.day): \(r.content.headline)" + r.content.study.map { " [\($0.course ?? $0.category): \($0.topics.joined(separator: ", "))\($0.shaky.isEmpty ? "" : "; shaky: " + $0.shaky.joined(separator: "; "))]" }.joined()
                 }
-                text = try await Self.coachLetter(client: client, facts: facts + "\nThe coach's day records:\n" + days.joined(separator: "\n"))
+                text = try await Self.coachLetter(client: client, facts: facts + "\nFocus's day records:\n" + days.joined(separator: "\n"))
             } else {
                 text = try await RecallCoach.weeklyLetter(facts)
             }
