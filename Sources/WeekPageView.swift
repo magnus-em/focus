@@ -1,3 +1,4 @@
+import Charts
 import FocusCore
 import SwiftUI
 
@@ -315,5 +316,225 @@ struct WeekPage: View {
         if untracked > 0 { bits.append(untracked == 1 ? "1 gap with nothing logged" : "\(untracked) gaps with nothing logged") }
         if screen > 0 { bits.append(screen == 1 ? "1 stretch the screen saw differently" : "\(screen) stretches the screen saw differently") }
         return bits.joined(separator: " · ")
+    }
+}
+
+/// Focus hours over a week, month, quarter or year. Bars are hours per day
+/// at every zoom (a day, or a week's/month's daily average) so the goal line
+/// reads the same everywhere.
+struct FocusHistorySection: View {
+    let sessions: [WorkSession]
+    let goalHours: Double
+
+    enum Range: String, CaseIterable, Identifiable {
+        case week = "Week", month = "Month", quarter = "3 Months", year = "Year"
+        var id: String { rawValue }
+    }
+
+    struct Bar: Identifiable {
+        let start: Date
+        let label: String
+        let hoursPerDay: Double
+        var id: String { "\(start.timeIntervalSince1970)|\(label)" }
+    }
+
+    struct Summary {
+        var bars: [Bar] = []
+        var buckets: [Date] = []
+        var totalMinutes: Double = 0
+        var days = 0
+        var daysAtGoal = 0
+        var previousPerDay: Double?
+    }
+
+    @AppStorage("focusHistoryRange") private var range: Range = .month
+    @State private var summary = Summary()
+    @State private var selected: Date?
+
+    private var unit: Calendar.Component {
+        switch range {
+        case .week, .month: return .day
+        case .quarter: return .weekOfYear
+        case .year: return .month
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                SectionTitle("How much you focused",
+                             subtitle: "Hours per day in your focus categories on the timer; life time and breaks don't count")
+                Spacer()
+                Picker("Range", selection: $range) {
+                    ForEach(Range.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 280)
+            }
+            facts
+            chart.frame(height: 200)
+        }
+        .onAppear(perform: refresh)
+        .onChange(of: range) { _, _ in selected = nil; refresh() }
+        .onChange(of: sessions.count) { _, _ in refresh() }
+    }
+
+    private var facts: some View {
+        let perDay = summary.days > 0 ? summary.totalMinutes / Double(summary.days) : 0
+        return HStack(alignment: .top, spacing: 36) {
+            fact("Total", durationText(minutes: summary.totalMinutes), "over \(summary.days) day\(summary.days == 1 ? "" : "s")")
+            fact("Per day", durationText(minutes: perDay), comparison(perDay))
+            fact("Days at your \(goalHours.formatted())h goal", "\(summary.daysAtGoal) of \(summary.days)",
+                 summary.days > 0 ? "\(Int((Double(summary.daysAtGoal) / Double(summary.days) * 100).rounded()))% of days" : "")
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func comparison(_ perDay: Double) -> String {
+        guard let prev = summary.previousPerDay, prev > 0 else { return "No earlier \(range.rawValue.lowercased()) to compare" }
+        let change = (perDay - prev) / prev
+        let pct = Int((abs(change) * 100).rounded())
+        let span = range == .quarter ? "3 months" : range.rawValue.lowercased()
+        if pct < 3 { return "About the same as the \(span) before" }
+        return "\(change > 0 ? "Up" : "Down") \(pct)% from \(durationText(minutes: prev)) the \(span) before"
+    }
+
+    private func fact(_ label: String, _ value: String, _ caption: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+            Text(value).font(.system(size: 22, weight: .semibold)).monospacedDigit()
+            Text(caption).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: 240, alignment: .leading)
+    }
+
+    private var chart: some View {
+        Chart {
+            ForEach(summary.bars) { b in
+                BarMark(x: .value("When", b.start, unit: unit), y: .value("Hours per day", b.hoursPerDay))
+                    .foregroundStyle(categoryColor(b.label))
+                    .opacity(selected == nil || Calendar.current.isDate(b.start, equalTo: selected!, toGranularity: unit) ? 1 : 0.4)
+            }
+            RuleMark(y: .value("Goal", goalHours))
+                .foregroundStyle(Color.secondaryText.opacity(0.6))
+                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                .annotation(position: .top, alignment: .leading) {
+                    Text("\(goalHours.formatted())h goal").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                }
+            if let s = selected, let bucket = summary.buckets.last(where: { $0 <= s }) {
+                RuleMark(x: .value("When", bucket, unit: unit))
+                    .foregroundStyle(.clear)
+                    .annotation(position: .top, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                        readout(bucket)
+                    }
+            }
+        }
+        .chartXSelection(value: $selected)
+        .chartYAxis {
+            AxisMarks(position: .leading) { v in
+                AxisGridLine()
+                AxisValueLabel { if let h = v.as(Double.self) { Text("\(h.formatted())h") } }
+            }
+        }
+        .chartXAxis {
+            switch range {
+            case .week: AxisMarks(values: .stride(by: .day)) { _ in AxisValueLabel(format: .dateTime.weekday(.abbreviated)) }
+            case .month: AxisMarks(values: .stride(by: .day, count: 7)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated).day()) }
+            case .quarter: AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated)) }
+            case .year: AxisMarks(values: .stride(by: .month)) { _ in AxisValueLabel(format: .dateTime.month(.narrow)) }
+            }
+        }
+    }
+
+    private func readout(_ bucket: Date) -> some View {
+        let parts = summary.bars.filter { $0.start == bucket }.sorted { $0.hoursPerDay > $1.hoursPerDay }
+        let total = parts.reduce(0) { $0 + $1.hoursPerDay }
+        let when: String = switch range {
+        case .week, .month: bucket.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+        case .quarter: "Week of " + bucket.formatted(.dateTime.month(.abbreviated).day())
+        case .year: bucket.formatted(.dateTime.month(.wide).year())
+        }
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(when).font(.system(size: 12, weight: .semibold))
+            Text(durationText(minutes: total * 60) + (unit == .day ? "" : " a day")).font(.system(size: 12)).monospacedDigit()
+            ForEach(parts) { p in
+                HStack(spacing: 5) {
+                    Circle().fill(categoryColor(p.label)).frame(width: 6, height: 6)
+                    Text("\(p.label) \(durationText(minutes: p.hoursPerDay * 60))").font(.system(size: 11)).monospacedDigit()
+                }
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.background.secondary))
+    }
+
+    private func refresh() {
+        summary = Self.build(sessions: sessions, range: range, unit: unit, goalHours: goalHours)
+    }
+
+    static func build(sessions: [WorkSession], range: Range, unit: Calendar.Component, goalHours: Double,
+                      now: Date = Date(), calendar cal: Calendar = .current) -> Summary {
+        let today = cal.startOfDay(for: now)
+        let tomorrow = cal.date(byAdding: .day, value: 1, to: today)!
+        let periodStart: Date = switch range {
+        case .week: cal.date(byAdding: .day, value: -6, to: today)!
+        case .month: cal.date(byAdding: .day, value: -29, to: today)!
+        case .quarter: cal.dateInterval(of: .weekOfYear, for: cal.date(byAdding: .weekOfYear, value: -12, to: today)!)!.start
+        case .year: cal.dateInterval(of: .month, for: cal.date(byAdding: .month, value: -11, to: today)!)!.start
+        }
+        let previousStart = cal.date(byAdding: .day, value: -(cal.dateComponents([.day], from: periodStart, to: tomorrow).day ?? 0), to: periodStart)!
+
+        let focus = sessions.filter(\.isFocus)
+        guard let firstDay = focus.map({ cal.startOfDay(for: $0.startTime) }).min() else { return Summary() }
+
+        var byDay: [Date: [String: Double]] = [:]
+        for s in focus {
+            var a = max(s.startTime, previousStart)
+            let end = min(s.startTime.addingTimeInterval(s.durationMinutes * 60), now)
+            while a < end {
+                let day = cal.startOfDay(for: a)
+                let next = cal.date(byAdding: .day, value: 1, to: day)!
+                byDay[day, default: [:]][s.label ?? "Focus", default: 0] += min(end, next).timeIntervalSince(a) / 60
+                a = next
+            }
+        }
+
+        var out = Summary()
+        let start = max(periodStart, firstDay)
+        var day = start
+        while day < tomorrow {
+            let m = byDay[day]?.values.reduce(0, +) ?? 0
+            out.totalMinutes += m
+            out.days += 1
+            if m >= goalHours * 60 { out.daysAtGoal += 1 }
+            day = cal.date(byAdding: .day, value: 1, to: day)!
+        }
+
+        var bucket = cal.dateInterval(of: unit, for: start)!.start
+        while bucket < tomorrow {
+            let next = cal.date(byAdding: unit, value: 1, to: bucket)!
+            let from = max(bucket, start), to = min(next, tomorrow)
+            let days = max(1, cal.dateComponents([.day], from: from, to: to).day ?? 1)
+            var totals: [String: Double] = [:]
+            var d = from
+            while d < to {
+                for (k, v) in byDay[d] ?? [:] { totals[k, default: 0] += v }
+                d = cal.date(byAdding: .day, value: 1, to: d)!
+            }
+            out.buckets.append(bucket)
+            for (k, v) in totals.sorted(by: { $0.value > $1.value }) {
+                out.bars.append(Bar(start: bucket, label: k, hoursPerDay: v / 60 / Double(days)))
+            }
+            bucket = next
+        }
+
+        if firstDay < periodStart {
+            let from = max(previousStart, firstDay)
+            var m = 0.0, n = 0
+            var d = from
+            while d < periodStart { m += byDay[d]?.values.reduce(0, +) ?? 0; n += 1; d = cal.date(byAdding: .day, value: 1, to: d)! }
+            if n > 0 { out.previousPerDay = m / Double(n) }
+        }
+        return out
     }
 }

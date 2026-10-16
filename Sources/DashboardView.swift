@@ -591,7 +591,7 @@ struct DashboardView: View {
 
     private var rightPanel: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 24) {
                 switch destination {
                 case .day: dayContent
                 case .week: weekContent
@@ -653,6 +653,7 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var weekContent: some View {
+        FocusHistorySection(sessions: liveSessions, goalHours: Double(settings.dailyGoal))
         WeekPage(endDay: weekEndDay, sessions: liveSessions, live: Set(liveBlocks.map(\.id)), problems: problemStore.problems,
                  focus: focusCategories, settings: settings,
                  onSelectDay: { selectedDay = $0; destination = .day })
