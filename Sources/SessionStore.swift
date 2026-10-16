@@ -5,8 +5,8 @@ import SwiftUI
 
 class SessionStore: ObservableObject {
     @Published var sessions: [WorkSession] = []
-    /// Saved blocks covering the same time in the last week, newest first,
-    /// minus ones the user said to leave. Never repaired without asking.
+    /// Saved blocks covering the same time in the last week, newest first.
+    /// Resolved automatically a few seconds after they appear (`TimeIntegrity.autoKeep`).
     @Published private(set) var overlaps: [SessionOverlap] = []
     /// Why the last save failed, until one succeeds (10/14: a full disk
     /// failed saves silently).
@@ -19,7 +19,7 @@ class SessionStore: ObservableObject {
     private var remoteObserver: NSObjectProtocol?
     private var remoteRefresh: DispatchWorkItem?
     private var diskCheckedAt = Date.distantPast
-    private static let dismissedOverlapsKey = "dismissedOverlaps"
+    private var autoResolve: DispatchWorkItem?
 
     init(container: ModelContainer) {
         self.context = ModelContext(container)
@@ -75,9 +75,17 @@ class SessionStore: ObservableObject {
         let stored = (try? context.fetch(descriptor)) ?? []
         sessions = stored.map { $0.asValue }
         let now = Date()
-        let dismissed = Set(UserDefaults.standard.stringArray(forKey: Self.dismissedOverlapsKey) ?? [])
         overlaps = TimeIntegrity.overlaps(in: sessions, from: now.addingTimeInterval(-7 * 86400), to: now)
-            .filter { !dismissed.contains($0.key) }
+        if !overlaps.isEmpty, autoResolve == nil {
+            // Waits for a burst of CloudKit imports to settle, so both rows of a
+            // block another device is still saving are there before deciding.
+            let work = DispatchWorkItem { [weak self] in
+                self?.autoResolve = nil
+                self?.resolveOverlaps()
+            }
+            autoResolve = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
+        }
         if now.timeIntervalSince(diskCheckedAt) > 60 {
             diskCheckedAt = now
             let free = (try? URL(fileURLWithPath: NSHomeDirectory())
@@ -131,23 +139,25 @@ class SessionStore: ObservableObject {
         }
     }
 
-    func fixOverlap(_ o: SessionOverlap, keep: WorkSession?, removing: WorkSession? = nil) -> ReviewUndo? {
-        let undo = LogEdit.fixOverlap(o, keep: keep?.id, removing: removing, in: context)
+    private func resolveOverlaps() {
+        for _ in 0..<200 {
+            let now = Date()
+            guard let o = TimeIntegrity.overlaps(in: sessions, from: now.addingTimeInterval(-7 * 86400), to: now).first
+            else { break }
+            let keep = TimeIntegrity.autoKeep(o)
+            guard LogEdit.fixOverlap(o, keep: keep, in: context) != nil else { break }
+            SyncLog.event("overlapAutoResolved", ["first": o.first.id.uuidString, "second": o.second.id.uuidString,
+                                                  "kept": keep?.uuidString ?? "merged"])
+            let descriptor = FetchDescriptor<StoredWorkSession>(sortBy: [SortDescriptor(\.startTime)])
+            sessions = ((try? context.fetch(descriptor)) ?? []).map { $0.asValue }
+        }
         refresh()
-        return undo
     }
 
     private func model(_ id: UUID) throws -> StoredWorkSession? {
         var d = FetchDescriptor<StoredWorkSession>(predicate: #Predicate { $0.id == id })
         d.fetchLimit = 1
         return try context.fetch(d).first
-    }
-
-    func leaveOverlap(_ o: SessionOverlap) {
-        var keys = UserDefaults.standard.stringArray(forKey: Self.dismissedOverlapsKey) ?? []
-        keys.append(o.key)
-        UserDefaults.standard.set(Array(keys.suffix(200)), forKey: Self.dismissedOverlapsKey)
-        refresh()
     }
 
     /// Ends one saved block at `end` (after its start, before its current end).

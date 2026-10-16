@@ -60,6 +60,26 @@ final class LogEditTests: XCTestCase {
         XCTAssertEqual(try log(c), ["0+20 Math", "40+20 Math"])
     }
 
+    /// 10/14's shape: a device's Class ran on over the blocks logged after it,
+    /// and a second Class row covered the real class.
+    func testAutoResolveKeepsTheLaterSwitchesAndMergesDuplicates() throws {
+        let c = try context()
+        add(c, 0, 300, "Class")
+        add(c, 25, 18, "Leisure")
+        add(c, 43, 40, "Class")
+        add(c, 83, 90, "Leisure")
+        add(c, 173, 60, "Admin")
+        add(c, 233, 30, nil)
+        try c.save()
+        for _ in 0..<50 {
+            let rows = try c.fetch(FetchDescriptor<StoredWorkSession>()).map(\.asValue)
+            guard let o = TimeIntegrity.overlaps(in: rows, from: at(-60), to: at(400)).first else { break }
+            XCTAssertNotNil(LogEdit.fixOverlap(o, keep: TimeIntegrity.autoKeep(o), in: c))
+        }
+        XCTAssertEqual(try log(c), ["0+25 Class", "25+18 Leisure", "43+40 Class", "83+90 Leisure",
+                                    "173+60 Admin", "233+30 Break", "263+37 Class"])
+    }
+
     func testOverlapKeepOne() throws {
         let c = try context()
         add(c, 0, 60, "Math")

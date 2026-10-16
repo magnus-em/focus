@@ -65,6 +65,17 @@ public enum TimeIntegrity {
         return edits
     }
 
+    /// Which block keeps the shared stretch, decided without asking (user,
+    /// 10/16: "just make it automatically decide"). nil = same category, merge.
+    /// Otherwise the block that started later: it's the switch made last, and
+    /// a block covering others is almost always a device that missed those
+    /// switches (10/14: Class 12:42 → 5:22 over nine blocks). Same start: the shorter.
+    public static func autoKeep(_ o: SessionOverlap) -> UUID? {
+        if o.sameLabel { return nil }
+        if o.second.startTime > o.first.startTime { return o.second.id }
+        return o.first.durationMinutes <= o.second.durationMinutes ? o.first.id : o.second.id
+    }
+
     public static func end(of s: WorkSession) -> Date {
         s.startTime.addingTimeInterval(s.durationMinutes * 60)
     }
