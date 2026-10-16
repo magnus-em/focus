@@ -85,7 +85,6 @@ struct TimerView: View {
             detailsButton
             if detent == .large {
                 dayStrip
-                onScreenNow
                 todayLog
                 if #available(macOS 26.0, *), LogCorrection.available {
                     LogFixView(timer: timer, store: store, categories: settings.tags)
@@ -572,49 +571,6 @@ struct TimerView: View {
         }
         .accessibilityElement(children: .combine)
     }
-
-    @ViewBuilder
-    private var onScreenNow: some View {
-        let now = Date()
-        if settings.screenWatch,
-           let block = watcher.activities(from: Calendar.current.startOfDay(for: now), to: now)
-               .last(where: { $0.device == nil && now.timeIntervalSince($0.end) < 120 }) {
-            let notes = watcher.notes(for: block)
-            let heading = notes?.title ?? block.spans.last?.title ?? block.category ?? ""
-            let differs = block.category != nil && running != nil && running != "Break" && block.category != running
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Circle().fill(block.category.map(categoryColor) ?? .gray).frame(width: 7, height: 7)
-                    Text(differs ? "Screen looks like \(block.category!)" : block.category.map { "On screen now · looks like \($0)" } ?? "On screen now")
-                    Spacer(minLength: 4)
-                    if differs, let c = block.category {
-                        Button("Switch") { timer.switchTo(c, at: block.start) }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 12, weight: .semibold))
-                            .padding(.horizontal, 10)
-                            .frame(height: 24)
-                            .background(Capsule().fill(categoryColor(c).opacity(0.2)))
-                    }
-                }
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                Text(EveningReviewView.sentenceCase(heading)).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                if let line = notes?.bullets.last ?? block.spans.last?.summary, !line.isEmpty,
-                   !line.localizedCaseInsensitiveContains(heading) {
-                    Text(line).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(cardFill))
-        }
-    }
-
-    @Environment(\.colorScheme) private var scheme
-    /// Content cards are lighter than the control well, so the two don't read as one.
-    private var cardFill: Color { scheme == .dark ? .white.opacity(0.07) : .white.opacity(0.5) }
 
     @ViewBuilder
     private var todayLog: some View {

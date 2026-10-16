@@ -361,9 +361,9 @@ struct FocusApp: App {
             if timerManager.isActive {
                 Image(nsImage: MenuBarRing.image(progress: timerManager.progress, color: NSColor(
                     timerManager.isOnBreak ? TimerView.breakBlue : categoryColor(timerManager.currentLabel))))
-                Text(timerManager.menuBarTimeText)
+                Text("\(timerManager.isOnBreak ? "Break" : timerManager.currentLabel)  \(timerManager.menuBarTimeText)")
             } else {
-                Image(systemName: "scope")
+                Image(nsImage: MenuBarRing.mark)
             }
         }
         .menuBarExtraStyle(.window)
@@ -769,9 +769,30 @@ enum MenuBarRing {
             arc.lineCapStyle = .round
             color.setStroke()
             arc.stroke()
+            color.setFill()
+            NSBezierPath(ovalIn: NSRect(x: c.x - 2, y: c.y - 2, width: 4, height: 4)).fill()
             return true
         }
         img.isTemplate = false
         return img
     }
+
+    /// The app icon's mark (ring closing on a point), as a template for the idle menu bar.
+    static let mark: NSImage = {
+        let img = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
+            let r = rect.insetBy(dx: 2, dy: 2)
+            let c = NSPoint(x: r.midX, y: r.midY)
+            let arc = NSBezierPath()
+            arc.appendArc(withCenter: c, radius: r.width / 2, startAngle: 90, endAngle: 90 - 290, clockwise: true)
+            arc.lineWidth = 2.2
+            arc.lineCapStyle = .round
+            NSColor.black.setStroke()
+            arc.stroke()
+            NSColor.black.setFill()
+            NSBezierPath(ovalIn: NSRect(x: c.x - 2.4, y: c.y - 2.4, width: 4.8, height: 4.8)).fill()
+            return true
+        }
+        img.isTemplate = true
+        return img
+    }()
 }

@@ -77,9 +77,9 @@ struct OnboardingView: View {
 
     private var header: some View {
         HStack {
-            Image(systemName: "scope")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(red)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 22, height: 22)
             Text("Focus")
                 .font(.system(size: 14, weight: .semibold))
             Spacer()
@@ -301,7 +301,7 @@ struct OnboardingView: View {
                     .foregroundStyle(.tertiary)
                 HStack(spacing: 5) {
                     Text("After this, click the")
-                    Image(systemName: "scope").foregroundStyle(red)
+                    Image(nsImage: MenuBarRing.mark)
                     Text("icon at the top of your screen to open Focus.")
                 }
                 .font(.system(size: 12))

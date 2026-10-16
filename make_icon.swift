@@ -1,45 +1,51 @@
 #!/usr/bin/env swift
 import Cocoa
 
+// The Focus mark: a goal ring closing on a single point. Same geometry as
+// `FocusMark` in LockInApp.swift (menu bar), drawn on the macOS icon grid.
 func renderIcon(size: Int) -> NSImage {
     let dim = CGFloat(size)
     let image = NSImage(size: NSSize(width: dim, height: dim))
     image.lockFocus()
 
-    // Rounded rect background
-    let radius = dim * 0.22
-    let bgPath = NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: dim, height: dim),
-                               xRadius: radius, yRadius: radius)
-    NSColor(red: 0.96, green: 0.36, blue: 0.36, alpha: 1).setFill()
+    let body = NSRect(x: 0, y: 0, width: dim, height: dim).insetBy(dx: dim * 0.098, dy: dim * 0.098)
+    let radius = body.width * 0.225
+
+    NSGraphicsContext.current?.saveGraphicsState()
+    let shadow = NSShadow()
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.3)
+    shadow.shadowBlurRadius = dim * 0.012
+    shadow.shadowOffset = NSSize(width: 0, height: -dim * 0.01)
+    shadow.set()
+    let bgPath = NSBezierPath(roundedRect: body, xRadius: radius, yRadius: radius)
+    NSColor.black.setFill()
     bgPath.fill()
+    NSGraphicsContext.current?.restoreGraphicsState()
 
-    // Build a white version of the lock symbol by:
-    // 1. Filling a canvas white, then masking it with the symbol's alpha (destinationIn)
-    let pt = dim * 0.45
-    let cfg = NSImage.SymbolConfiguration(pointSize: pt, weight: .medium)
-    if let symbol = NSImage(systemSymbolName: "lock.fill", accessibilityDescription: nil)?
-        .withSymbolConfiguration(cfg) {
+    NSGradient(colors: [
+        NSColor(red: 0.20, green: 0.22, blue: 0.36, alpha: 1),
+        NSColor(red: 0.07, green: 0.08, blue: 0.15, alpha: 1),
+    ])?.draw(in: bgPath, angle: -90)
 
-        let sw = symbol.size.width
-        let sh = symbol.size.height
+    let c = NSPoint(x: body.midX, y: body.midY)
+    let r = body.width * 0.27
+    let line = body.width * 0.085
 
-        // White-tinted symbol image
-        let whiteSymbol = NSImage(size: symbol.size, flipped: false) { rect in
-            NSColor.white.setFill()
-            rect.fill()
-            symbol.draw(in: rect, from: .zero,
-                        operation: .destinationIn, fraction: 1.0,
-                        respectFlipped: false, hints: nil)
-            return true
-        }
+    let track = NSBezierPath(ovalIn: NSRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
+    track.lineWidth = line
+    NSColor.white.withAlphaComponent(0.14).setStroke()
+    track.stroke()
 
-        // Center it in the icon
-        let x = (dim - sw) / 2
-        let y = (dim - sh) / 2
-        whiteSymbol.draw(in: NSRect(x: x, y: y, width: sw, height: sh),
-                         from: .zero, operation: .sourceOver, fraction: 1.0,
-                         respectFlipped: false, hints: nil)
-    }
+    let arc = NSBezierPath()
+    arc.appendArc(withCenter: c, radius: r, startAngle: 90, endAngle: 90 - 290, clockwise: true)
+    arc.lineWidth = line
+    arc.lineCapStyle = .round
+    NSColor.white.setStroke()
+    arc.stroke()
+
+    let d = body.width * 0.115
+    NSColor(red: 1.0, green: 0.55, blue: 0.24, alpha: 1).setFill()
+    NSBezierPath(ovalIn: NSRect(x: c.x - d, y: c.y - d, width: d * 2, height: d * 2)).fill()
 
     image.unlockFocus()
     return image
@@ -52,7 +58,7 @@ func savePNG(_ image: NSImage, to path: String) {
     try? png.write(to: URL(fileURLWithPath: path))
 }
 
-let iconsetPath = "/tmp/AppIcon.iconset"
+let iconsetPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "/tmp/AppIcon.iconset"
 try? FileManager.default.createDirectory(atPath: iconsetPath, withIntermediateDirectories: true)
 
 let sizes = [16, 32, 64, 128, 256, 512, 1024]
