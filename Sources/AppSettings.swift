@@ -286,6 +286,11 @@ class AppSettings: ObservableObject {
             lifeTags = FocusCategories.defaultLifeTags
             d.set(true, forKey: "didAddLifeCategories")
         }
+        if !d.bool(forKey: "didAddJournalingCategory") {
+            if !tags.contains("Journaling") { tags.append("Journaling") }
+            if !lifeTags.contains("Journaling") { lifeTags.append("Journaling") }
+            d.set(true, forKey: "didAddJournalingCategory")
+        }
         // didSet doesn't fire in init, so the migrations above only wrote locally.
         sd.set(tags, forKey: "tags")
         sd.set(lifeTags, forKey: FocusCategories.lifeTagsKey)

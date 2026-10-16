@@ -170,7 +170,7 @@ public enum FocusCategories {
     public static let openEndedSeconds: TimeInterval = 24 * 3600
 
     /// Until a device has received the synced list, assume these.
-    public static let defaultLifeTags = ["Class", "Meals", "Leisure", "Sleep", "Chores", "Exercise", "Social", "Commute", "Admin"]
+    public static let defaultLifeTags = ["Class", "Meals", "Leisure", "Sleep", "Chores", "Exercise", "Social", "Commute", "Admin", "Journaling"]
 
     /// Never a screen label: done away from the screen (Sleep, Meals…), or
     /// known from elsewhere (Class from the calendar). Offered as a choice,

@@ -144,6 +144,7 @@ Tests: `cd FocusCore && swift test` (recall scheduler, timer display, duration t
 - **Quick presets**: 15 / 25 / 45 / 60m chips when idle on work.
 
 ### Categories (focus vs life)
+- Journaling is a life category (10/16 user request): one-time Mac settings migration adds it to synced tags/lifeTags without replacing custom categories. Counts up, excluded from study goals/blocking, shared muted teal color and journal icon; screen hint covers personal reflection, with Focus-project work still Admin.
 - `settings.tags` = all categories (order = ⌃⌥⌘ category keys U I O P M , . / …, same keys in the switcher panel). `settings.lifeTags` (synced key `lifeTags`) = the life subset: tracked but not counted toward the goal. Toggle Focus/Life in the Stats tab category card.
 - `WorkSession.isFocus` / `StoredWorkSession.isFocus` = work type and not a life label. All goal/streak/stats code uses `isFocus`; day logs and timelines show everything. `minutesByTag(includeLife:)` for full-day splits.
 - Life categories start open-ended (count up, no presets). Colors: `categoryColor(_:)` in `DashboardView.swift`.

@@ -20,6 +20,7 @@ public func categoryColor(_ tag: String) -> Color {
     case "sleep":    return Color(red: 0.36, green: 0.38, blue: 0.52)
     case "chores":   return Color(red: 0.62, green: 0.58, blue: 0.52)
     case "commute":  return Color(red: 0.48, green: 0.56, blue: 0.62)
+    case "journaling": return Color(red: 0.42, green: 0.62, blue: 0.58)
     case "admin":    return Color(red: 0.60, green: 0.50, blue: 0.42)
     default:         return Color(red: 0.55, green: 0.58, blue: 0.63)
     }
@@ -36,6 +37,7 @@ public func categoryIcon(_ category: String) -> String {
     case "leisure": return "gamecontroller.fill"
     case "chores": return "basket.fill"
     case "admin": return "tray.full.fill"
+    case "journaling": return "book.closed.fill"
     case "swe": return "chevron.left.forwardslash.chevron.right"
     case "quant": return "function"
     case "ai": return "sparkles"

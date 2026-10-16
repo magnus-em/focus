@@ -150,3 +150,9 @@ User-approved scope: local screenshot evidence for review, clearer corrections, 
 - Final whole-app typecheck passed; live commit100a8ea installed by Claude. Hidden QA found an AppKit recursive constraint crash in solve-card galleries while recall galleries rendered. Replaced the optional native picker with explicit confidence buttons and bounded the glass card height to avoid hosting intrinsic-size feedback; retest pending.
 
 - Installed8a48d7d final hidden QA: all6captures succeeded, no solve-card crash. Independent DESIGN.md scores: draft88/89, ready89/90, corrected recall reveal89/89; initial recall87/88. No blockers. Local live status observed18completed episodes and53budget-ledger rows; one unknown outcome safely held without retry. Source typecheck passed100a8ea,123core tests previously passed; final UI fix compiled in Claude's signed deploy. No synthetic user solve/dose entries created.
+
+
+## Journaling category — 2026-10-16 (Codex)
+
+- User requested Journaling as a category. Added one-time Mac migration appending it to synced category and life lists, preserving existing choices; default life list, shared muted teal color/journal icon and personal-reflection screen-label hint. Existing timer, goal, blocking and device-sync paths handle life categories.
+- Validation: 169 FocusCore tests passed; signed Mac deployment and hidden category-picker visual check pending.

@@ -65,6 +65,8 @@ The user picked direction A ("Day story") from https://claude.ai/artifact/TUGjQv
 
 ## Next up
 
+- Journaling added as a synced life category (10/16, Codex); Mac launch migrates existing settings, then iPhone/iPad receive the category through normal settings sync.
+
 Landed Codex work: local screenshot evidence and correction controls, task context and AI-category safeguards, and Today / Review / Trends dashboard. See WORK_LOG.md for ownership, validation and remaining work. Keep test mode on. Next: check Health import/device sync and gather user feedback on the updated tracker.
 
 ## Open questions for the user
