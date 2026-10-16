@@ -155,4 +155,4 @@ User-approved scope: local screenshot evidence for review, clearer corrections, 
 ## Journaling category — 2026-10-16 (Codex)
 
 - User requested Journaling as a category. Added one-time Mac migration appending it to synced category and life lists, preserving existing choices; default life list, shared muted teal color/journal icon and personal-reflection screen-label hint. Existing timer, goal, blocking and device-sync paths handle life categories.
-- Validation: 169 FocusCore tests passed; signed Mac deployment and hidden category-picker visual check pending.
+- Validation: 169 FocusCore tests passed; signed clean-main Mac deployment b9e7409 succeeded, 394 sessions before/after. Saved tags and lifeTags both contain Journaling after launch. Hidden before/after popover review passed (light 91, dark 92); menu closed, so screenshots check layout regressions, not selected Journaling appearance. Phone/iPad receive the lists via existing settings sync; device round-trip not exercised.
