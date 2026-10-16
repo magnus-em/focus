@@ -19,6 +19,10 @@ public enum ScreenClassificationPolicy {
         if isFocusProjectWork(title: title, text: text) {
             return Decision(category: "Admin", reason: "Your rule: work on the Focus project is Admin", uncertain: false)
         }
+        // 10/16: a LeetCode problem about order prices was called Math, twice, while SWE ran.
+        if isCodingPractice(title: title) {
+            return Decision(category: "SWE", reason: "A coding practice site", uncertain: false)
+        }
         // 10/14: New Tab and Focus's own block page were labeled Admin and drew cards.
         if isPlaceholderPage(app: app, title: title) {
             return Decision(category: nil, reason: "An empty tab or block page does not show the task", uncertain: true)
@@ -97,6 +101,14 @@ public enum ScreenClassificationPolicy {
         let development = ["improve", "build", "implement", "redesign", "refactor", "debug", "develop", "review the codebase",
                            "install", "settings", "configure", "roadmap", "category", "work on", "working on"]
         return development.contains { body.contains($0) || title.contains($0) }
+    }
+
+    public static func isCodingPractice(title: String, url: String? = nil) -> Bool {
+        let title = normalized(String(title.prefix(240)))
+        let sites = ["leetcode", "neetcode", "hackerrank", "codeforces", "codesignal", "atcoder"]
+        if sites.contains(where: { title.hasSuffix("- \($0)") || title.hasSuffix("| \($0)") || title == $0 }) { return true }
+        guard let host = url.flatMap({ URL(string: $0)?.host?.lowercased() }) else { return false }
+        return sites.contains { host == "\($0).com" || host == "\($0).io" || host.hasSuffix(".\($0).com") || host == "\($0).jp" }
     }
 
     public static func isSocialFeed(title: String) -> Bool {

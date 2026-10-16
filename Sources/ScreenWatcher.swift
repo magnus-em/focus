@@ -988,6 +988,11 @@ final class ScreenWatcher: ObservableObject {
             labelReason = "Your rule: work on the Focus project is Admin"
             return ("Admin", fallbackSummary)
         }
+        if candidates.contains("SWE"), ScreenClassificationPolicy.isCodingPractice(title: title, url: url) {
+            labelSource = "coding practice site"
+            labelReason = "A coding practice site"
+            return ("SWE", fallbackSummary)
+        }
         if !generic, Self.usableMemoryKey(Self.memoryKey(bundle: bundle, title: title)),
            let known = Self.memory[Self.memoryKey(bundle: bundle, title: title)], candidates.contains(known) {
             let decision = ScreenClassificationPolicy.evaluate(category: known, app: app, title: title, text: text, source: .learned)

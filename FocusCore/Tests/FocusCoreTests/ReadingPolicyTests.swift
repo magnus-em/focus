@@ -12,6 +12,17 @@ final class ReadingPolicyTests: XCTestCase {
         }
     }
 
+    func testCodingPracticeSitesAreSWE() {
+        for (title, source) in [("Number of Orders in the Backlog - LeetCode", ScreenClassificationPolicy.Source.model),
+                                ("Problems - LeetCode", .learned), ("Two Sum | HackerRank", .held),
+                                ("Problem - 1801A - Codeforces", .model)] {
+            XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome", title: title, text: "", source: source).category, "SWE", title)
+        }
+        XCTAssertTrue(ScreenClassificationPolicy.isCodingPractice(title: "Untitled", url: "https://leetcode.com/problems/two-sum/"))
+        XCTAssertFalse(ScreenClassificationPolicy.isCodingPractice(title: "How LeetCode changed hiring - The Atlantic"))
+        XCTAssertFalse(ScreenClassificationPolicy.isCodingPractice(title: "Leetcode grind plan - Google Docs"))
+    }
+
     func testNewsFeedsShoppingAndForumsAreNotReading() {
         for title in ["Breaking news — latest headlines", "Home • Threads", "Shopping cart — Amazon.com",
                       "Hacker News", "r/popular", "What's happening | Reddit", "Forum: latest topics"] {
