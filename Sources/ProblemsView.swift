@@ -198,9 +198,7 @@ struct ProblemsView: View {
                 }
             }
         }
-        .background(Color.orange.opacity(0.06))
-        .cornerRadius(10)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.orange.opacity(0.2), lineWidth: 1))
+        .contentCard()
     }
 
     // MARK: - Progress card
@@ -484,10 +482,10 @@ private struct GoalBar: View {
                 } else {
                     Text("\(count)")
                         .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(domain.color)
+                        .foregroundStyle(.primary)
                     Text("problems")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.secondaryText)
                 }
             }
             if goal > 0 {
@@ -503,9 +501,7 @@ private struct GoalBar: View {
             }
         }
         .padding(10)
-        .background(domain.color.opacity(0.05))
-        .cornerRadius(10)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(domain.color.opacity(0.12), lineWidth: 1))
+        .contentCard()
     }
 }
 
@@ -543,13 +539,14 @@ private struct ReviewRow: View {
             Button {
                 withAnimation { store.clearReview(id: item.id) }
             } label: {
-                Text("Done")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 8)
+                Text("Reviewed")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Capsule().fill(Color.primary.opacity(0.08)))
                     .padding(.vertical, 4)
-                    .background(Color.orange.opacity(0.12))
-                    .cornerRadius(6)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .padding(.trailing, 10)

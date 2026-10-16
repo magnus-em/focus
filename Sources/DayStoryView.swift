@@ -116,7 +116,7 @@ struct DayStoryPage: View {
                 }
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 28) {
-                        storyColumn(story).frame(minWidth: 500, maxWidth: .infinity, alignment: .leading)
+                        storyColumn(story).frame(minWidth: 500, idealWidth: 560, maxWidth: .infinity, alignment: .leading)
                         side(story).frame(width: 300)
                     }
                     VStack(alignment: .leading, spacing: 24) {
@@ -144,7 +144,7 @@ struct DayStoryPage: View {
                             .accessibilityLabel("About the coach")
                     }
                 }
-                Text(line)
+                Text(DayStory.twelveHour(line))
                     .font(.system(size: 22, weight: .medium))
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -231,9 +231,9 @@ struct DayStoryPage: View {
     }
 
     private func storySubtitle(_ story: DayStory.Story) -> String {
-        var line = "Each stretch of the day with what you did in it. Orange notes mark time your log may have wrong; fix it on the row."
+        var line = "Each stretch of your day and what you did in it; ⚠︎ marks time your log may have wrong."
         if isToday, let asOf = story.headlineAsOf, story.headline != nil {
-            line += " Rows after \(clock(asOf)) are newer than the summary and keep updating."
+            line += " Rows after \(clock(asOf)) update as you go."
         }
         return line
     }
@@ -243,7 +243,7 @@ struct DayStoryPage: View {
             Text(clock(b.start)).font(.system(size: 12)).monospacedDigit().foregroundStyle(Color.secondaryText)
                 .frame(width: 64, alignment: .leading)
             Circle().fill(categoryColor(b.category ?? "")).frame(width: 7, height: 7)
-            Text("\(b.title) · \(durationText(minutes: span(b)))\(b.moments.first.map { " · " + $0.text } ?? "")")
+            Text("\(b.title) · \(durationText(minutes: span(b)))\(b.moments.first.flatMap { DayStory.restates($0.text, title: b.title) ? nil : " · " + DayStory.twelveHour($0.text) } ?? "")")
                 .font(.system(size: 13)).foregroundStyle(Color.secondaryText).lineLimit(1)
         }
         .padding(.vertical, 8)
@@ -299,7 +299,7 @@ struct DayStoryPage: View {
                     .frame(width: 58, alignment: .leading)
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(m.text).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                Text(DayStory.twelveHour(m.text)).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 if let d = m.detail {
                     Text(d).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -328,7 +328,7 @@ struct DayStoryPage: View {
 
     private func fixRow(_ f: DayStory.Fix) -> some View {
         HStack(alignment: .center, spacing: 10) {
-            Image(systemName: "exclamationmark.circle.fill").font(.system(size: 13)).foregroundStyle(Color.attention)
+            Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 13)).foregroundStyle(Color.attention)
             Text(message(f)).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             if let s = f.suggestion {
@@ -345,8 +345,8 @@ struct DayStoryPage: View {
             }
             pill("Leave it", prominent: false) { dismiss(f) }
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.attention.opacity(0.10)))
+        .padding(.horizontal, 12).padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.05)))
     }
 
     private func isUntrackedFix(_ f: DayStory.Fix) -> Bool {
@@ -373,7 +373,7 @@ struct DayStoryPage: View {
                 .foregroundStyle(prominent ? Color(nsColor: .windowBackgroundColor) : .primary)
                 .padding(.horizontal, 12).frame(height: 28)
                 .background(Capsule().fill(prominent ? Color.primary : Color.primary.opacity(0.08)))
-                .padding(.vertical, 4)
+                .padding(.vertical, 2)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -550,7 +550,8 @@ struct DayLanesView: View {
     let day: Date
     @State private var hover: Date?
 
-    private static let eventColor = Color(red: 1.0, green: 0.48, blue: 0.27)
+    /// Neutral, so a calendar event never reads as the Class category's coral.
+    private static let eventColor = Color.primary.opacity(0.2)
     private var start: Date { Calendar.current.startOfDay(for: day) }
 
     private struct Row: Identifiable {
@@ -620,7 +621,9 @@ struct DayLanesView: View {
                 FlowLayout(spacing: 12) {
                     ForEach(legend, id: \.self) { label in
                         HStack(spacing: 5) {
-                            RoundedRectangle(cornerRadius: 2).fill(label == "Calendar event" ? Self.eventColor : categoryColor(label))
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(label == "Calendar event" ? Self.eventColor
+                                      : label == "Nothing logged" ? Color.primary.opacity(0.06) : categoryColor(label))
                                 .frame(width: 10, height: 10)
                             Text(label).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                         }
@@ -645,7 +648,7 @@ struct DayLanesView: View {
         var seen = Set<String>()
         let labels = (lanes.tracked.map { ($0.start, $0.label) } + lanes.screen.compactMap { s in s.category.map { (s.start, $0) } })
             .sorted { $0.0 < $1.0 }.map(\.1).filter { seen.insert($0).inserted }
-        return labels + (lanes.events.isEmpty ? [] : ["Calendar event"])
+        return labels + (lanes.events.isEmpty ? [] : ["Calendar event"]) + ["Nothing logged"]
     }
 
     private var readout: String {
@@ -675,7 +678,7 @@ struct DayLanesView: View {
                 let rect = CGRect(x: x0, y: 0, width: max(1, x1 - x0), height: size.height)
                 ctx.fill(Path(rect), with: .color(color))
                 guard i < titles.count else { continue }
-                let text = ctx.resolve(Text(titles[i]).font(.system(size: 11, weight: .medium)).foregroundColor(.black.opacity(0.8)))
+                let text = ctx.resolve(Text(titles[i]).font(.system(size: 11, weight: .medium)).foregroundColor(.primary))
                 if text.measure(in: CGSize(width: .infinity, height: size.height)).width + 8 <= rect.width {
                     ctx.draw(text, at: CGPoint(x: rect.minX + 4, y: rect.midY), anchor: .leading)
                 }

@@ -211,5 +211,5 @@ extension Color {
 /// light sheet. Dark mode keeps the plain glass.
 private struct LightSheetBase: View {
     @Environment(\.colorScheme) private var scheme
-    var body: some View { scheme == .light ? Color.white.opacity(0.55) : Color.clear }
+    var body: some View { scheme == .light ? Color.white.opacity(0.7) : Color.clear }
 }

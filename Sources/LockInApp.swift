@@ -639,6 +639,7 @@ struct PopoverContent: View {
 
     private var pageSubtitle: String {
         switch selectedTab {
+        case 0: "What you're tracking right now"
         case 1: "Focus time by day and category"
         case 2: "Problems you solved, reviews due"
         case 3: "A quick checklist"
@@ -651,10 +652,8 @@ struct PopoverContent: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(selectedTab == 0 ? "Focus" : pageTitle).font(.system(size: 15, weight: .semibold))
-                    if selectedTab != 0 {
-                        Text(pageSubtitle).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
-                    }
+                    Text(selectedTab == 0 ? "Now" : pageTitle).font(.system(size: 15, weight: .semibold))
+                    Text(pageSubtitle).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
                 }
                 Spacer()
                 Button(action: openDashboard) {

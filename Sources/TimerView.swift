@@ -76,6 +76,8 @@ struct TimerView: View {
             }
             attention
             if let whereWasI { WhereWasIRow(line: whereWasI) }
+            controlBar
+            detailsButton
             if detent == .large {
                 dayStrip
                 onScreenNow
@@ -84,8 +86,6 @@ struct TimerView: View {
                     LogFixView(timer: timer, store: store, categories: settings.tags)
                 }
             }
-            controlBar
-            detailsButton
         }
         .padding(.horizontal, 16)
         .padding(.top, 18)
@@ -141,11 +141,11 @@ struct TimerView: View {
         if labels.count > 1 || possibleDrift >= 1 {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(labels.count > 1 ? "Focus today" : labels.first.map { "Focus today: all \($0)" } ?? "Focus today")
+                    Text(labels.count > 1 ? "Focus today" : labels.first.map { "All of today's focus was \($0)" } ?? "Focus today")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                     Spacer()
                     if possibleDrift >= 1 {
-                        Text("\(hm(possibleDrift)) possibly off-task")
+                        Text("\(hm(possibleDrift)) off-task, per the screen")
                             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                             .help("The screen showed Leisure, Reading or Admin during focus blocks. Not taken off your focus time: the screen can be wrong, and work on paper or the iPad doesn't show here.")
                     }
@@ -187,6 +187,16 @@ struct TimerView: View {
         }
     }
 
+    /// The ring measures focus, so it takes the running category's color only
+    /// when that's a focus category; otherwise the day's main focus color, so a
+    /// green Exercise ring never reads as "3h 57m of Exercise".
+    private var ringColor: Color {
+        let label = timer.currentLabel
+        if timer.isActive, !timer.isOnBreak, !label.isEmpty, !FocusCategories.isLife(label) { return categoryColor(label) }
+        if let top = todayFocusByCategory.max(by: { $0.value < $1.value })?.key { return categoryColor(top) }
+        return Color.primary.opacity(0.5)
+    }
+
     /// Secondary to the timer: small, in the category's color, with a
     /// check once the day's goal is met.
     private var goalRing: some View {
@@ -197,7 +207,7 @@ struct TimerView: View {
             Circle().stroke(Color.primary.opacity(0.08), lineWidth: 7)
             Circle()
                 .trim(from: 0, to: min(1, hours / goal))
-                .stroke(accent, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                .stroke(ringColor, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(reduceMotion ? nil : .smooth(duration: 0.4), value: hours)
             // Past the goal, a second, lighter lap keeps the ring meaningful.
@@ -323,9 +333,12 @@ struct TimerView: View {
     /// Nothing running: the focus categories, since picking one is next.
     /// Life categories are in the title menu.
     private var startChips: some View {
-        FlowLayout(spacing: 6) {
-            ForEach(settings.tags.filter { !settings.lifeTags.contains($0) }, id: \.self) { tag in
-                chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Pick what to focus on").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+            FlowLayout(spacing: 6) {
+                ForEach(settings.tags.filter { !settings.lifeTags.contains($0) }, id: \.self) { tag in
+                    chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -338,7 +351,7 @@ struct TimerView: View {
                 Text(name).font(.system(size: 13, weight: selected ? .semibold : .regular)).lineLimit(1)
             }
             .padding(.horizontal, 12)
-            .frame(height: 30)
+            .frame(height: 36)
             .background(Capsule().fill(selected ? color.opacity(0.22) : Color.primary.opacity(0.06)))
             .contentShape(Capsule())
         }
@@ -440,10 +453,11 @@ struct TimerView: View {
 
     private func overlapText(_ o: SessionOverlap) -> String {
         let name = { (s: WorkSession) in s.type.isBreak ? "Break" : (s.label ?? "Focus") }
-        let day = OverlapFixView.day(o.start)
-        let when = (day.isEmpty ? "" : day.prefix(1).uppercased() + day.dropFirst()) + "\(clock(o.start))–\(clock(o.end))"
-        return o.sameLabel ? "\(when) was saved twice as \(name(o.first))"
-            : "\(when) is logged as both \(name(o.first)) and \(name(o.second))"
+        let short = Date.FormatStyle().hour(.defaultDigits(amPM: .omitted)).minute()
+        let sameHalf = Calendar.current.component(.hour, from: o.start) / 12 == Calendar.current.component(.hour, from: o.end) / 12
+        let when = OverlapFixView.day(o.start) + (sameHalf ? o.start.formatted(short) : clock(o.start)) + "–" + clock(o.end)
+        return o.sameLabel ? "\(name(o.first)) saved twice, \(when)"
+            : "\(name(o.first)) and \(name(o.second)) both logged, \(when)"
     }
 
     private func attentionRow(color: Color, icon: String, text: String, action: String?, perform: @escaping () -> Void) -> some View {
@@ -502,9 +516,9 @@ struct TimerView: View {
         let streak = store.currentStreak + (store.todayWorkMinutes < 1 && todayFocusMinutes >= 1 ? 1 : 0)
         return VStack(spacing: 6) {
             HStack {
-                Text("Today, hour by hour")
+                Text("Your timer, hour by hour")
                 Spacer()
-                if streak > 0 { Text("\(streak)-day streak").help("Days in a row with any focus time") }
+                if streak > 0 { Text("\(streak) days in a row with focus") }
             }
             .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
             GeometryReader { g in
@@ -548,7 +562,7 @@ struct TimerView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Circle().fill(block.category.map(categoryColor) ?? .gray).frame(width: 7, height: 7)
-                    Text(differs ? "Screen looks like \(block.category!)" : "On screen")
+                    Text(differs ? "Screen looks like \(block.category!)" : block.category.map { "On screen now · looks like \($0)" } ?? "On screen now")
                     Spacer(minLength: 4)
                     if differs, let c = block.category {
                         Button("Switch") { timer.switchTo(c, at: block.start) }
@@ -605,9 +619,10 @@ struct TimerView: View {
                             Text(b.running ? "now" : hm(b.end.timeIntervalSince(b.start) / 60))
                                 .font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
                         }
-                        if let m = b.moments.last, !m.text.isEmpty {
-                            Text(b.study ? m.text : "On screen: " + m.text)
-                                .font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
+                        if let m = b.moments.last, !m.text.isEmpty, !DayStory.restates(m.text, title: b.title) {
+                            Text((b.study || m.activities.isEmpty ? "" : "On screen: ") + DayStory.twelveHour(m.text))
+                                .font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
@@ -695,6 +710,7 @@ struct NativeGlassControl: ViewModifier {
 struct FocusTransportControls: View {
     @ObservedObject var timer: TimerManager
     var returnsFromBreak = false
+    var labeledBreak = true
     @Namespace private var glassNamespace
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -748,14 +764,14 @@ struct FocusTransportControls: View {
             if timer.isActive && !timer.isOnBreak {
                 control(id: "break", prominent: false) {
                     Button { timer.startManualBreak(minutes: 0) } label: {
-                        if returnsFromBreak {
+                        if labeledBreak {
                             Label("Break", systemImage: "cup.and.saucer").font(.system(size: 13, weight: .medium))
                                 .padding(.horizontal, 4).frame(height: 36)
                         } else {
                             Image(systemName: "cup.and.saucer").font(.system(size: 14)).frame(width: 36, height: 36)
                         }
                     }
-                    .buttonBorderShape(returnsFromBreak ? .capsule : .circle)
+                    .buttonBorderShape(labeledBreak ? .capsule : .circle)
                     .help("Take a break").accessibilityLabel("Take a break")
                 }
             }
@@ -796,12 +812,13 @@ struct NowPlayingBar: View {
             Text(timer.timeString)
                 .font(.system(size: 17, weight: .semibold, design: .rounded).monospacedDigit())
                 .contentTransition(.numericText())
-            FocusTransportControls(timer: timer).frame(maxWidth: 200)
+                .fixedSize()
+            FocusTransportControls(timer: timer).frame(minWidth: 250, maxWidth: 270)
         }
         .padding(.leading, 18)
         .padding(.trailing, 8)
         .frame(minHeight: 60)
-        .frame(maxWidth: 540)
+        .frame(maxWidth: 580)
         .modifier(FloatingGlass())
         .padding(.bottom, 14)
     }
@@ -810,7 +827,9 @@ struct NowPlayingBar: View {
 struct FloatingGlass: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
-            content.glassEffect(.regular, in: Capsule()).shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+            content.glassEffect(.regular, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+                .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
         } else {
             content.background(Capsule().fill(.regularMaterial)).shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         }
