@@ -2,7 +2,7 @@ import SwiftUI
 import FocusCore
 
 enum PadTab: String, Identifiable, CaseIterable, Hashable {
-    case timer, overview, daylog, problems, homework, scratch
+    case timer, overview, daylog, adderall, problems, homework, scratch
     case stats, insights, awards, settings
     var id: String { rawValue }
 
@@ -11,6 +11,7 @@ enum PadTab: String, Identifiable, CaseIterable, Hashable {
         case .timer:    return "Timer"
         case .overview: return "Overview"
         case .daylog:   return "Day Log"
+        case .adderall: return "Adderall"
         case .problems: return "Problems"
         case .homework: return "Homework"
         case .scratch:  return "Scratchpad"
@@ -26,6 +27,7 @@ enum PadTab: String, Identifiable, CaseIterable, Hashable {
         case .timer:    return "timer"
         case .overview: return "rectangle.3.group"
         case .daylog:   return "calendar.day.timeline.left"
+        case .adderall: return "pills.fill"
         case .problems: return "checkmark.circle"
         case .homework: return "book"
         case .scratch:  return "list.bullet.rectangle"
@@ -41,6 +43,7 @@ enum PadTab: String, Identifiable, CaseIterable, Hashable {
         case .timer:    return FocusColors.focusRed
         case .overview: return FocusColors.focusRed
         case .daylog:   return .indigo
+        case .adderall: return .orange
         case .problems: return .blue
         case .homework: return .green
         case .scratch:  return .yellow
@@ -72,12 +75,18 @@ struct RootView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .tint(FocusColors.focusRed)
+        .onOpenURL { url in
+            // focus://adderall from the Adderall widget.
+            guard url.scheme == "focus", let tab = PadTab(rawValue: url.host ?? "") else { return }
+            selection = tab
+            compactColumn = .detail
+        }
     }
 
     private var sidebar: some View {
         List {
             Section {
-                ForEach([PadTab.timer, .overview, .daylog]) { tab in
+                ForEach([PadTab.timer, .overview, .daylog, .adderall]) { tab in
                     sidebarButton(tab)
                 }
             }
@@ -132,6 +141,7 @@ struct RootView: View {
         case .timer:    TimerScreen()
         case .overview: DashboardScreen()
         case .daylog:   DayLogScreen()
+        case .adderall: AdderallScreen()
         case .problems: ProblemsScreen()
         case .homework: HomeworkScreen()
         case .scratch:  ScratchpadScreen()

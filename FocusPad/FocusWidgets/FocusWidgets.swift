@@ -10,6 +10,8 @@ struct FocusWidgetsBundle: WidgetBundle {
         SwitchCategoryControl()
         BreakControl()
         StopControl()
+        LogDoseControl()
+        DoseWidget()
         FocusLiveActivityWidget()
     }
 }

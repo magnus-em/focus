@@ -45,6 +45,10 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSSupportsLiveActivities: true
+        CFBundleURLTypes:
+          - CFBundleURLName: com.magnus.focus.iPad
+            CFBundleURLSchemes:
+              - focus
         UIBackgroundModes:
           - remote-notification
         UIApplicationSceneManifest:

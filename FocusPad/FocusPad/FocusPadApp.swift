@@ -50,6 +50,7 @@ struct FocusPadApp: App {
         // Set up here, not in onAppear, so a background CloudKit wake (Mac
         // switched) updates the Lock Screen too.
         FocusLiveActivity.follow(e)
+        DoseMirror.followRemoteChanges()
     }
 
     var body: some Scene {
@@ -61,6 +62,7 @@ struct FocusPadApp: App {
                 .onChange(of: settings.tags) { _, tags in SharedStore.defaults.set(tags, forKey: "tags") }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     guard phase == .active else { return }
+                    DoseMirror.update(from: container)
                     Task { await HealthImport.run(container: container, tags: settings.tags, runningSince: engine.isActive ? engine.sessionStartTime : nil) }
                 }
         }

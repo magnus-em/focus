@@ -2,55 +2,6 @@ import Foundation
 import FocusCore
 import SwiftData
 
-enum HealthTracker: String, CaseIterable, Identifiable {
-    case fap, adderall
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .fap: return "Jerk"
-        case .adderall: return "Adderall"
-        }
-    }
-
-    var kinds: [HealthKind] { HealthKind.allCases.filter { $0.tracker == self } }
-
-    /// Fap counts occurrences; Adderall sums milligrams.
-    var unit: String { self == .adderall ? "mg" : "" }
-}
-
-enum HealthKind: String, CaseIterable, Identifiable {
-    case fap
-    case adderallIR10, adderallIR20, adderallXR20
-
-    var id: String { rawValue }
-
-    var tracker: HealthTracker {
-        switch self {
-        case .fap: return .fap
-        case .adderallIR10, .adderallIR20, .adderallXR20: return .adderall
-        }
-    }
-
-    var displayName: String {
-        switch self {
-        case .fap: return "Jerk"
-        case .adderallIR10: return "IR 10 mg"
-        case .adderallIR20: return "IR 20 mg"
-        case .adderallXR20: return "XR 20 mg"
-        }
-    }
-
-    var amount: Int {
-        switch self {
-        case .fap: return 1
-        case .adderallIR10: return 10
-        case .adderallIR20, .adderallXR20: return 20
-        }
-    }
-}
-
 struct HealthEvent: Identifiable, Equatable {
     let id: UUID
     let date: Date
@@ -76,9 +27,17 @@ class HealthStore: ObservableObject {
         return c
     }()
 
+    private var remoteObserver: NSObjectProtocol?
+
     init(container: ModelContainer) {
         self.context = ModelContext(container)
         refresh()
+        // Doses logged on the phone arrive through the CloudKit mirror without a local save.
+        remoteObserver = NotificationCenter.default.addObserver(
+            forName: .NSPersistentStoreRemoteChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.refresh() }
+        }
     }
 
     func refresh() {

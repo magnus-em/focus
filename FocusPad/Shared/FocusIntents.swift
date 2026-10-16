@@ -181,6 +181,15 @@ struct FocusShortcuts: AppShortcutsProvider {
             systemImageName: "chart.bar.fill"
         )
         AppShortcut(
+            intent: LogDoseIntent(),
+            phrases: [
+                "Log Adderall in \(.applicationName)",
+                "Log \(\.$dose) in \(.applicationName)",
+            ],
+            shortTitle: "Log Adderall",
+            systemImageName: "pills.fill"
+        )
+        AppShortcut(
             intent: TakeBreakIntent(),
             phrases: ["Take a break in \(.applicationName)"],
             shortTitle: "Break",
