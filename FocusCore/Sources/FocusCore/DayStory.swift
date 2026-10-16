@@ -404,8 +404,10 @@ public enum DayStory {
                     let next = items[j]
                     guard next.event == nil, next.start.timeIntervalSince(block.end) <= 15 * 60 else { break }
                     if key(next) == key(it) {
-                        if block.study, next.evidence != it.evidence, max(next.minutes, it.minutes) > 15,
-                           !(next.evidence ? it : next).running { break }
+                        if block.study, next.evidence != it.evidence {
+                            let unseen = next.evidence ? (block.minutes, block.running) : (next.minutes, next.running)
+                            if unseen.0 > 15, !unseen.1 { break }
+                        }
                         block.end = max(block.end, next.end)
                         if let m = next.moment { block.moments.append(m) }
                         block.minutes += next.minutes
@@ -560,6 +562,32 @@ public enum DayStory {
         guard let category else { return nil }
         let matches = order.filter { byCode[$0]?.category == category }
         return matches.count == 1 ? matches[0] : nil
+    }
+
+    // MARK: Display
+
+    /// A coach line that only restates its row ("Meal, 19 minutes." under
+    /// Meals, "Short break." under Break, "Sleep, tracked through 10:10.").
+    public static func restates(_ text: String, title: String) -> Bool {
+        let t = text.lowercased(), name = title.lowercased()
+        guard t.count < 60 else { return false }
+        let stem = String(name.prefix(max(4, name.count - 1)))
+        return t.contains(stem) && (t.range(of: #"\d+ ?(min|minutes|h)\b"#, options: .regularExpression) != nil
+            || t.hasPrefix(stem) || t.hasPrefix("short " + stem) || t.hasPrefix("tracked " + stem))
+    }
+
+    /// The coach writes 24-hour clock times ("still running at 21:19"); the
+    /// pages show 12-hour ones.
+    public static func twelveHour(_ text: String) -> String {
+        guard let re = try? NSRegularExpression(pattern: #"(?<![\d:])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])(?!\s?[AaPp]\.?[Mm])"#)
+        else { return text }
+        var out = text
+        for m in re.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed() {
+            guard let r = Range(m.range, in: text), let hr = Range(m.range(at: 1), in: text),
+                  let mr = Range(m.range(at: 2), in: text), let h = Int(text[hr]) else { continue }
+            out.replaceSubrange(r, with: "\(h % 12 == 0 ? 12 : h % 12):\(text[mr]) \(h < 12 ? "AM" : "PM")")
+        }
+        return out
     }
 
     // MARK: Helpers

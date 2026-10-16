@@ -217,6 +217,34 @@ final class DayStoryTests: XCTestCase {
         XCTAssertEqual(runs.count, 1)
     }
 
+    /// 10/15 9 PM: the record's last morning entry ended at 11:48 and the
+    /// 3 minutes of tracked Math after it became a row of their own.
+    func testAFewTrackedMinutesAfterTheCoachsEntryStayInItsBlock() {
+        let content = CoachDay.Content(headline: "MATH 244.", timeline: [entry("10:08", "11:48", "Math", "MATH 244 review.")],
+                                       study: [], questions: [], other: [], planVsActual: nil, observations: [])
+        let rec = CoachDay.Record(day: "2026-10-15", content: content, generatedAt: at(21, 0), model: "grok-4.7",
+                                  costUSD: 0.05, images: 0, promptVersion: 4)
+        let s = DayStory.build(day: day, now: at(21, 0), tracked: [.init(start: at(10, 8), end: at(11, 51), label: "Math"),
+                                                                   .init(start: at(12, 30), end: at(13, 0), label: "Math")],
+                               record: rec, observations: [], focus: focus, calendar: calendar)
+        XCTAssertEqual(s.blocks.first?.end, at(11, 51))
+        XCTAssertEqual(s.blocks.filter { $0.course == "MATH 244" }.count, 2,
+                       "half an hour tracked with nothing seen, 40 minutes later, is still its own block")
+    }
+
+    func testRowsDontRepeatThemselvesAndTimesReadTwelveHour() {
+        XCTAssertTrue(DayStory.restates("Meal, 19 minutes.", title: "Meals"))
+        XCTAssertTrue(DayStory.restates("Short break.", title: "Break"))
+        XCTAssertTrue(DayStory.restates("Sleep, tracked through 10:10.", title: "Sleep"))
+        XCTAssertFalse(DayStory.restates("Reminders app Primary task list", title: "Class"))
+        XCTAssertFalse(DayStory.restates("Coach.md and Codex onboarding", title: "Chores"))
+        XCTAssertEqual(DayStory.twelveHour("a long exercise block still running at 21:19."),
+                       "a long exercise block still running at 9:19 PM.")
+        XCTAssertEqual(DayStory.twelveHour("Around 10:45 you noted leaving at 12:45; 0:30 later"),
+                       "Around 10:45 AM you noted leaving at 12:45 PM; 12:30 AM later")
+        XCTAssertEqual(DayStory.twelveHour("At 9:30 PM, ratio 3:1, 12:00:05"), "At 9:30 PM, ratio 3:1, 12:00:05")
+    }
+
     func testWeekMergesOneCourseNamedTwoWaysUnderTheLongerName() {
         func course(_ code: String, _ minutes: Double) -> DayStory.Course {
             DayStory.Course(code: code, category: "SWE", minutes: minutes, topics: [], shaky: [], digest: nil, activity: [:])
