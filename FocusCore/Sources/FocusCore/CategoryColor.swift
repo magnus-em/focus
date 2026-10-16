@@ -40,6 +40,7 @@ public func categoryIcon(_ category: String) -> String {
     case "quant": return "function"
     case "ai": return "sparkles"
     case "hw": return "pencil.and.list.clipboard"
+    case "reading": return "book.fill"
     default: return "scope"
     }
 }

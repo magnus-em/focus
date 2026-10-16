@@ -58,11 +58,20 @@ struct FocusPadApp: App {
             RootView()
                 .environmentObject(settings)
                 .environmentObject(engine)
-                .onAppear { Self.liveEngine = engine }
+                .onAppear {
+                    Self.liveEngine = engine
+                    #if DEBUG && targetEnvironment(simulator)
+                    if ProcessInfo.processInfo.arguments.contains("-seedDemo") { DemoSeed.run(container: container, engine: engine) }
+                    #endif
+                }
                 .onChange(of: settings.tags) { _, tags in SharedStore.defaults.set(tags, forKey: "tags") }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     guard phase == .active else { return }
                     DoseMirror.update(from: container)
+                    DayBriefStore.shared.reload()
+                    #if DEBUG && targetEnvironment(simulator)
+                    if ProcessInfo.processInfo.arguments.contains("-seedDemo") { return }
+                    #endif
                     Task { await HealthImport.run(container: container, tags: settings.tags, runningSince: engine.isActive ? engine.sessionStartTime : nil) }
                 }
         }

@@ -23,7 +23,10 @@ final class DayBriefPublisher {
         for model in [today, yesterday] {
             model.$story.compactMap { $0 }.sink { [weak self, weak model] story in
                 guard let self, let model, let day = self.days[ObjectIdentifier(model)] else { return }
-                DayBrief.make(day: day, story: story, written: Date()).publish()
+                let brief = DayBrief.make(day: day, story: story, written: Date())
+                if brief.publish() {
+                    SyncLog.event("dayBriefPublished", ["day": brief.day, "fixes": brief.fixes.count, "blocks": brief.blocks.count])
+                }
             }
             .store(in: &bag)
         }

@@ -23,6 +23,12 @@ struct AdderallScreen: View {
     var body: some View {
         let today = doses(on: Date())
         List {
+            Section {
+                Text("Log doses and see the time since today's first one. Same log as your Mac.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+            }
             Section { clock(today) }
             logSection
             Section("Doses today") {
@@ -37,7 +43,13 @@ struct AdderallScreen: View {
                         }
                 }
             }
-            Section("Last 7 days") { week }
+            Section {
+                week
+            } header: {
+                Text("Earlier this week")
+            } footer: {
+                Text(quietDays)
+            }
             Section {
                 Label("Add the Adderall clock to your Lock Screen or Home Screen: touch and hold it, tap Customize or Edit, then pick Focus. The Log Adderall control logs a dose from the Lock Screen or Control Center.",
                       systemImage: "lock.iphone")
@@ -61,9 +73,9 @@ struct AdderallScreen: View {
     private func clock(_ today: [StoredHealthEvent]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Today").font(.headline)
+                Text("Since first dose").font(.headline)
                 Spacer()
-                Text("\(today.compactMap { HealthKind(rawValue: $0.kind)?.amount }.reduce(0, +)) mg")
+                Text("\(today.compactMap { HealthKind(rawValue: $0.kind)?.amount }.reduce(0, +)) mg today")
                     .font(.title3.weight(.semibold).monospacedDigit())
             }
             if let first = today.first {
@@ -103,8 +115,8 @@ struct AdderallScreen: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .tint(.orange)
-            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            .tint(.primary)
+            .controlSize(.large)
             if let id = justLogged {
                 HStack {
                     Label("Dose logged", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
@@ -122,23 +134,32 @@ struct AdderallScreen: View {
         }
     }
 
+    private var earlierDays: [Date] {
+        (1..<7).compactMap { Calendar.current.date(byAdding: .day, value: -$0, to: Calendar.current.startOfDay(for: Date())) }
+    }
+
+    @ViewBuilder
     private var week: some View {
-        ForEach(0..<7, id: \.self) { back in
-            if let day = Calendar.current.date(byAdding: .day, value: -back, to: Calendar.current.startOfDay(for: Date())) {
-                let list = doses(on: day)
-                HStack {
-                    Text(back == 0 ? "Today" : day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
-                    Spacer()
-                    if let first = list.first {
-                        Text("\(time(first.date)) · \(list.compactMap { HealthKind(rawValue: $0.kind)?.amount }.reduce(0, +)) mg")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("None").foregroundStyle(.tertiary)
-                    }
+        let days = earlierDays.filter { !doses(on: $0).isEmpty }
+        if days.isEmpty { Text("No doses in the last 6 days.").foregroundStyle(.secondary) }
+        ForEach(days, id: \.self) { day in
+            let list = doses(on: day)
+            HStack {
+                Text(day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                Spacer()
+                if let first = list.first {
+                    Text("first \(time(first.date)) · \(list.compactMap { HealthKind(rawValue: $0.kind)?.amount }.reduce(0, +)) mg")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
                 }
             }
         }
+    }
+
+    private var quietDays: String {
+        let none = earlierDays.filter { doses(on: $0).isEmpty }
+        guard !none.isEmpty, none.count < 6 else { return "" }
+        return "None on " + none.reversed().map { $0.formatted(.dateTime.weekday(.abbreviated)) }.joined(separator: ", ") + "."
     }
 
     private func doseRow(_ dose: StoredHealthEvent) -> some View {

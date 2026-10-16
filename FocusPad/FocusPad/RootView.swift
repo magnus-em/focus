@@ -1,154 +1,57 @@
 import SwiftUI
 import FocusCore
 
-enum PadTab: String, Identifiable, CaseIterable, Hashable {
-    case timer, overview, daylog, adderall, problems, homework, scratch
-    case stats, insights, awards, settings
-    var id: String { rawValue }
+enum PadTab: String, Hashable {
+    case now, today, adderall, more
+}
 
-    var label: String {
-        switch self {
-        case .timer:    return "Timer"
-        case .overview: return "Overview"
-        case .daylog:   return "Day Log"
-        case .adderall: return "Adderall"
-        case .problems: return "Problems"
-        case .homework: return "Homework"
-        case .scratch:  return "Scratchpad"
-        case .stats:    return "Stats"
-        case .insights: return "Insights"
-        case .awards:   return "Awards"
-        case .settings: return "Settings"
+/// Four tabs: what's running (and switching it), today's log, the dose
+/// clock, and Notes and Settings. Everything else lives on the Mac.
+struct RootView: View {
+    @State private var tab: PadTab = {
+        #if DEBUG && targetEnvironment(simulator)
+        return PadTab(rawValue: UserDefaults.standard.string(forKey: "startTab") ?? "") ?? .now
+        #else
+        return .now
+        #endif
+    }()
+    @EnvironmentObject private var engine: FocusTimerEngine
+
+    var body: some View {
+        TabView(selection: $tab) {
+            NavigationStack { NowScreen(tab: $tab) }
+                .tabItem { Label("Now", systemImage: "timer") }
+                .tag(PadTab.now)
+            NavigationStack { TodayScreen() }
+                .tabItem { Label("Today", systemImage: "calendar.day.timeline.left") }
+                .tag(PadTab.today)
+            NavigationStack { AdderallScreen() }
+                .tabItem { Label("Adderall", systemImage: "pills.fill") }
+                .tag(PadTab.adderall)
+            NavigationStack { MoreScreen() }
+                .tabItem { Label("More", systemImage: "ellipsis.circle") }
+                .tag(PadTab.more)
         }
-    }
-
-    var symbol: String {
-        switch self {
-        case .timer:    return "timer"
-        case .overview: return "rectangle.3.group"
-        case .daylog:   return "calendar.day.timeline.left"
-        case .adderall: return "pills.fill"
-        case .problems: return "checkmark.circle"
-        case .homework: return "book"
-        case .scratch:  return "list.bullet.rectangle"
-        case .stats:    return "chart.bar.xaxis"
-        case .insights: return "sparkles"
-        case .awards:   return "rosette"
-        case .settings: return "gearshape"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .timer:    return FocusColors.focusRed
-        case .overview: return FocusColors.focusRed
-        case .daylog:   return .indigo
-        case .adderall: return .orange
-        case .problems: return .blue
-        case .homework: return .green
-        case .scratch:  return .yellow
-        case .stats:    return .purple
-        case .insights: return .mint
-        case .awards:   return .yellow
-        case .settings: return .gray
+        .tint(.primary)
+        .onOpenURL { url in
+            // focus://adderall from the dose widget; focus://today, focus://now.
+            guard url.scheme == "focus", let target = PadTab(rawValue: url.host ?? "") else { return }
+            tab = target
         }
     }
 }
 
-/// Sidebar uses a Button-driven selection rather than `List(selection:)` tags
-/// because the tagged approach was failing to update the detail view on real
-/// hardware. Buttons set @State directly — bulletproof — and the detail closure
-/// reads that state, with `.id()` forcing a fresh NavigationStack per tab.
-struct RootView: View {
-    @State private var selection: PadTab = .timer
-    /// On iPhone the split view collapses to a stack; this is which side shows.
-    @State private var compactColumn: NavigationSplitViewColumn = .detail
-
+private struct MoreScreen: View {
     var body: some View {
-        NavigationSplitView(preferredCompactColumn: $compactColumn) {
-            sidebar
-        } detail: {
-            NavigationStack {
-                destination(for: selection)
-            }
-            .id(selection)
-        }
-        .navigationSplitViewStyle(.balanced)
-        .tint(FocusColors.focusRed)
-        .onOpenURL { url in
-            // focus://adderall from the Adderall widget.
-            guard url.scheme == "focus", let tab = PadTab(rawValue: url.host ?? "") else { return }
-            selection = tab
-            compactColumn = .detail
-        }
-    }
-
-    private var sidebar: some View {
         List {
             Section {
-                ForEach([PadTab.timer, .overview, .daylog, .adderall]) { tab in
-                    sidebarButton(tab)
-                }
-            }
-            Section("Capture") {
-                ForEach([PadTab.problems, .homework, .scratch]) { tab in
-                    sidebarButton(tab)
-                }
-            }
-            Section("Analytics") {
-                ForEach([PadTab.stats, .insights, .awards]) { tab in
-                    sidebarButton(tab)
-                }
-            }
-            Section {
-                sidebarButton(.settings)
+                NavigationLink { ScratchpadScreen() } label: { Label("Notes", systemImage: "list.bullet.rectangle") }
+                NavigationLink { SettingsScreen() } label: { Label("Settings", systemImage: "gearshape") }
+            } footer: {
+                Text("Stats, recall, problems and the full Day and Week pages are on your Mac.")
             }
         }
-        .listStyle(.sidebar)
-        .navigationTitle("Focus")
-    }
-
-    private func sidebarButton(_ tab: PadTab) -> some View {
-        Button {
-            Haptics.tap()
-            selection = tab
-            compactColumn = .detail
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: tab.symbol)
-                    .font(.system(size: 16))
-                    .foregroundStyle(tab.tint)
-                    .frame(width: 22)
-                Text(tab.label)
-                    .foregroundStyle(.primary)
-                Spacer()
-                if selection == tab {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .contentShape(Rectangle())
-            .padding(.vertical, 2)
-        }
-        .buttonStyle(.plain)
-        .listRowBackground(selection == tab ? tab.tint.opacity(0.12) : Color.clear)
-    }
-
-    @ViewBuilder
-    private func destination(for tab: PadTab) -> some View {
-        switch tab {
-        case .timer:    TimerScreen()
-        case .overview: DashboardScreen()
-        case .daylog:   DayLogScreen()
-        case .adderall: AdderallScreen()
-        case .problems: ProblemsScreen()
-        case .homework: HomeworkScreen()
-        case .scratch:  ScratchpadScreen()
-        case .stats:    StatsScreen()
-        case .insights: InsightsScreen()
-        case .awards:   AwardsScreen()
-        case .settings: SettingsScreen()
-        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("More")
     }
 }

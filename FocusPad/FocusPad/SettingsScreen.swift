@@ -10,8 +10,6 @@ struct SettingsScreen: View {
     @Environment(\.modelContext) private var context
 
     @State private var newTag = ""
-    @State private var newSource = ""
-    @State private var showInterviewPicker = false
     @State private var cloudStatus: String = "checking…"
     @State private var cloudDetail: String = ""
     @State private var exportURL: URL? = nil
@@ -101,64 +99,6 @@ struct SettingsScreen: View {
                         newTag = ""
                     }
                     .disabled(newTag.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-
-            Section("Problem Goals") {
-                Stepper(value: $settings.quantGoal, in: 0...100) {
-                    HStack { Text("Quant daily"); Spacer(); Text("\(settings.quantGoal)").foregroundStyle(.secondary) }
-                }
-                Stepper(value: $settings.quantWeeklyGoal, in: 0...500) {
-                    HStack { Text("Quant weekly"); Spacer(); Text("\(settings.quantWeeklyGoal)").foregroundStyle(.secondary) }
-                }
-                Stepper(value: $settings.sweGoal, in: 0...100) {
-                    HStack { Text("SWE daily"); Spacer(); Text("\(settings.sweGoal)").foregroundStyle(.secondary) }
-                }
-                Stepper(value: $settings.sweWeeklyGoal, in: 0...500) {
-                    HStack { Text("SWE weekly"); Spacer(); Text("\(settings.sweWeeklyGoal)").foregroundStyle(.secondary) }
-                }
-                Stepper(value: $settings.homeworkDailyGoal, in: 0...50) {
-                    HStack { Text("Homework daily"); Spacer(); Text("\(settings.homeworkDailyGoal)").foregroundStyle(.secondary) }
-                }
-            }
-
-            Section("Problem Sources") {
-                ForEach(settings.problemSources, id: \.self) { src in
-                    Text(src)
-                }
-                .onDelete { offsets in
-                    for i in offsets { settings.problemSources.remove(at: i) }
-                }
-                HStack {
-                    TextField("New source", text: $newSource)
-                    Button("Add") {
-                        let s = newSource.trimmingCharacters(in: .whitespaces)
-                        guard !s.isEmpty, !settings.problemSources.contains(s) else { return }
-                        settings.problemSources.append(s)
-                        newSource = ""
-                    }
-                    .disabled(newSource.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-
-            Section("Interview Date") {
-                Toggle("Track countdown", isOn: Binding(
-                    get: { settings.interviewDate != nil },
-                    set: { on in
-                        if on {
-                            settings.interviewDate = Calendar.current.date(byAdding: .day, value: 30, to: Date())
-                        } else {
-                            settings.interviewDate = nil
-                        }
-                    }
-                ))
-                if settings.interviewDate != nil {
-                    DatePicker("Date",
-                               selection: Binding(
-                                get: { settings.interviewDate ?? Date() },
-                                set: { settings.interviewDate = $0 }
-                               ),
-                               displayedComponents: .date)
                 }
             }
 
