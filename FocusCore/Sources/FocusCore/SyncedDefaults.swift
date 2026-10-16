@@ -48,6 +48,7 @@ public final class SyncedDefaults {
     ]
 
     private init() {
+        #if !targetEnvironment(simulator)
         // ONLY pull from iCloud the very first time this device sees the
         // synced-settings layer. After that, local UserDefaults is the
         // source of truth — incoming KVS changes come in via the
@@ -70,6 +71,7 @@ public final class SyncedDefaults {
         // Kick the KVS to fetch the latest snapshot. If it has newer data,
         // didChangeExternally will fire and the observer will handle it.
         kvs.synchronize()
+        #endif
     }
 
     /// True while a settings object reloads itself from imported values: its
@@ -82,17 +84,21 @@ public final class SyncedDefaults {
     public func set(_ value: Any?, forKey key: String) {
         guard !isReloading else { return }
         defaults.set(value, forKey: key)
+        #if !targetEnvironment(simulator)
         guard Self.syncedKeys.contains(key) else { return }
         if let value {
             kvs.set(value, forKey: key)
         } else {
             kvs.removeObject(forKey: key)
         }
+        #endif
     }
 
     /// Force a KVS push (most app lifecycle moments do this implicitly).
     public func synchronize() {
+        #if !targetEnvironment(simulator)
         kvs.synchronize()
+        #endif
     }
 
     private func importRemote() {

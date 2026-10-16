@@ -84,8 +84,10 @@ public final class LocalTimerBroadcast: NSObject, ObservableObject {
         advertiser.delegate = self
         browser.delegate = self
 
+        #if !targetEnvironment(simulator)
         advertiser.startAdvertisingPeer()
         browser.startBrowsingForPeers()
+        #endif
     }
 
     deinit {

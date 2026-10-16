@@ -6,7 +6,11 @@ import FocusCore
 struct FocusPadApp: App {
     /// Shared with App Intents, including background launches with no UI.
     static let sharedContainer: ModelContainer = {
+        #if targetEnvironment(simulator)
+        let useCloud = false
+        #else
         let useCloud = UserDefaults.standard.object(forKey: "cloudKitSyncEnabled") as? Bool ?? true
+        #endif
         do {
             return try FocusModelContainer.make(cloudKitSync: useCloud)
         } catch {
