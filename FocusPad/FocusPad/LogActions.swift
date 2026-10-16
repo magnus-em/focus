@@ -33,6 +33,8 @@ struct LogActions {
         }
         guard let runStart, end.timeIntervalSince(max(start, runStart)) >= 60 else { return out }
         let from = max(start, runStart)
+        // "Reading until 20 min ago, then chores": the running part already is Reading.
+        if let label, !engine.isOnBreak, label == engine.currentLabel, from.timeIntervalSince(runStart) <= 60 { return out }
         guard end >= now.addingTimeInterval(-90) else {
             out.problem = "Part of that is inside what's running now. Stop it first, or fix it on the Mac."
             return out

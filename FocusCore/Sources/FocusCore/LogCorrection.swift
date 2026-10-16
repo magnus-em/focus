@@ -35,10 +35,12 @@ public enum LogCorrection {
 
     /// "13:40" or "1:40" → the latest such time no later than a few minutes
     /// after `now` (so "1:40" said at 3:12 PM is 1:40 PM, and "23:30" said
-    /// just after midnight is last night). "now" → `now`.
+    /// just after midnight is last night). "now" → `now`; "-30" → 30 minutes
+    /// before `now` ("30 min ago", "the last 30 min").
     public static func resolve(_ clock: String, now: Date, calendar: Calendar = .current) -> Date? {
         var s = clock.trimmingCharacters(in: .whitespaces).lowercased()
         if s == "now" { return now }
+        if s.hasPrefix("-"), let minutes = Double(s.dropFirst()) { return now.addingTimeInterval(-minutes * 60) }
         let meridiem = ["am", "pm"].first { s.hasSuffix($0) }
         if let meridiem { s = String(s.dropLast(2)).trimmingCharacters(in: .whitespaces) }
         let parts = s.split(separator: ":")
@@ -71,21 +73,26 @@ public enum LogCorrection {
         "friends": "Social", "hung out": "Social", "party": "Social",
         "walk": "Commute", "walked": "Commute", "drove": "Commute", "bus": "Commute",
         "email": "Admin", "emails": "Admin", "errands": "Admin",
-        "cleaning": "Chores", "laundry": "Chores", "shower": "Chores",
+        "cleaning": "Chores", "cleaned": "Chores", "laundry": "Chores", "shower": "Chores", "dishes": "Chores",
+        "tidying": "Chores", "tidied": "Chores",
         "read": "Reading", "reading": "Reading", "leetcode": "SWE", "coding": "SWE",
         "break": "Break",
     ]
 
-    /// The common ways of saying it, read without the model: clauses split
-    /// at commas and "then"; in each, a category (name or everyday word) and
-    /// times: "1-1:40", "from 12:20 to 12:50", "since 2", "until 1:40", or
-    /// none ("the rest was leisure"). Nil when a clause names no category,
-    /// or nothing gives a time, so the model gets a go.
+    /// The common ways of saying it, read without the model: pieces split
+    /// at commas and "then"; in each, a category (name or everyday word, not
+    /// one it says it wasn't: "chores not reading") and times: "1-1:40",
+    /// "from 12:20 to 12:50", "since 2", "until 1:40", "the last 30 min",
+    /// "20 min ago", "for 45 min", or none ("the rest was leisure"). A piece
+    /// with no category goes with its neighbour ("the last 30 min, chores").
+    /// Nil when nothing names a category or gives a time, so the model gets
+    /// a go.
     public static func parse(_ text: String, categories: [String]) -> [Raw]? {
         var t = " " + text.lowercased()
-            .replacingOccurrences(of: "–", with: "-").replacingOccurrences(of: "—", with: "-") + " "
+            .replacingOccurrences(of: "–", with: "-").replacingOccurrences(of: "—", with: "-")
+            .replacingOccurrences(of: "’", with: "'") + " "
         t = t.replacingOccurrences(of: "noon", with: "12:00").replacingOccurrences(of: "midnight", with: "0:00")
-        let clauses = t.components(separatedBy: CharacterSet(charactersIn: ",;"))
+        let pieces = t.components(separatedBy: CharacterSet(charactersIn: ",;"))
             .flatMap { $0.components(separatedBy: " then ") }
             .flatMap { $0.components(separatedBy: " after that ") }
             .map { " " + $0.trimmingCharacters(in: .whitespaces) + " " }
@@ -93,33 +100,57 @@ public enum LogCorrection {
         let names = categories.map { ($0.lowercased(), $0) } + synonyms.compactMap { word, cat in
             (categories.contains(cat) || cat == "Break") ? (word, cat) : nil
         }
-        let time = try! NSRegularExpression(pattern: #"(?<![\d:])(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?![\d:])"#)
+        var clauses: [(text: String, category: String)] = []
+        var pending = ""
+        for piece in pieces {
+            let joined = pending + piece
+            if let category = category(in: joined, names: names) {
+                clauses.append((joined, category))
+                pending = ""
+            } else {
+                pending = joined
+            }
+        }
+        if !pending.isEmpty, let last = clauses.popLast() {
+            let joined = last.text + pending
+            clauses.append((joined, category(in: joined, names: names) ?? last.category))
+        }
+        let clock = try! NSRegularExpression(pattern: #"(?<![\d:])(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?![\d:])"#)
         var out: [Raw] = []
         var anyTime = false
-        for c in clauses {
-            guard let category = names
-                .compactMap({ name, cat -> (Int, String)? in
-                    guard let r = c.range(of: "\\b\(NSRegularExpression.escapedPattern(for: name))\\b", options: .regularExpression) else { return nil }
-                    return (c.distance(from: c.startIndex, to: r.lowerBound), cat)
-                })
-                .min(by: { $0.0 < $1.0 })?.1 else { return nil }
-            // "for 20 min" is a length, not a clock time.
-            let clockText = c.replacingOccurrences(of: Self.durationPattern, with: " ", options: .regularExpression)
+        for (c, category) in clauses {
+            // "for 20 min", "the last 5 min" and "10 min ago" aren't clock times.
+            var clockText = c
+            for pattern in [durationPattern, lastPattern, agoPattern] { clockText = blank(pattern, in: clockText) }
             let ns = clockText as NSString
-            let times = time.matches(in: clockText, range: NSRange(location: 0, length: ns.length)).compactMap { m -> String? in
+            var tokens = clock.matches(in: clockText, range: NSRange(location: 0, length: ns.length)).compactMap { m -> (Int, String)? in
                 guard let h = Int(ns.substring(with: m.range(at: 1))), h <= 23 else { return nil }
                 let min = m.range(at: 2).location == NSNotFound ? "00" : ns.substring(with: m.range(at: 2))
                 let ampm = m.range(at: 3).location == NSNotFound ? "" : ns.substring(with: m.range(at: 3))
-                return "\(h):\(min)\(ampm)"
+                return (m.range.location, "\(h):\(min)\(ampm)")
             }
-            anyTime = anyTime || !times.isEmpty
+            tokens += matches(agoPattern, in: c).compactMap { m in
+                spanMinutes((c as NSString).substring(with: m.range(at: 1))).map { (m.range.location, "-\($0)") }
+            }
+            let times = tokens.sorted { $0.0 < $1.0 }.map(\.1)
+            let length = duration(c)
+            let span = matches(lastPattern, in: c).first.flatMap { spanMinutes((c as NSString).substring(with: $0.range(at: 1))) }
             let has = { (w: String) in c.range(of: "\\b\(w)\\b", options: .regularExpression) != nil }
+            let ends = ["until", "till", "til", "stopped", "ended", "finished", "done", "before"].contains(where: has)
+            let starts = ["since", "from", "starting", "started", "began", "at", "around", "about"].contains(where: has)
+            let first = !anyTime
+            anyTime = anyTime || !times.isEmpty || span != nil || length != nil
             switch times.count {
+            case 0 where span != nil:
+                out.append(Raw(from: "-\(span!)", to: "now", category: category))
+            case 0 where length != nil:
+                out.append(first ? Raw(from: "-\(length!)", to: "now", category: category)
+                                 : Raw(from: "", to: "+\(length!)", category: category))
             case 0: out.append(Raw(from: "", to: has("now") ? "now" : "", category: category))
-            case 1 where duration(c) != nil:
-                out.append(Raw(from: times[0], to: "+\(duration(c)!)", category: category))
+            case 1 where length != nil:
+                out.append(Raw(from: times[0], to: "+\(length!)", category: category))
             case 1:
-                if has("since") || has("from") || has("starting") || has("at") || has("around") || has("about") {
+                if !ends && (starts || times[0].hasPrefix("-")) {
                     out.append(Raw(from: times[0], to: has("since") ? "now" : "", category: category))
                 } else {
                     out.append(Raw(from: "", to: times[0], category: category))
@@ -130,26 +161,80 @@ public enum LogCorrection {
         return anyTime && !out.isEmpty ? out : nil
     }
 
-    static let durationPattern = #"\bfor (\d+(?:\.\d+)?) ?(min|mins|minutes|m|hour|hours|hr|hrs|h)\b|\bfor (half an hour|half hour|an hour)\b"#
+    /// The category a piece is about: the first one named, skipping any it
+    /// says it wasn't ("not reading", "instead of reading"), or the last one
+    /// when it's a correction ("reading was actually chores", "change
+    /// reading to chores"). "Lunch with friends" stays Meals.
+    static func category(in c: String, names: [(String, String)]) -> String? {
+        let negated = try! NSRegularExpression(pattern: #"(?:\bnot|\bnever|\bno|n't|\binstead of|\brather than)\s+(?:[\w']+\s+){0,2}$"#)
+        let mentions = names.compactMap { name, cat -> (Range<String.Index>, String)? in
+            guard let r = c.range(of: "\\b\(NSRegularExpression.escapedPattern(for: name))\\b", options: .regularExpression) else { return nil }
+            let before = String(c[..<r.lowerBound])
+            guard negated.firstMatch(in: before, range: NSRange(location: 0, length: (before as NSString).length)) == nil else { return nil }
+            return (r, cat)
+        }
+        .sorted { $0.0.lowerBound < $1.0.lowerBound }
+        guard let first = mentions.first, let last = mentions.last else { return nil }
+        guard first.1 != last.1, first.0.upperBound <= last.0.lowerBound else { return first.1 }
+        let between = String(c[first.0.upperBound..<last.0.lowerBound])
+        let has = { (pattern: String, s: String) in s.range(of: pattern, options: .regularExpression) != nil }
+        if has(#"\b(?:was|were|is|are|be|been|actually|really)\b|->|→"#, between)
+            || (has(#"\b(?:change|changed|switch|switched|relabel|mark|make|set|log)\b"#, c) && has(#"\b(?:to|into|as)\b"#, between)) {
+            return last.1
+        }
+        return first.1
+    }
+
+    static let amount = #"(?:\d+(?:\.\d+)?|an?|one|two|three|four|five|six|(?:a )?couple(?: of)?)"#
+    static let unit = #"(?:minutes|minute|mins|min|m|hours|hour|hrs|hr|h)"#
+    /// "30 min", "an hour", "half an hour", "an hour and a half", "a couple of hours".
+    static let span = #"(?:half an hour|half hour|(?:\#(amount) ?)?\#(unit)(?: and a half)?)"#
+    static let durationPattern = #"\bfor (\#(span))\b"#
+    static let lastPattern = #"\b(?:last|past) (\#(span))\b"#
+    static let agoPattern = #"\b(\#(span)) ago\b"#
+
+    /// Minutes in a `span`: "30 min" 30, "half an hour" 30, "1.5 hours" 90.
+    static func spanMinutes(_ text: String) -> Int? {
+        var s = text.trimmingCharacters(in: .whitespaces)
+        if s == "half an hour" || s == "half hour" { return 30 }
+        var half = 0.0
+        if s.hasSuffix(" and a half") { s.removeLast(" and a half".count); half = 0.5 }
+        let ns = s as NSString
+        let re = try! NSRegularExpression(pattern: #"^(?:(\#(amount)) ?)?(\#(unit))$"#)
+        guard let m = re.firstMatch(in: s, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        let word = m.range(at: 1).location == NSNotFound ? "one" : ns.substring(with: m.range(at: 1))
+        let words: [String: Double] = ["a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6]
+        guard let n = word.contains("couple") ? 2 : words[word] ?? Double(word) else { return nil }
+        let minutes = ns.substring(with: m.range(at: 2)).hasPrefix("h") ? (n + half) * 60 : n
+        return minutes >= 1 ? Int(minutes.rounded()) : nil
+    }
 
     /// Minutes in "for 20 min", "for 2 hours", "for half an hour", "for an hour".
     static func duration(_ clause: String) -> Int? {
-        if clause.contains("half an hour") || clause.contains("half hour") { return 30 }
-        if clause.range(of: #"\bfor an hour\b"#, options: .regularExpression) != nil { return 60 }
-        let re = try! NSRegularExpression(pattern: #"\bfor (\d+(?:\.\d+)?) ?(min|mins|minutes|m|hour|hours|hr|hrs|h)\b"#)
-        let ns = clause as NSString
-        guard let m = re.firstMatch(in: clause, range: NSRange(location: 0, length: ns.length)),
-              let n = Double(ns.substring(with: m.range(at: 1))) else { return nil }
-        return ns.substring(with: m.range(at: 2)).hasPrefix("h") ? Int(n * 60) : Int(n)
+        matches(durationPattern, in: clause).first.flatMap { spanMinutes((clause as NSString).substring(with: $0.range(at: 1))) }
+    }
+
+    private static func matches(_ pattern: String, in s: String) -> [NSTextCheckingResult] {
+        try! NSRegularExpression(pattern: pattern).matches(in: s, range: NSRange(location: 0, length: (s as NSString).length))
+    }
+
+    /// `s` with every match replaced by as many spaces, so positions still line up.
+    private static func blank(_ pattern: String, in s: String) -> String {
+        let out = NSMutableString(string: s)
+        for m in matches(pattern, in: s).reversed() {
+            out.replaceCharacters(in: m.range, with: String(repeating: " ", count: m.range.length))
+        }
+        return out as String
     }
 
     /// Fills in what the sentence left out, then keeps blocks that make
     /// sense. A missing start is where the previous range ended ("then class
-    /// until 1:40"); a missing end is the end of the logged block the range
-    /// starts in, or now if that block is still running ("the rest was
-    /// leisure", "math since 2"). Kept: start before end, at most 18 h, within
-    /// the last 36 h, clipped to now, a known category, no overlap with an
-    /// earlier one.
+    /// until 1:40"), or for the first range the start of the logged block
+    /// its end falls in ("reading until 20 min ago, then chores"); a missing
+    /// end is the end of the logged block the range starts in, or now if
+    /// that block is still running ("the rest was leisure", "math since 2").
+    /// Kept: start before end, at most 18 h, within the last 36 h, clipped to
+    /// now, a known category, no overlap with an earlier one.
     public static func validate(_ raw: [Raw], now: Date, categories: [String],
                                 log: [(start: Date, end: Date, label: String)] = [],
                                 calendar: Calendar = .current) -> [Block] {
@@ -158,7 +243,11 @@ public enum LogCorrection {
         for r in raw {
             let from = r.from.trimmingCharacters(in: .whitespaces)
             let to = r.to.trimmingCharacters(in: .whitespaces)
-            guard let a = from.isEmpty ? previousEnd : resolve(from, now: now, calendar: calendar) else { continue }
+            var start = from.isEmpty ? previousEnd : resolve(from, now: now, calendar: calendar)
+            if start == nil, from.isEmpty, !to.isEmpty, !to.hasPrefix("+"), let end = resolve(to, now: now, calendar: calendar) {
+                start = log.last { $0.start < end && $0.end >= end }?.start
+            }
+            guard let a = start else { continue }
             var b: Date
             if to.isEmpty {
                 let containing = log.last { $0.start <= a && $0.end > a }

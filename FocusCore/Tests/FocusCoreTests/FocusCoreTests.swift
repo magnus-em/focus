@@ -295,6 +295,24 @@ final class LogCorrectionTests: XCTestCase {
                                 LogCorrection.Block(start: t(14, 13, 40), end: t(14, 15, 12), category: "Leisure")])
     }
 
+    func testRelativeRangesEndNow() {
+        let now = t(16, 9, 4)
+        let blocks = LogCorrection.validate([LogCorrection.Raw(from: "-30", to: "now", category: "Chores")],
+                                            now: now, categories: ["Chores"], calendar: cal)
+        XCTAssertEqual(blocks, [LogCorrection.Block(start: t(16, 8, 34), end: now, category: "Chores")])
+    }
+
+    // "reading until 20 min ago, then chores": the first range starts where its block does.
+    func testMissingFirstStartIsTheBlocksStart() {
+        let now = t(16, 9, 4)
+        let log = [(start: t(16, 8, 30), end: now, label: "Reading")]
+        let raw = [LogCorrection.Raw(from: "", to: "-20", category: "Reading"),
+                   LogCorrection.Raw(from: "", to: "", category: "Chores")]
+        let blocks = LogCorrection.validate(raw, now: now, categories: ["Reading", "Chores"], log: log, calendar: cal)
+        XCTAssertEqual(blocks, [LogCorrection.Block(start: t(16, 8, 30), end: t(16, 8, 44), category: "Reading"),
+                                LogCorrection.Block(start: t(16, 8, 44), end: now, category: "Chores")])
+    }
+
     func testNonsenseIsDropped() {
         let raw = [LogCorrection.Raw(from: "14:00", to: "13:00", category: "Math"),
                    LogCorrection.Raw(from: "10:00", to: "11:00", category: "Juggling"),
@@ -325,8 +343,42 @@ final class LogCorrectionParseTests: XCTestCase {
         XCTAssertEqual(read("Class at 1 for 20 min"), ["1:00|+20|Class"])
     }
 
+    // 10/16, typed on the iPhone (no on-device model there): "Couldn't find times".
+    func testRelativeTimes() {
+        XCTAssertEqual(read("the last 30 min were chores not reading"), ["-30|now|Chores"])
+        XCTAssertEqual(read("reading was actually chores for the last half hour"), ["-30|now|Chores"])
+        XCTAssertEqual(read("chores since 20 min ago"), ["-20|now|Chores"])
+        XCTAssertEqual(read("switched to chores 20 minutes ago"), ["-20||Chores"])
+        XCTAssertEqual(read("reading until 20 min ago, then chores"), ["|-20|Reading", "||Chores"])
+        XCTAssertEqual(read("the past hour and a half was math"), ["-90|now|Math"])
+        XCTAssertEqual(read("I’ve been doing chores for 45 min"), ["-45|now|Chores"])
+        XCTAssertEqual(read("math for the last 5 min"), ["-5|now|Math"])
+        XCTAssertEqual(read("reading from 8:30 until 20 min ago"), ["8:30|-20|Reading"])
+        XCTAssertEqual(read("slept from 11 last night"), ["11:00||Sleep"])
+    }
+
+    func testWhatItWasntAndCorrections() {
+        XCTAssertEqual(read("for the last hour, chores instead of reading"), ["-60|now|Chores"])
+        XCTAssertEqual(read("it wasn’t reading, it was chores, last 30 min"), ["-30|now|Chores"])
+        XCTAssertEqual(read("change reading to chores since 9"), ["9:00|now|Chores"])
+        XCTAssertEqual(read("lunch with friends 12-1"), ["12:00|1:00|Meals"])
+        XCTAssertEqual(read("walked to class at 1"), ["1:00||Commute"])
+        XCTAssertEqual(read("finished class at 1:40, then leisure"), ["|1:40|Class", "||Leisure"])
+    }
+
     func testFallsBackToTheModelWhenItCantRead() {
         XCTAssertNil(read("the usual stuff this afternoon"))
         XCTAssertNil(read("class then leisure"))
+        XCTAssertNil(read("not reading"))
+    }
+
+    func testSpans() {
+        XCTAssertEqual(LogCorrection.spanMinutes("30 min"), 30)
+        XCTAssertEqual(LogCorrection.spanMinutes("half an hour"), 30)
+        XCTAssertEqual(LogCorrection.spanMinutes("an hour and a half"), 90)
+        XCTAssertEqual(LogCorrection.spanMinutes("1.5 hours"), 90)
+        XCTAssertEqual(LogCorrection.spanMinutes("a couple of hours"), 120)
+        XCTAssertEqual(LogCorrection.spanMinutes("hour"), 60)
+        XCTAssertNil(LogCorrection.spanMinutes("night"))
     }
 }

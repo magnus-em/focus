@@ -350,7 +350,7 @@ struct TodayScreen: View {
             }
             if let readProblem { Text(readProblem).font(.footnote).foregroundStyle(.orange) }
         } footer: {
-            Text("Times and categories in plain words, like “sleep 11:30pm to 8:30, then reading”. You see the change before anything is saved.")
+            Text("Times and categories in plain words, like “the last 30 min was chores” or “sleep 11:30pm to 8:30, then reading”. You see the change before anything is saved.")
         }
     }
 
@@ -373,7 +373,7 @@ struct TodayScreen: View {
             }
             reading = false
             guard let blocks, !blocks.isEmpty else {
-                readProblem = "Couldn't find times in that. Try “Class 1–1:40, then Leisure”."
+                readProblem = "Couldn't find times in that. Try “chores for the last 30 min” or “class 1–1:40, then leisure”."
                 return
             }
             preview = blocks
