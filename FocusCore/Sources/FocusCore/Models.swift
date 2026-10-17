@@ -165,6 +165,8 @@ public struct WorkSession: Codable, Identifiable, Sendable {
 public enum FocusCategories {
     public static let lifeTagsKey = "lifeTags"
     public static let wellbeingTags = ["Reading", "Journaling", "Exercise"]
+    /// Added 10/17 as a focus category; appended so existing hotkeys keep their keys.
+    public static let recruiting = "Recruiting"
 
     public static func isWellbeing(_ label: String) -> Bool {
         wellbeingTags.contains(label)

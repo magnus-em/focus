@@ -124,6 +124,13 @@ final class PadSettings: ObservableObject {
             sd.set(lifeTags, forKey: FocusCategories.lifeTagsKey)
             d.set(true, forKey: "didAddWellbeingGroup")
         }
+        if !d.bool(forKey: "didAddRecruitingCategory") {
+            if !tags.contains(FocusCategories.recruiting) {
+                tags.append(FocusCategories.recruiting)
+                sd.set(tags, forKey: "tags")
+            }
+            d.set(true, forKey: "didAddRecruitingCategory")
+        }
 
         NotificationCenter.default.addObserver(
             self,

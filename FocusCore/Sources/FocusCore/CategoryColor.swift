@@ -22,6 +22,7 @@ public func categoryColor(_ tag: String) -> Color {
     case "commute":  return Color(red: 0.48, green: 0.56, blue: 0.62)
     case "journaling": return Color(red: 0.42, green: 0.62, blue: 0.58)
     case "admin":    return Color(red: 0.60, green: 0.50, blue: 0.42)
+    case "recruiting": return Color(red: 0.86, green: 0.24, blue: 0.32)
     default:         return Color(red: 0.55, green: 0.58, blue: 0.63)
     }
 }
@@ -43,6 +44,7 @@ public func categoryIcon(_ category: String) -> String {
     case "ai": return "sparkles"
     case "hw": return "pencil.and.list.clipboard"
     case "reading": return "book.fill"
+    case "recruiting": return "briefcase.fill"
     default: return "scope"
     }
 }
