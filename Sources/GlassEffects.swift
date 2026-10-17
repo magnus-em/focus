@@ -213,3 +213,32 @@ private struct LightSheetBase: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View { scheme == .light ? Color.white.opacity(0.7) : Color.clear }
 }
+
+/// The menu bar window keeps the height it opened with when content grows
+/// afterwards (a late "where was I" row, the day bar's detail), so the tab bar
+/// got clipped. Sits behind content laid out at its ideal height and sizes the
+/// window to it, top edge fixed.
+struct PopoverWindowFitter: NSViewRepresentable {
+    final class FitView: NSView {
+        override func layout() {
+            super.layout()
+            DispatchQueue.main.async { [weak self] in self?.fit() }
+        }
+
+        func fit() {
+            guard let window, let content = window.contentView else { return }
+            let want = frame.height
+            let have = content.frame.height
+            guard want > 50, abs(want - have) > 1 else { return }
+            var f = window.frame
+            f.origin.y += have - want
+            f.size.height += want - have
+            window.setFrame(f, display: true)
+        }
+    }
+
+    func makeNSView(context: Context) -> FitView { FitView() }
+    func updateNSView(_ nsView: FitView, context: Context) {
+        DispatchQueue.main.async { nsView.fit() }
+    }
+}

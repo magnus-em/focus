@@ -11,11 +11,15 @@ public enum WhereWasI {
         /// A confirmed non-private https address to reopen, if the source had one.
         public var url: URL?
         public var bundle: String
+        public var topic: String
+        public var end: Date?
 
-        public init(text: String, url: URL?, bundle: String) {
+        public init(text: String, url: URL?, bundle: String, topic: String = "", end: Date? = nil) {
             self.text = text
             self.url = url
             self.bundle = bundle
+            self.topic = topic
+            self.end = end
         }
     }
 
@@ -40,6 +44,6 @@ public enum WhereWasI {
             text += "; stuck on: \(s)"
         }
         let url = e.source.privacy == .regular ? e.source.url.flatMap(URL.init(string:)).flatMap { $0.scheme == "https" ? $0 : nil } : nil
-        return Line(text: text, url: url, bundle: e.source.bundle)
+        return Line(text: text, url: url, bundle: e.source.bundle, topic: u.topic, end: e.source.end)
     }
 }

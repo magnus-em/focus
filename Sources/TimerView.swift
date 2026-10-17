@@ -83,7 +83,7 @@ struct TimerView: View {
                 startChips
             }
             attention
-            if let whereWasI { WhereWasIRow(line: whereWasI) }
+            if let whereWasI { WhereWasIRow(line: whereWasI, color: categoryColor(timer.currentLabel)) }
             controlBar
             detailsButton
             if detent == .large {
@@ -147,11 +147,11 @@ struct TimerView: View {
         if labels.count > 1 || possibleDrift >= 1 {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(labels.count > 1 ? "Focus today" : labels.first.map { "Today's focus: \($0)" } ?? "Focus today")
+                    Text("Focus")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                     Spacer()
                     if possibleDrift >= 1 {
-                        Text("\(hm(possibleDrift)) off-task, per the screen")
+                        Text("\(hm(possibleDrift)) off-task")
                             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                             .help("The screen showed a non-focus category during focus blocks. Not taken off your focus time: the screen can be wrong, and work on paper or the iPad doesn't show here.")
                     }
@@ -175,7 +175,7 @@ struct TimerView: View {
 
     private var wellbeingTotals: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Wellbeing today · separate from your focus goal")
+            Text("Wellbeing")
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
             FlowLayout(spacing: 8) {
                 ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { label in
@@ -589,9 +589,9 @@ struct TimerView: View {
             ?? selectedSegment.flatMap { t in segments.first { $0.start <= t && t < $0.end } }
         return VStack(spacing: 6) {
             HStack {
-                Text("Your day")
+                Text("Today")
                 Spacer()
-                if streak > 0 { Text("\(streak) days in a row with focus") }
+                if streak > 0 { Text("\(streak)-day streak") }
             }
             .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
             GeometryReader { g in
@@ -628,14 +628,7 @@ struct TimerView: View {
             .frame(height: 14)
             .font(.system(size: 11))
             .foregroundStyle(Color.secondaryText)
-            if let selected {
-                segmentDetail(selected)
-            } else {
-                Text("Click any part of the bar to see what it was")
-                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 2)
-            }
+            if let selected { segmentDetail(selected) }
         }
     }
 
@@ -662,16 +655,13 @@ struct TimerView: View {
                 Text(hm(b.end.timeIntervalSince(b.start) / 60))
                     .font(.system(size: 13, weight: .medium).monospacedDigit())
             }
-            Text(isRunning ? "Since \(clock(b.start)), still running" : "\(clock(b.start)) – \(clock(b.end))")
+            Text(isRunning ? "Since \(clock(b.start))" : "\(clock(b.start)) – \(clock(b.end))")
                 .font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
             if !courses.isEmpty || !events.isEmpty {
                 Text((events + courses.filter { !events.contains($0) }).joined(separator: " · "))
                     .font(.system(size: 12, weight: .medium))
             }
-            if moments.isEmpty {
-                Text(b.label.isEmpty ? "Nothing was logged here." : "No notes on what was on screen for this stretch.")
-                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-            } else {
+            if !moments.isEmpty {
                 VStack(alignment: .leading, spacing: 5) {
                     ForEach(Array(moments.suffix(5))) { m in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -682,7 +672,7 @@ struct TimerView: View {
                         }
                     }
                     if moments.count > 5 {
-                        Text("\(moments.count - 5) earlier moments on the Day page")
+                        Text("+\(moments.count - 5) more")
                             .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                     }
                 }
@@ -956,7 +946,7 @@ struct LogFixView: View {
             case .typing(let note):
                 HStack(spacing: 8) {
                     Image(systemName: "text.bubble").foregroundStyle(Color.secondaryText)
-                    TextField("Correct the log: “class 1–1:40, then leisure”", text: $text)
+                    TextField("Fix the log", text: $text)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
                         .onSubmit(read)
@@ -1086,6 +1076,7 @@ struct LogFixView: View {
 /// Where the running subject was left last time; a tap reopens the page or app.
 struct WhereWasIRow: View {
     let line: WhereWasI.Line
+    let color: Color
 
     var body: some View {
         Button {
@@ -1095,15 +1086,24 @@ struct WhereWasIRow: View {
                 NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
             }
         } label: {
-            HStack(alignment: .top, spacing: 6) {
-                Image(systemName: "arrow.uturn.backward").font(.system(size: 11)).padding(.top, 1)
-                Text(line.text).font(.system(size: 11.5)).lineLimit(2).multilineTextAlignment(.leading)
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.forward.circle.fill").font(.system(size: 15)).foregroundStyle(color)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(line.topic.isEmpty ? line.text : line.topic)
+                        .font(.system(size: 13, weight: .medium)).lineLimit(1)
+                    if let end = line.end {
+                        Text("Continue from \(end.formatted(date: .omitted, time: .shortened))")
+                            .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                    }
+                }
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(Color.secondaryText)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 40)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Open where you left off")
+        .help(line.text + (line.url == nil ? "" : "\nOpens the page you were on"))
     }
 }

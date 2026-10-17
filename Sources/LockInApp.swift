@@ -265,8 +265,8 @@ struct FocusApp: App {
                                    name: name, dark: dark, size: NSSize(width: 620, height: 690))
             case "where-was-i":
                 DesignGallery.show(VStack(alignment: .leading, spacing: 12) {
-                    WhereWasIRow(line: .init(text: "Last time on MATH 244 (12:52 PM): Inclusion–exclusion for ball distributions; you asked: Why inclusion-exclusion on (b) but not (c)?", url: nil, bundle: "com.openai.chat"))
-                    WhereWasIRow(line: .init(text: "Last time on SWE (Tue 4:50 PM): Two Sum with a hash map", url: URL(string: "https://leetcode.com/problems/two-sum/"), bundle: "com.google.Chrome"))
+                    WhereWasIRow(line: .init(text: "Last time on MATH 244 (12:52 PM): Inclusion–exclusion for ball distributions; you asked: Why inclusion-exclusion on (b) but not (c)?", url: nil, bundle: "com.openai.chat", topic: "Inclusion–exclusion for ball distributions", end: Date().addingTimeInterval(-7200)), color: categoryColor("Math"))
+                    WhereWasIRow(line: .init(text: "Last time on SWE (Tue 4:50 PM): Two Sum with a hash map", url: URL(string: "https://leetcode.com/problems/two-sum/"), bundle: "com.google.Chrome", topic: "Two Sum with a hash map", end: Date().addingTimeInterval(-3600)), color: categoryColor("SWE"))
                 }.padding(16), name: name, dark: dark, size: NSSize(width: 360, height: 160))
             case "learned-labels":
                 DesignGallery.show(ScrollView { LearnedLabelReviewView(preview: true).padding(16) },
@@ -409,6 +409,8 @@ struct PopoverContent: View {
     var body: some View {
         popoverBody
             .frame(width: 360)
+            .fixedSize(horizontal: false, vertical: true)
+            .background(PopoverWindowFitter())
             .popoverPanel(tint: washColor)
             .onAppear {
                 if let initialTab { selectedTab = initialTab }
@@ -638,33 +640,24 @@ struct PopoverContent: View {
         }
     }
 
-    private var pageSubtitle: String {
-        switch selectedTab {
-        case 0: "What you're tracking right now"
-        case 1: "Focus time by day and category"
-        case 2: "Problems you solved, reviews due"
-        case 3: "A quick checklist"
-        case 5: "Habits and doses you log"
-        default: "Goal, categories, screen, AI"
+    private var dashboardButton: some View {
+        Button(action: openDashboard) {
+            Image(systemName: "rectangle.grid.2x2").font(.system(size: 13, weight: .medium))
         }
+        .modifier(NativeGlassControl(prominent: false, tint: .accentColor))
+        .help("Dashboard")
     }
 
     private var openBookContent: some View {
         VStack(spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(selectedTab == 0 ? "Now" : pageTitle).font(.system(size: 15, weight: .semibold))
-                    Text(pageSubtitle).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
+            if selectedTab != 0 {
+                HStack {
+                    Text(pageTitle).font(.system(size: 15, weight: .semibold))
+                    Spacer()
+                    dashboardButton
                 }
-                Spacer()
-                Button(action: openDashboard) {
-                    Label("Dashboard", systemImage: "rectangle.grid.2x2")
-                        .font(.system(size: 13, weight: .medium))
-                }
-                .modifier(NativeGlassControl(prominent: false, tint: .accentColor))
-                .help("Open your Dashboard")
+                .padding(.horizontal, 16).padding(.top, 12)
             }
-            .padding(.horizontal, 16).padding(.top, 12)
             if selectedTab == 0 {
                 TimerView(
                     timer: timerManager, store: sessionStore, settings: settings, dayStore: dayStore,
@@ -673,6 +666,7 @@ struct PopoverContent: View {
                                     set: { if detentOverride != nil { detentOverride = $0 } else { expandedStored = $0 == .large } }),
                     onOpenDose: { UserDefaults.standard.set(HealthTracker.adderall.rawValue, forKey: "healthTracker"); selectedTab = 5 }
                 )
+                .overlay(alignment: .topTrailing) { dashboardButton.padding(.trailing, 16).padding(.top, 14) }
             } else {
                 Group {
                     switch selectedTab {
