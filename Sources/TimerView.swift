@@ -35,6 +35,9 @@ struct TimerView: View {
     /// Minutes today the screen showed a life category during focus blocks.
     @State private var possibleDrift: Double = 0
     @StateObject private var story = DayStoryModel()
+    @State private var selectedSegment: Date?
+    @State private var hoveredSegment: Date?
+    @State private var stripUndo: SessionStore.ReviewUndo?
 
     static let breakBlue = Color(red: 0.27, green: 0.62, blue: 0.83)
 
@@ -85,7 +88,6 @@ struct TimerView: View {
             detailsButton
             if detent == .large {
                 dayStrip
-                todayLog
                 if #available(macOS 26.0, *), LogCorrection.available {
                     LogFixView(timer: timer, store: store, categories: settings.tags)
                 }
@@ -532,98 +534,204 @@ struct TimerView: View {
         return out
     }
 
+    /// Today's tracked blocks plus the untracked gaps (≥ 5 min) up to now,
+    /// so every part of the bar can be clicked.
+    private var stripSegments: [Block] {
+        let day = Calendar.current.startOfDay(for: Date())
+        let now = Date()
+        var out: [Block] = []
+        var cursor = day
+        for b in merged(todayBlocks) {
+            if b.start.timeIntervalSince(cursor) >= 300 { out.append(Block(start: cursor, end: b.start, label: "")) }
+            out.append(b)
+            cursor = max(cursor, b.end)
+        }
+        if now.timeIntervalSince(cursor) >= 300 { out.append(Block(start: cursor, end: now, label: "")) }
+        return out
+    }
+
+    private func segmentColor(_ label: String) -> Color {
+        label.isEmpty ? .clear : label == "Break" ? Self.breakBlue : categoryColor(label)
+    }
+
+    private func segmentFill(_ b: Block, isSelected: Bool, dim: Bool) -> Color {
+        let hovered = hoveredSegment == b.start
+        if b.label.isEmpty { return isSelected || hovered ? Color.primary.opacity(0.14) : .clear }
+        return segmentColor(b.label).opacity(dim ? 0.4 : hovered ? 0.85 : 1)
+    }
+
+    private func segmentBar(_ b: Block, selected: Date?, width: CGFloat, day: Date) -> some View {
+        let isSelected = b.start == selected
+        let x = CGFloat(b.start.timeIntervalSince(day) / 86400) * width
+        let w = max(2, CGFloat(b.end.timeIntervalSince(b.start) / 86400) * width)
+        let tip = (b.label.isEmpty ? "Not tracked" : b.label) + " · \(clock(b.start))–\(clock(b.end))"
+        return Rectangle()
+            .fill(segmentFill(b, isSelected: isSelected, dim: selected != nil && !isSelected))
+            .frame(width: w)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectedSegment = isSelected ? nil : b.start
+                stripUndo = nil
+            }
+            .onHover { inside in
+                if inside { hoveredSegment = b.start } else if hoveredSegment == b.start { hoveredSegment = nil }
+            }
+            .help(tip)
+            .offset(x: x)
+    }
+
     private var dayStrip: some View {
         let day = Calendar.current.startOfDay(for: Date())
         let frac = { (d: Date) in CGFloat(d.timeIntervalSince(day) / 86400) }
         let streak = store.currentStreak + (store.todayWorkMinutes < 1 && todayFocusMinutes >= 1 ? 1 : 0)
+        let segments = stripSegments
+        let selected = segments.first { $0.start == selectedSegment }
+            ?? selectedSegment.flatMap { t in segments.first { $0.start <= t && t < $0.end } }
         return VStack(spacing: 6) {
             HStack {
-                Text("Your timer, hour by hour")
+                Text("Your day")
                 Spacer()
                 if streak > 0 { Text("\(streak) days in a row with focus") }
             }
             .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
             GeometryReader { g in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.06))
-                    ForEach(todayBlocks, id: \.start) { b in
-                        Rectangle()
-                            .fill(b.label == "Break" ? Self.breakBlue.opacity(0.5) : categoryColor(b.label))
-                            .frame(width: max(1, (frac(b.end) - frac(b.start)) * g.size.width))
-                            .help("\(b.label) · \(clock(b.start))–\(clock(b.end))")
-                            .offset(x: frac(b.start) * g.size.width)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.06))
+                    ForEach([6, 12, 18], id: \.self) { h in
+                        Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1)
+                            .offset(x: CGFloat(h) / 24 * g.size.width)
                     }
-                    Capsule().fill(Color.primary).frame(width: 2, height: 14).offset(x: frac(Date()) * g.size.width - 1)
+                    ForEach(segments, id: \.start) { b in
+                        segmentBar(b, selected: selected?.start, width: g.size.width, day: day)
+                    }
+                    if let s = selected {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .strokeBorder(Color.primary, lineWidth: 2)
+                            .frame(width: max(6, (frac(s.end) - frac(s.start)) * g.size.width + 4), height: g.size.height + 4)
+                            .offset(x: frac(s.start) * g.size.width - 2)
+                            .allowsHitTesting(false)
+                    }
+                    Capsule().fill(Color.primary).frame(width: 2, height: g.size.height + 6)
+                        .offset(x: frac(Date()) * g.size.width - 1).allowsHitTesting(false)
                 }
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
-            .frame(height: 10)
-            ZStack {
-                HStack {
-                    Text("12 AM")
-                    Spacer()
-                    Text("12 AM")
+            .frame(height: 26)
+            GeometryReader { g in
+                ForEach([(0, "12 AM"), (6, "6 AM"), (12, "Noon"), (18, "6 PM"), (24, "12 AM")], id: \.0) { h, label in
+                    Text(label)
+                        .fixedSize()
+                        .frame(width: 60, alignment: h == 0 ? .leading : h == 24 ? .trailing : .center)
+                        .offset(x: CGFloat(h) / 24 * g.size.width - (h == 0 ? 0 : h == 24 ? 60 : 30))
                 }
-                Text("Noon")
             }
+            .frame(height: 14)
             .font(.system(size: 11))
             .foregroundStyle(Color.secondaryText)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private var todayLog: some View {
-        if let s = story.story, s.hasCoach {
-            storyLog(s)
-        } else {
-            trackedLog
+            if let selected {
+                segmentDetail(selected)
+            } else {
+                Text("Click any part of the bar to see what it was")
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 2)
+            }
         }
     }
 
-    /// The last few stretches of today's story, each with what it was about.
-    private func storyLog(_ s: DayStory.Story) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Latest stretches").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            ForEach(Array(s.blocks.filter { !$0.quiet && $0.category != nil }.suffix(4).reversed())) { b in
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(clock(b.start)).font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
-                        .frame(width: 62, alignment: .leading)
-                    Circle().fill(b.category == "Break" ? Self.breakBlue : categoryColor(b.category ?? "")).frame(width: 8, height: 8)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(b.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
-                            Spacer(minLength: 4)
-                            Text(b.running ? "now" : hm(b.end.timeIntervalSince(b.start) / 60))
-                                .font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
-                        }
-                        if let m = b.moments.last, !m.text.isEmpty, !DayStory.restates(m.text, title: b.title) {
-                            Text((b.study || m.activities.isEmpty ? "" : "On screen: ") + DayStory.twelveHour(m.text))
-                                .font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(2)
+    private func segmentDetail(_ b: Block) -> some View {
+        let isRunning = timer.isActive && !b.label.isEmpty && Date().timeIntervalSince(b.end) < 90
+        let storyBlocks = (story.story?.blocks ?? []).filter { $0.end > b.start && $0.start < b.end }
+        let moments = storyBlocks.flatMap(\.moments)
+            .filter { $0.end > b.start && $0.start < b.end && !$0.text.isEmpty }
+            .reduce(into: [DayStory.Moment]()) { out, m in
+                if !out.contains(where: { $0.text == m.text }) { out.append(m) }
+            }
+        let courses = Array(Set(storyBlocks.compactMap(\.course))).sorted()
+        let events = Array(Set(storyBlocks.compactMap(\.event))).sorted()
+        let fixes = storyBlocks.flatMap(\.fixes).filter { $0.end > b.start && $0.start < b.end }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if b.label.isEmpty {
+                    Circle().strokeBorder(Color.secondaryText, style: StrokeStyle(lineWidth: 1, dash: [2, 2])).frame(width: 10, height: 10)
+                } else {
+                    Circle().fill(segmentColor(b.label)).frame(width: 10, height: 10)
+                }
+                Text(b.label.isEmpty ? "Not tracked" : b.label).font(.system(size: 15, weight: .semibold))
+                Spacer(minLength: 4)
+                Text(hm(b.end.timeIntervalSince(b.start) / 60))
+                    .font(.system(size: 13, weight: .medium).monospacedDigit())
+            }
+            Text(isRunning ? "Since \(clock(b.start)), still running" : "\(clock(b.start)) – \(clock(b.end))")
+                .font(.system(size: 12).monospacedDigit()).foregroundStyle(Color.secondaryText)
+            if !courses.isEmpty || !events.isEmpty {
+                Text((events + courses.filter { !events.contains($0) }).joined(separator: " · "))
+                    .font(.system(size: 12, weight: .medium))
+            }
+            if moments.isEmpty {
+                Text(b.label.isEmpty ? "Nothing was logged here." : "No notes on what was on screen for this stretch.")
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Array(moments.suffix(5))) { m in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text(clock(max(m.start, b.start))).font(.system(size: 11).monospacedDigit())
+                                .foregroundStyle(Color.secondaryText).frame(width: 58, alignment: .leading)
+                            Text(DayStory.twelveHour(m.text)).font(.system(size: 12))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                    if moments.count > 5 {
+                        Text("\(moments.count - 5) earlier moments on the Day page")
+                            .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                    }
                 }
             }
+            ForEach(fixes) { f in
+                Label(fixText(f), systemImage: "exclamationmark.circle")
+                    .font(.system(size: 12)).foregroundStyle(.orange)
+            }
+            HStack(spacing: 8) {
+                Menu {
+                    ForEach(settings.tags.filter { $0 != b.label }, id: \.self) { tag in
+                        Button(tag) { relabel(b, as: tag, running: isRunning) }
+                    }
+                    if b.label != "Break" && !isRunning { Button("Break") { relabel(b, as: nil, running: false) } }
+                } label: {
+                    Text(b.label.isEmpty ? "Fill in…" : "Change to…").font(.system(size: 12, weight: .medium))
+                }
+                .menuStyle(.button).buttonStyle(.bordered).controlSize(.small).fixedSize()
+                if let undo = stripUndo {
+                    Button("Undo") { _ = store.undoReview(undo); stripUndo = nil; refreshStory() }
+                        .buttonStyle(.bordered).controlSize(.small)
+                }
+                Spacer()
+                Button("Open day") {
+                    if let url = URL(string: "focus://dashboard") { NSWorkspace.shared.open(url) }
+                }
+                .buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+            }
+            .padding(.top, 2)
         }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(b.label.isEmpty ? Color.primary.opacity(0.05) : segmentColor(b.label).opacity(0.1)))
+        .padding(.top, 4)
     }
 
-    private var trackedLog: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            let blocks = Array(merged(todayBlocks).reversed().prefix(4))
-            ForEach(blocks, id: \.start) { b in
-                HStack(spacing: 10) {
-                    Text(clock(b.start)).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
-                        .frame(width: 62, alignment: .leading)
-                    Circle().fill(b.label == "Break" ? Self.breakBlue : categoryColor(b.label)).frame(width: 8, height: 8)
-                    Text(b.label).font(.system(size: 13, weight: .medium))
-                    Spacer()
-                    Text(hm(b.end.timeIntervalSince(b.start) / 60)).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
-                }
-                .frame(height: 28)
-            }
+    /// Past time is repainted (with Undo); the part inside the running
+    /// block renames the timer from its start.
+    private func relabel(_ b: Block, as label: String?, running: Bool) {
+        if running, let label, let start = timer.sessionStartTime {
+            if start.timeIntervalSince(b.start) >= 60 { _ = store.paintForReview(start: b.start, end: start, label: label) }
+            timer.switchTo(label, at: start)
+            stripUndo = nil
+        } else {
+            stripUndo = store.paintForReview(start: b.start, end: b.end, label: label)
         }
+        selectedSegment = b.start
+        refreshStory()
     }
 
     // MARK: - Controls
