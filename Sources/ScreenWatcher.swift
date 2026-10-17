@@ -993,6 +993,11 @@ final class ScreenWatcher: ObservableObject {
             labelReason = "A coding practice site"
             return ("SWE", fallbackSummary)
         }
+        if candidates.contains("Journaling"), ScreenClassificationPolicy.isJournalApp(app: app, bundle: bundle) {
+            labelSource = "journal app"
+            labelReason = "A journal app"
+            return ("Journaling", fallbackSummary)
+        }
         if !generic, Self.usableMemoryKey(Self.memoryKey(bundle: bundle, title: title)),
            let known = Self.memory[Self.memoryKey(bundle: bundle, title: title)], candidates.contains(known) {
             let decision = ScreenClassificationPolicy.evaluate(category: known, app: app, title: title, text: text, source: .learned)
@@ -1018,10 +1023,6 @@ final class ScreenWatcher: ObservableObject {
             return (nil, fallbackSummary)
         }
         labelSource = "on-device model"
-        let shownTitle = url.map { u -> String in
-            let short = u.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
-            return "\(title) (\(String(short.prefix(120))))"
-        } ?? title
         let window = Self.memoryKey(bundle: bundle, title: title)
         nearMatch = nil
         let shots = generic || LearnedTitlePolicy.reason(title) != nil ? [] : examples(like: title, among: candidates)
@@ -1034,9 +1035,9 @@ final class ScreenWatcher: ObservableObject {
             }
         }
         if !shots.isEmpty { labelSource = "on-device model, with \(shots.count) of your labels as examples" }
-        guard let classification = await ScreenLabeler.classifyDetailed(app: app, title: shownTitle, text: text, categories: candidates,
+        guard let classification = await ScreenLabeler.classifyDetailed(app: app, title: title, text: text, categories: candidates,
                                                         current: runningCategory(), examples: shots,
-                                                        taskContext: taskContext.promptContext()) else {
+                                                        taskContext: taskContext.promptContext(), url: url) else {
             // The model threw (often its rate limit for background apps): keep
             // this window's last label instead of leaving a hole in the log.
             let held = generic ? samples.last { $0.bundleID == bundle }?.category : windowLabel[window]?.category

@@ -23,6 +23,10 @@ public enum ScreenClassificationPolicy {
         if isCodingPractice(title: title) {
             return Decision(category: "SWE", reason: "A coding practice site", uncertain: false)
         }
+        // 10/16: an Apple Journal entry about a math midterm was called Math for 12 minutes.
+        if isJournalApp(app: app) {
+            return Decision(category: "Journaling", reason: "A journal app", uncertain: false)
+        }
         // 10/14: New Tab and Focus's own block page were labeled Admin and drew cards.
         if isPlaceholderPage(app: app, title: title) {
             return Decision(category: nil, reason: "An empty tab or block page does not show the task", uncertain: true)
@@ -109,6 +113,11 @@ public enum ScreenClassificationPolicy {
         if sites.contains(where: { title.hasSuffix("- \($0)") || title.hasSuffix("| \($0)") || title == $0 }) { return true }
         guard let host = url.flatMap({ URL(string: $0)?.host?.lowercased() }) else { return false }
         return sites.contains { host == "\($0).com" || host == "\($0).io" || host.hasSuffix(".\($0).com") || host == "\($0).jp" }
+    }
+
+    public static func isJournalApp(app: String, bundle: String = "") -> Bool {
+        ["com.apple.journal", "com.bloombuilt.dayone-mac"].contains(bundle.lowercased())
+            || ["journal", "day one"].contains(normalized(app))
     }
 
     public static func isSocialFeed(title: String) -> Bool {

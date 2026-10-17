@@ -93,9 +93,10 @@ public enum ScreenLabeler {
 
     public static func classifyDetailed(app: String, title: String, text: String, categories: [String],
                                         current: String? = nil, examples: [(title: String, category: String)] = [],
-                                        taskContext: String = "") async -> Classification? {
+                                        taskContext: String = "", url: String? = nil) async -> Classification? {
         let categories = Array(Set(categories.filter { !$0.isEmpty && $0.count <= 40 })).sorted()
         guard !categories.isEmpty else { return nil }
+        let reasonDescription = "Visible evidence for the subject, under 15 words. If missing, say what is unclear."
         let lines = categories.map { c in hints[c].map { "- \(c): \($0)" } ?? "- \(c)" }
         let instructions = """
         Label the student's actual task from visible evidence, not the tool's brand. The same task can continue across a PDF, an assistant chat, a browser and an editor. Pick the single best category.
@@ -115,7 +116,7 @@ public enum ScreenLabeler {
                 .init(name: "summary", description: "What is on this screen, under 12 words, using names and topics visible in the text. Don't repeat the category descriptions.",
                       schema: DynamicGenerationSchema(type: String.self)),
                 .init(name: "category", schema: DynamicGenerationSchema(name: "Category", anyOf: categories + ["Unclear"])),
-                .init(name: "reason", description: "Visible evidence for the subject, under 15 words. If missing, say what is unclear.",
+                .init(name: "reason", description: reasonDescription,
                       schema: DynamicGenerationSchema(type: String.self)),
                 .init(name: "uncertain", description: "True when the current screen lacks clear subject evidence, is mixed, or relies only on earlier context.",
                       schema: DynamicGenerationSchema(type: Bool.self)),
@@ -124,7 +125,11 @@ public enum ScreenLabeler {
             let examples = examples.prefix(4).filter { categories.contains($0.category) }.map {
                 ["title": String($0.title.prefix(160)), "category": $0.category]
             }
-            let payload: [String: Any] = ["app": String(app.prefix(80)), "window": String(title.prefix(240)),
+            // The URL rides beside the title, not inside it: policy rules match title endings (" / X", "- YouTube").
+            let window = url.map { u in
+                "\(title) (\(String(u.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "").prefix(120))))"
+            } ?? title
+            let payload: [String: Any] = ["app": String(app.prefix(80)), "window": String(window.prefix(240)),
                                           "screenText": String(text.prefix(2200)), "labeledExamples": examples,
                                           "runningCategory": current.flatMap { categories.contains($0) ? $0 : nil } ?? "",
                                           "recentTaskContext": String(taskContext.prefix(1600))]
@@ -134,7 +139,9 @@ public enum ScreenLabeler {
                                               schema: schema, options: GenerationOptions(temperature: 0))
             let category = try r.content.value(String.self, forProperty: "category")
             let summary = try r.content.value(String.self, forProperty: "summary")
-            let reason = try r.content.value(String.self, forProperty: "reason")
+            var reason = try r.content.value(String.self, forProperty: "reason")
+            // 10/16: a fifth of the day's reasons were this description copied back.
+            if reason.hasPrefix("Visible evidence for the subject, under 15 words") { reason = "" }
             let uncertain = try r.content.value(Bool.self, forProperty: "uncertain")
             var decision = ScreenClassificationPolicy.evaluate(category: categories.contains(category) ? category : nil,
                                                                app: app, title: title, text: text)

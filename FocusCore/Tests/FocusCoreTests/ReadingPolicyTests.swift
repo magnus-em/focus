@@ -23,6 +23,17 @@ final class ReadingPolicyTests: XCTestCase {
         XCTAssertFalse(ScreenClassificationPolicy.isCodingPractice(title: "Leetcode grind plan - Google Docs"))
     }
 
+    func testJournalAppIsJournalingWhateverTheEntrySays() {
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Journal", title: "All Entries",
+                                                           text: "Update to math midterm", source: .model).category, "Journaling")
+        XCTAssertTrue(ScreenClassificationPolicy.isJournalApp(app: "Journal", bundle: "com.apple.journal"))
+        XCTAssertFalse(ScreenClassificationPolicy.isJournalApp(app: "Google Chrome", bundle: "com.google.Chrome"))
+    }
+
+    func testXHomeFeedIsLeisure() {
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome", title: "(17) Home / X", text: "").category, "Leisure")
+    }
+
     func testNewsFeedsShoppingAndForumsAreNotReading() {
         for title in ["Breaking news — latest headlines", "Home • Threads", "Shopping cart — Amazon.com",
                       "Hacker News", "r/popular", "What's happening | Reddit", "Forum: latest topics"] {
