@@ -895,7 +895,8 @@ class TimerManager: ObservableObject {
     /// Shared by the /etc/hosts blocker and the Chrome extension (`BrowserBridge`).
     var shouldBlockSites: Bool {
         guard let settings, settings.siteBlockingEnabled, !settings.blockedSites.isEmpty else { return false }
-        return isOnBreak ? (settings.blockDuringBreaks && isActive) : isFocusRunning
+        return isOnBreak ? (settings.blockDuringBreaks && isActive)
+            : isFocusRunning && !FocusCategories.neverBlocks.contains(currentLabel)
     }
 
     var isFocusRunning: Bool { isActive && !isOnBreak && !FocusCategories.isLife(currentLabel) }

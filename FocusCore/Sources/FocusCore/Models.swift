@@ -167,6 +167,9 @@ public enum FocusCategories {
     public static let wellbeingTags = ["Reading", "Journaling", "Exercise"]
     /// Added 10/17 as a focus category; appended so existing hotkeys keep their keys.
     public static let recruiting = "Recruiting"
+    /// Focus categories that count toward the goal but never block sites:
+    /// recruiting lives on LinkedIn, email and company sites.
+    public static let neverBlocks: Set<String> = [recruiting]
 
     public static func isWellbeing(_ label: String) -> Bool {
         wellbeingTags.contains(label)

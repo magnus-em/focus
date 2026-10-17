@@ -193,7 +193,7 @@ Tests: `cd FocusCore && swift test` (recall scheduler, timer display, duration t
 - **By-tag splits**: 7-day and lifetime breakdowns.
 
 ### Site blocking
-Requires admin password on first setup. Sets up sudoers entry + helper script. Modifies `/etc/hosts` + `pf` firewall only while a focus category runs (and on breaks with "Block during breaks too"); life categories (Leisure, Admin, Meals…) never block (user, 10/14: "why is this blocked im on leisure mode"). Cleanup runs on quit and on next launch after a crash via `SiteBlocker.cleanupIfNeeded()`.
+Requires admin password on first setup. Sets up sudoers entry + helper script. Modifies `/etc/hosts` + `pf` firewall only while a focus category runs (and on breaks with "Block during breaks too"); life categories (Leisure, Admin, Meals…) never block (user, 10/14: "why is this blocked im on leisure mode"). Recruiting is a focus category (counts toward the goal) that never blocks either (`FocusCategories.neverBlocks`, user 10/17). Cleanup runs on quit and on next launch after a crash via `SiteBlocker.cleanupIfNeeded()`.
 
 ### Chrome extension (`ChromeExtension/`)
 - Load unpacked from `~/Code/focus/ChromeExtension`; ID `dljnfclilnaccokglnomfjlbbanapflo` is pinned by `key` in the manifest. After editing it, hit reload on chrome://extensions (deploy.sh doesn't touch it).
