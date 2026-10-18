@@ -167,7 +167,8 @@ struct FocusApp: App {
                 paused: timer.isActive && !timer.isRunning,
                 bypassAllowed: !timer.isFocusRunning,
                 sessionStart: timer.sessionStartTime.map { $0.timeIntervalSince1970 * 1000 },
-                todayBlocked: browser.blockCount(since: Calendar.current.startOfDay(for: Date()))
+                todayBlocked: browser.blockCount(since: Calendar.current.startOfDay(for: Date())),
+                darkPages: .init(mode: appSettings.darkPagesMode, from: appSettings.darkPagesFrom, to: appSettings.darkPagesTo)
             )
         }
         BrowserBridge.shared.onEvents = { browser.ingest($0) }

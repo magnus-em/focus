@@ -27,6 +27,14 @@ final class BrowserBridge: ObservableObject {
         let bypassAllowed: Bool
         let sessionStart: Double?
         let todayBlocked: Int
+        let darkPages: DarkPages
+    }
+
+    /// The extension runs the schedule itself, so it keeps working while Focus is quit.
+    struct DarkPages: Encodable {
+        let mode: String
+        let from: Int
+        let to: Int
     }
 
     @Published private(set) var lastContact: Date?

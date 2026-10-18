@@ -36,3 +36,7 @@ body.popup { width: 260px; padding: 14px; }
 .dot.ok { background: #3fb887; } .dot.bad { background: var(--amber); }
 .big { margin-top: 10px; font-size: 15px; }
 .muted { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.dark { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.site { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.site .muted { margin-top: 0; }
+.site button { flex: none; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 8px; padding: 3px 10px; font-size: 12px; }

@@ -161,6 +161,16 @@ class AppSettings: ObservableObject {
     @Published var blockedSites: [String] {
         didSet { UserDefaults.standard.set(blockedSites, forKey: "blockedSites") }
     }
+    /// Chrome extension's dark pages: "off", "night", "system" or "always".
+    @Published var darkPagesMode: String {
+        didSet { UserDefaults.standard.set(darkPagesMode, forKey: "darkPagesMode") }
+    }
+    @Published var darkPagesFrom: Int {
+        didSet { UserDefaults.standard.set(darkPagesFrom, forKey: "darkPagesFrom") }
+    }
+    @Published var darkPagesTo: Int {
+        didSet { UserDefaults.standard.set(darkPagesTo, forKey: "darkPagesTo") }
+    }
     @Published var hasCompletedOnboarding: Bool {
         didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
     }
@@ -200,6 +210,9 @@ class AppSettings: ObservableObject {
             "soundEnabled": true,
             "siteBlockingEnabled": false,
             "blockDuringBreaks": false,
+            "darkPagesMode": "night",
+            "darkPagesFrom": 19 * 60,
+            "darkPagesTo": 7 * 60,
             "pauseGraceMinutes": 10,
             "autoBreakEnabled": true,
             "commitmentEnabled": true,
@@ -240,6 +253,9 @@ class AppSettings: ObservableObject {
         siteBlockingEnabled = d.bool(forKey: "siteBlockingEnabled")
         blockDuringBreaks = d.bool(forKey: "blockDuringBreaks")
         blockedSites = d.stringArray(forKey: "blockedSites") ?? []
+        darkPagesMode = d.string(forKey: "darkPagesMode") ?? "night"
+        darkPagesFrom = d.integer(forKey: "darkPagesFrom")
+        darkPagesTo = d.integer(forKey: "darkPagesTo")
         tags = d.stringArray(forKey: "tags") ?? []
         lifeTags = d.stringArray(forKey: FocusCategories.lifeTagsKey) ?? []
         quickStartTag = d.string(forKey: "quickStartTag") ?? "HW"

@@ -284,6 +284,48 @@ struct SettingsView: View {
                     }
                 }
 
+                SettingsCard("Dark pages") {
+                    HStack {
+                        Text("Darken bright sites in Chrome")
+                            .font(.system(size: 12, weight: .medium))
+                        Spacer()
+                        Picker("", selection: $settings.darkPagesMode) {
+                            Text("Off").tag("off")
+                            Text("At night").tag("night")
+                            Text("When the Mac is dark").tag("system")
+                            Text("Always").tag("always")
+                        }
+                        .labelsHidden()
+                        .controlSize(.small)
+                        .fixedSize()
+                    }
+                    if settings.darkPagesMode == "night" {
+                        HStack {
+                            Text("From")
+                                .font(.system(size: 12, weight: .medium))
+                            Spacer()
+                            DatePicker("", selection: timeBinding(\.darkPagesFrom), displayedComponents: .hourAndMinute)
+                                .labelsHidden()
+                                .datePickerStyle(.field)
+                                .fixedSize()
+                            Text("to")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                            DatePicker("", selection: timeBinding(\.darkPagesTo), displayedComponents: .hourAndMinute)
+                                .labelsHidden()
+                                .datePickerStyle(.field)
+                                .fixedSize()
+                        }
+                    }
+                    if settings.darkPagesMode != "off" {
+                        Text("Uses Dark Reader's engine. Sites that already have a dark theme are left alone; turn it off for one site from the extension's toolbar button.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        chromeExtensionRow
+                    }
+                }
+
                 SettingsCard("Interview") {
                     if let date = settings.interviewDate {
                         HStack {

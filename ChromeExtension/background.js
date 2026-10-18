@@ -47,6 +47,7 @@ async function refreshState(force = false) {
     const r = await fetch(API + '/state', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
     next = { ...(await r.json()), connected: true };
     ok = Date.now();
+    if (next.darkPages) await saveDark(next.darkPages);
   } catch {
     next = state && Date.now() - lastOk < STALE_MS
       ? { ...state, connected: false }
@@ -54,6 +55,7 @@ async function refreshState(force = false) {
   }
   await session.set({ state: next, fetchedAt: Date.now(), lastOk: ok });
   await applyRules(next);
+  await syncDark();
   return next;
 }
 
@@ -103,6 +105,77 @@ async function sweep(domains) {
 function isBlocked(url, state) {
   const host = domainOf(url);
   return !!(host && state.blocking && (state.domains || []).some((d) => matches(host, d)));
+}
+
+// MARK: - Dark pages
+
+// The app's setting is kept in local storage and the schedule runs here, so
+// pages keep following it while Focus is quit. dark.js reads `dark`/`darkNight`.
+const DARK_SCRIPT = {
+  id: 'dark',
+  js: ['dark-pre.js', 'vendor/darkreader.js', 'dark.js'],
+  matches: ['<all_urls>'],
+  allFrames: true,
+  runAt: 'document_start',
+};
+
+async function saveDark(dark) {
+  const { dark: old } = await local.get('dark');
+  if (JSON.stringify(old) !== JSON.stringify(dark)) await local.set({ dark });
+}
+
+function inHours(from, to) {
+  const d = new Date();
+  const m = d.getHours() * 60 + d.getMinutes();
+  return from <= to ? m >= from && m < to : m >= from || m < to;
+}
+
+function syncDark() {
+  return serial(async () => {
+    const { dark = null, darkNight = null } = await local.get(['dark', 'darkNight']);
+    const night = !!dark && inHours(dark.from, dark.to);
+    if (night !== darkNight) await local.set({ darkNight: night });
+
+    const want = !!dark && dark.mode !== 'off';
+    const have = (await chrome.scripting.getRegisteredContentScripts({ ids: [DARK_SCRIPT.id] })).length > 0;
+    if (want && !have) {
+      await chrome.scripting.registerContentScripts([DARK_SCRIPT]);
+      for (const tab of await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] })) injectDark(tab.id);
+    } else if (!want && have) {
+      await chrome.scripting.unregisterContentScripts({ ids: [DARK_SCRIPT.id] });
+    }
+  }).catch(() => {});
+}
+
+// Open tabs only; a second copy of darkreader.js would orphan the first.
+async function injectDark(tabId) {
+  try {
+    const found = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: () => !!globalThis.focusDarkLoaded,
+    });
+    const frameIds = found.filter((f) => !f.result).map((f) => f.frameId);
+    if (frameIds.length) await chrome.scripting.executeScript({ target: { tabId, frameIds }, files: DARK_SCRIPT.js });
+  } catch {}
+}
+
+// Dark Reader reads cross-origin stylesheets and images to recolor them; a
+// content script can't (page CORS), the worker can.
+async function darkFetch(url) {
+  if (!/^https?:/.test(url)) return { ok: false };
+  try {
+    const r = await fetch(url, { cache: 'force-cache', credentials: 'omit', signal: AbortSignal.timeout(15000) });
+    if (!r.ok) return { ok: false };
+    const type = r.headers.get('content-type') || '';
+    const buf = new Uint8Array(await r.arrayBuffer());
+    if (buf.length > 8 << 20) return { ok: false };
+    if (/^text\/|css|svg|xml|json|javascript/.test(type)) return { ok: true, type, text: new TextDecoder().decode(buf) };
+    let bin = '';
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    return { ok: true, type, b64: btoa(bin) };
+  } catch {
+    return { ok: false };
+  }
 }
 
 // MARK: - Event queue
@@ -260,6 +333,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         else await chrome.tabs.update(tab.id, { url: 'chrome://newtab' });
         return { ok: true };
       }
+      case 'darkFetch':
+        return darkFetch(msg.url);
       case 'popup': {
         const state = await refreshState(true);
         const { queue = [] } = await local.get('queue');
