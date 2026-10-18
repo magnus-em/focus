@@ -25,6 +25,7 @@ final class QuickSwitch {
     var openRecall: (() -> Void)?
     var openReview: (() -> Void)?
     var openGallery: ((String, Bool) -> Void)?
+    private static let testPanel = AwayPanel()
     var openDashboard: (() -> Void)?
 
     /// Right-hand keys for categories, in `settings.tags` order.
@@ -148,6 +149,14 @@ final class QuickSwitch {
             }
         case "gallery-close": Task { @MainActor in DesignGallery.closeAll(keepDisplay: param("display") != "0") }
         case "screen-debug": Task { @MainActor in ScreenWatcher.shared.dumpDebug() }
+        case "test-card":
+            // A real corner card whose answers only go to sync.log, to check the ⌃⌥⌘ keys.
+            let m = AwayPromptModel(icon: "eye", title: "Test card", subtitle: "nothing changes", question: "",
+                                    keep: "Keep", options: ["Math"], tags: tags)
+            m.onPick = { _ in SyncLog.event("testCard", ["answer": "pick"]); Self.testPanel.dismiss() }
+            m.onKeep = { SyncLog.event("testCard", ["answer": "keep"]); Self.testPanel.dismiss() }
+            Self.testPanel.show(m)
+        case "test-card-close": Self.testPanel.dismiss()
         case "dashboard": openDashboard?()
         case "log":
             // focus://log?label=HW&from=<unix>&to=<unix> relabels that range (label=Break for a break).

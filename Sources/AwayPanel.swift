@@ -289,9 +289,16 @@ final class AwayPanel {
     private static func registerKeys() {
         guard keys.isEmpty else { return }
         let mods = GlobalHotKey.controlModifier | GlobalHotKey.optionModifier | GlobalHotKey.commandModifier
-        let accept = GlobalHotKey(keyCode: UInt32(kVK_Return), modifiers: mods) { AwayPanel.visible?.model?.accept() }
-        let close = GlobalHotKey(keyCode: UInt32(kVK_Delete), modifiers: mods) { AwayPanel.visible?.model?.dismissCard() }
+        let accept = GlobalHotKey(keyCode: UInt32(kVK_Return), modifiers: mods) {
+            SyncLog.event("cardKey", ["key": "return", "card": AwayPanel.visible?.model?.title ?? "none"])
+            AwayPanel.visible?.model?.accept()
+        }
+        let close = GlobalHotKey(keyCode: UInt32(kVK_Delete), modifiers: mods) {
+            SyncLog.event("cardKey", ["key": "delete", "card": AwayPanel.visible?.model?.title ?? "none"])
+            AwayPanel.visible?.model?.dismissCard()
+        }
         keys = [accept, close].compactMap { $0 }
+        SyncLog.event("cardKeysRegistered", ["count": keys.count])
     }
 
     /// Picking a category anywhere answers whatever a card was asking.
