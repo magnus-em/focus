@@ -208,7 +208,7 @@ private final class SwitcherPanel {
         let size = hosting.fittingSize
         let p = KeyPanel(
             contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.borderless, .fullSizeContentView],
+            styleMask: [.borderless, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered, defer: false
         )
         p.contentView = hosting
@@ -218,16 +218,29 @@ private final class SwitcherPanel {
         p.level = .floating
         p.isReleasedWhenClosed = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        p.hidesOnDeactivate = true
+        p.becomesKeyOnlyIfNeeded = false
         if let screen = NSScreen.underMouse?.visibleFrame {
             p.setFrameOrigin(NSPoint(x: screen.midX - size.width / 2, y: screen.midY + 80))
         }
         panel = p
-        NSApp.activate(ignoringOtherApps: true)
+        // Spotlight-style: a non-activating panel takes the keyboard without
+        // asking macOS to activate Focus, which it often refuses from a hotkey
+        // (the search opened without a cursor, 10/18).
         p.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.async { [weak p] in
+            guard let p, let field = Self.textField(in: p.contentView) else { return }
+            p.makeFirstResponder(field)
+        }
         resignObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: p, queue: .main
         ) { [weak self] _ in self?.close(restoreFocus: false) }
+    }
+
+    private static func textField(in view: NSView?) -> NSTextField? {
+        guard let view else { return nil }
+        if let f = view as? NSTextField, f.isEditable { return f }
+        for v in view.subviews { if let f = textField(in: v) { return f } }
+        return nil
     }
 
     func close(restoreFocus: Bool = true) {

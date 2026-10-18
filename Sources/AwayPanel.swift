@@ -335,7 +335,7 @@ private final class AwayKeyablePanel: NSPanel {
 }
 
 /// Corner card, same footprint as the recall prompt. Never takes focus.
-/// While one shows, ⌃⌥⌘↩ takes its first suggestion and ⌃⌥⌘⌫ dismisses it
+/// While one shows, ⌃⌥⌘↩ takes its first suggestion and ⌃⌥⌘\ dismisses it
 /// (same as ✕), from any app; registered only while a card is up. Once you
 /// click the card, plain ↩ and Esc do the same.
 final class AwayPanel {
@@ -409,8 +409,8 @@ final class AwayPanel {
             SyncLog.event("cardKey", ["key": "return", "card": AwayPanel.visible?.model?.title ?? "none"])
             AwayPanel.visible?.model?.accept()
         }
-        let close = GlobalHotKey(keyCode: UInt32(kVK_Delete), modifiers: mods) {
-            SyncLog.event("cardKey", ["key": "delete", "card": AwayPanel.visible?.model?.title ?? "none"])
+        let close = GlobalHotKey(keyCode: UInt32(kVK_ANSI_Backslash), modifiers: mods) {
+            SyncLog.event("cardKey", ["key": "backslash", "card": AwayPanel.visible?.model?.title ?? "none"])
             AwayPanel.visible?.model?.dismissCard()
         }
         keys = [accept, close].compactMap { $0 }
@@ -460,7 +460,7 @@ struct AwayPromptView: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
-                .help((model.keep.map { "\($0) — change nothing" } ?? "Dismiss") + " (⌃⌥⌘⌫)")
+                .help((model.keep.map { "\($0) — change nothing" } ?? "Dismiss") + " (⌃⌥⌘\\)")
                 .accessibilityLabel("Dismiss")
             }
 
@@ -504,7 +504,7 @@ struct AwayPromptView: View {
             }
 
             if let accept = model.acceptTitle {
-                Text("⌃⌥⌘↩ \(accept)  ·  ⌃⌥⌘⌫ \(model.keep ?? "Dismiss")")
+                Text("⌃⌥⌘↩ \(accept)  ·  ⌃⌥⌘\\ \(model.keep ?? "Dismiss")")
                     .font(.system(size: 11))
                     .foregroundStyle(Color.secondaryText)
             }
