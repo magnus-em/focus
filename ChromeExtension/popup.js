@@ -31,10 +31,15 @@ async function saveDark(patch) {
   dark = { ...dark, ...patch };
   renderDark();
   await chrome.runtime.sendMessage({ type: 'setDark', dark });
-  setTimeout(showDark, 300);
+  await showDark();
 }
 
 function renderDark(darkNight) {
+  if (darkNight === undefined) {
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    darkNight = dark.from <= dark.to ? minutes >= dark.from && minutes < dark.to : minutes >= dark.from || minutes < dark.to;
+  }
   for (const b of $('darkMode').children) {
     const selected = b.dataset.mode === dark.mode;
     b.classList.toggle('on', selected);
@@ -71,14 +76,18 @@ for (const [id, key] of [['darkBrightness', 'brightness'], ['darkContrast', 'con
   };
 }
 
+let darkRender = 0;
 async function showDark() {
+  const id = ++darkRender;
   const s = await chrome.storage.local.get(['dark', 'darkNight', 'darkSites']);
+  if (id !== darkRender) return;
   const darkSites = s.darkSites || {};
   dark = { ...DARK_DEFAULT, ...s.dark };
   renderDark(!!s.darkNight);
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const res = tab && await chrome.tabs.sendMessage(tab.id, { type: 'darkStatus' }, { frameId: 0 }).catch(() => null);
+  if (id !== darkRender) return;
   $('darkToggle').hidden = true;
   $('darkSite').textContent = '';
   if (dark.mode === 'off' || !res || !res.host) return;
@@ -102,7 +111,14 @@ async function showDark() {
     if (action[1]) darkSites[res.host] = action[1];
     else delete darkSites[res.host];
     await chrome.storage.local.set({ darkSites });
-    setTimeout(showDark, 300);
+    await showDark();
   };
 }
 showDark();
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes.dark || changes.darkNight || changes.darkSites)) showDark();
+});
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === 'darkStatusChanged') showDark();
+});

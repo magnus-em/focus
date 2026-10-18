@@ -4,9 +4,10 @@ Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). 
 
 Last touched: 2026-10-15 night (Claude side session: Day/Week review, descriptors, tabs back, midday record rewrites).
 
-## Chrome popup — 10/18 (Codex)
+## Chrome dark pages — 10/18 (Codex)
 
-- Compact site-count disclosure replaces the unbounded domain paragraph; 100-site light/dark fixtures fit at424px collapsed /548px expanded, including dark controls and per-site action. Extension-only change: reload Focus Blocker at chrome://extensions to activate; Mac deploy does not install extension assets.
+- Popup compact layout and live settings listeners; direct Mac settings updates, independent mode-change queue, conflict protection for offline/rapid edits, native-theme rechecks and bundled Dark Reader site fixes implemented. Browser fixtures and bridge tests pass; separate visual review91/100.
+- Native install and extension activation status recorded in WORK_LOG.md. Reload Focus Blocker at chrome://extensions and refresh existing pages to pick up new content scripts; deploy.sh installs only native app.
 
 Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 

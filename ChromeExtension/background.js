@@ -1,3 +1,5 @@
+importScripts('dark-fixes.js');
+
 // Talks to Focus.app's BrowserBridge on 127.0.0.1:47821.
 // MV3 workers are killed after ~30s idle, so every bit of state lives in
 // chrome.storage (session = until Chrome quits, local = durable event queue).
@@ -48,7 +50,7 @@ async function refreshState(force = false) {
     const r = await fetch(API + '/state', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
     next = { ...(await r.json()), connected: true };
     ok = Date.now();
-    if (next.darkPages) await takeAppDark(next.darkPages, asked);
+    if (next.darkPages && !darkWatching) await takeAppDark(next.darkPages, asked);
   } catch {
     next = state && Date.now() - lastOk < STALE_MS
       ? { ...state, connected: false }
@@ -120,13 +122,24 @@ const DARK_SCRIPT = {
   runAt: 'document_start',
 };
 
+const sameDark = (a, b) => !!a && !!b && ['mode', 'from', 'to', 'brightness', 'contrast'].every((key) => a[key] === b[key]);
+
 // The popup and Focus's Settings both edit it. A popup edit wins until the app
 // has it (`darkPending`), so a /state read that raced the edit can't undo it.
 async function takeAppDark(dark, asked) {
-  const { dark: old, darkPending = false, darkEditedAt = 0 } = await local.get(['dark', 'darkPending', 'darkEditedAt']);
-  if (darkPending) return pushDark();
-  if (asked < darkEditedAt) return;
-  if (JSON.stringify(old) !== JSON.stringify(dark)) await local.set({ dark });
+  await writeDark(async () => {
+    const { dark: old, darkPending = false, darkEditedAt = 0 } = await local.get(['dark', 'darkPending', 'darkEditedAt']);
+    if (darkPending || asked < darkEditedAt) return;
+    if (!sameDark(old, dark)) await local.set({ dark, darkNight: inHours(dark.from, dark.to) });
+  });
+  void pushDark();
+}
+
+let darkWrites = Promise.resolve();
+function writeDark(fn) {
+  const next = darkWrites.then(fn);
+  darkWrites = next.catch(() => {});
+  return next;
 }
 
 async function setDark(dark) {
@@ -137,27 +150,76 @@ async function setDark(dark) {
     brightness: clampInt(dark.brightness, 50, 150),
     contrast: clampInt(dark.contrast, 50, 150),
   };
-  await local.set({ dark: d, darkPending: true, darkEditedAt: Date.now() });
+  await writeDark(async () => {
+    const { darkAppRevision = null } = await local.get('darkAppRevision');
+    await local.set({ dark: d, darkNight: inHours(d.from, d.to), darkPending: true, darkBaseRevision: darkAppRevision, darkEditID: crypto.randomUUID(), darkEditedAt: Date.now() });
+  });
   await syncDark();
-  pushDark();
+  void pushDark();
 }
 
 const clampInt = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(Number(v) || 0)));
 
-async function pushDark() {
-  const { dark } = await local.get('dark');
-  if (!dark) return;
+let pushingDark = null;
+function pushDark() {
+  if (pushingDark) return pushingDark;
+  pushingDark = (async () => {
+    while (true) {
+      const { dark, darkPending, darkEditID, darkBaseRevision } = await local.get(['dark', 'darkPending', 'darkEditID', 'darkBaseRevision']);
+      if (!dark || !darkPending) return;
+      try {
+        const r = await fetch(API + '/dark', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...dark, baseRevision: darkBaseRevision }),
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!r.ok && r.status !== 409) return;
+        const update = await r.json();
+        await writeDark(async () => {
+          const current = await local.get('darkEditID');
+          if (current.darkEditID !== darkEditID) {
+            if (r.ok && update.revision) await local.set({ darkBaseRevision: update.revision, darkAppRevision: update.revision });
+            return;
+          }
+          await local.set({ dark: update.dark || dark, darkNight: inHours((update.dark || dark).from, (update.dark || dark).to), darkPending: false,
+            darkBaseRevision: update.revision || null, darkAppRevision: update.revision || null, darkEditedAt: Date.now() });
+        });
+      } catch { return; }
+    }
+  })().finally(() => { pushingDark = null; });
+  return pushingDark;
+}
+
+let darkWatching = false;
+let darkWatchRetry;
+async function watchDark() {
+  if (darkWatching) return;
+  clearTimeout(darkWatchRetry);
+  darkWatching = true;
   try {
-    const r = await fetch(API + '/dark', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(dark),
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!r.ok) return;
-    const { dark: now } = await local.get('dark');
-    if (JSON.stringify(now) === JSON.stringify(dark)) await local.set({ darkPending: false, darkEditedAt: Date.now() });
-  } catch {}
+    let revision = '';
+    while (true) {
+      const r = await fetch(API + '/dark?since=' + encodeURIComponent(revision), {
+        cache: 'no-store', signal: AbortSignal.timeout(25000),
+      });
+      if (!r.ok) throw new Error('Dark settings unavailable');
+      const update = await r.json();
+      if (!update.dark || !update.revision) throw new Error('Missing dark settings');
+      revision = update.revision;
+      await writeDark(async () => {
+        const { darkPending, darkEditedAt = 0, dark: old } = await local.get(['darkPending', 'darkEditedAt', 'dark']);
+        if (darkPending) return;
+        if (!sameDark(old, update.dark)) {
+          await local.set({ dark: update.dark, darkNight: inHours(update.dark.from, update.dark.to), darkAppRevision: revision, darkEditedAt: Math.max(Date.now(), darkEditedAt) });
+        } else await local.set({ darkAppRevision: revision });
+      });
+      await syncDark();
+      void pushDark();
+    }
+  } catch {
+    darkWatching = false;
+    darkWatchRetry = setTimeout(watchDark, 5000);
+  }
 }
 
 function inHours(from, to) {
@@ -166,21 +228,37 @@ function inHours(from, to) {
   return from <= to ? m >= from && m < to : m >= from || m < to;
 }
 
-function syncDark() {
-  return serial(async () => {
+let darkChain = Promise.resolve();
+function syncDark(ensureOpen = false) {
+  const next = darkChain.then(async () => {
     const { dark = null, darkNight = null } = await local.get(['dark', 'darkNight']);
     const night = !!dark && inHours(dark.from, dark.to);
     if (night !== darkNight) await local.set({ darkNight: night });
+    if (dark?.mode === 'night') {
+      const nextTime = (minutes) => {
+        const date = new Date();
+        date.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+        if (date.getTime() <= Date.now()) date.setDate(date.getDate() + 1);
+        return date.getTime();
+      };
+      const when = Math.min(nextTime(dark.from), nextTime(dark.to));
+      const alarm = await chrome.alarms.get('darkBoundary');
+      if (!alarm || alarm.scheduledTime !== when) await chrome.alarms.create('darkBoundary', { when });
+    } else await chrome.alarms.clear('darkBoundary');
 
     const want = !!dark && dark.mode !== 'off';
     const have = (await chrome.scripting.getRegisteredContentScripts({ ids: [DARK_SCRIPT.id] })).length > 0;
-    if (want && !have) {
-      await chrome.scripting.registerContentScripts([DARK_SCRIPT]);
-      for (const tab of await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] })) injectDark(tab.id);
+    if (want && (!have || ensureOpen)) {
+      if (!have) await chrome.scripting.registerContentScripts([DARK_SCRIPT]);
+      const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+      await Promise.all(tabs.filter((t) => t.active).map((t) => injectDark(t.id)));
+      for (const tab of tabs.filter((t) => !t.active)) void injectDark(tab.id);
     } else if (!want && have) {
       await chrome.scripting.unregisterContentScripts({ ids: [DARK_SCRIPT.id] });
     }
-  }).catch(() => {});
+  });
+  darkChain = next.catch(() => {});
+  return darkChain;
 }
 
 // Open tabs only; a second copy of darkreader.js would orphan the first.
@@ -372,6 +450,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       case 'setDark':
         await setDark(msg.dark || {});
         return { ok: true };
+      case 'darkConfig':
+        return darkFixesFor(sender.url || sender.tab?.url || '');
       case 'darkFetch':
         return darkFetch(msg.url);
       case 'popup': {
@@ -400,10 +480,11 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (d) => {
   }, 400);
 });
 
-chrome.tabs.onActivated.addListener(() => { track(); refreshState(); postTab(); });
+chrome.tabs.onActivated.addListener(() => { track(); refreshState(); postTab(); watchDark(); });
 chrome.tabs.onUpdated.addListener((_id, info, tab) => {
   if (tab.active && (info.url || info.audible !== undefined)) track();
   if (tab.active && (info.url || info.title)) postTab();
+  if (info.url) chrome.tabs.sendMessage(_id, { type: 'darkRecheck' }).catch(() => {});
 });
 chrome.windows.onFocusChanged.addListener((id) => { track(); postTab(id); });
 chrome.idle.onStateChanged.addListener(() => track());
@@ -415,10 +496,15 @@ function ensureAlarm() {
 chrome.runtime.onInstalled.addListener(() => { ensureAlarm(); refreshState(true); });
 chrome.runtime.onStartup.addListener(() => { ensureAlarm(); refreshState(true); });
 chrome.alarms.onAlarm.addListener(async (a) => {
+  if (a.name === 'darkBoundary') { await syncDark(); return; }
   if (a.name !== 'tick') return;
+  watchDark();
   await refreshState(true);
   await track();
   postTab();
   await flush();
 });
 ensureAlarm();
+
+watchDark();
+syncDark(true);

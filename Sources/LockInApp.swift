@@ -180,6 +180,7 @@ struct FocusApp: App {
             appSettings.darkPagesBrightness = dark.brightness
             appSettings.darkPagesContrast = dark.contrast
         }
+        BrowserBridge.shared.observeDarkPages(appSettings)
         BrowserBridge.shared.start()
 
         CommitmentReminder.shared.install(dayStore: days, settings: appSettings) {
@@ -781,29 +782,32 @@ enum MenuBarRing {
         return img
     }
 
-    /// The app icon's mark (an eye with an iris ring, from make_icon.swift's 100-unit grid),
-    /// as a template for the idle menu bar.
+    /// The app icon's mark (an eye looking down at three tape cells, the middle one solid),
+    /// as a template for the idle menu bar. Drawn on a 100-unit grid, y down.
     static let mark: NSImage = {
-        let img = NSImage(size: NSSize(width: 20, height: 14), flipped: false) { rect in
-            let u: CGFloat = 0.215
-            let c = NSPoint(x: rect.midX, y: rect.midY)
-            func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: c.x + (x - 50) * u, y: c.y - (y - 50) * u) }
+        let img = NSImage(size: NSSize(width: 18, height: 16), flipped: true) { rect in
+            let u: CGFloat = 0.205
+            func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+                NSPoint(x: rect.midX + (x - 50) * u, y: rect.midY + (y - 52.5) * u)
+            }
+            func box(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect {
+                NSRect(origin: p(x, y), size: NSSize(width: w * u, height: h * u))
+            }
             let eye = NSBezierPath()
-            eye.move(to: p(10, 50))
-            eye.curve(to: p(90, 50), controlPoint1: p(26, 26), controlPoint2: p(74, 26))
-            eye.curve(to: p(10, 50), controlPoint1: p(74, 74), controlPoint2: p(26, 74))
+            eye.move(to: p(14, 36))
+            eye.curve(to: p(86, 36), controlPoint1: p(28, 16), controlPoint2: p(72, 16))
+            eye.curve(to: p(14, 36), controlPoint1: p(72, 56), controlPoint2: p(28, 56))
             eye.close()
             eye.lineWidth = 8 * u
             eye.lineJoinStyle = .round
             NSColor.black.setStroke()
             eye.stroke()
-            let ir = 15.5 * u
-            let iris = NSBezierPath(ovalIn: NSRect(x: c.x - ir, y: c.y - ir, width: ir * 2, height: ir * 2))
-            iris.lineWidth = 7 * u
-            iris.stroke()
-            let pr = 6.5 * u
             NSColor.black.setFill()
-            NSBezierPath(ovalIn: NSRect(x: c.x - pr, y: c.y - pr, width: pr * 2, height: pr * 2)).fill()
+            NSBezierPath(ovalIn: box(40.5, 32, 19, 19)).fill()
+            for (x, alpha) in [(CGFloat(13), 0.38), (39, 1), (65, 0.38)] {
+                NSColor.black.withAlphaComponent(alpha).setFill()
+                NSBezierPath(roundedRect: box(x, 68, 22, 20), xRadius: 5.5 * u, yRadius: 5.5 * u).fill()
+            }
             return true
         }
         img.isTemplate = true

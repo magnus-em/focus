@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import FocusCore
+import Combine
 
 /// Loopback HTTP endpoint for the Chrome extension in `ChromeExtension/`.
 ///
@@ -32,12 +33,24 @@ final class BrowserBridge: ObservableObject {
     }
 
     /// The extension runs the schedule itself, so it keeps working while Focus is quit.
-    struct DarkPages: Codable {
+    struct DarkPages: Codable, Equatable {
         let mode: String
         let from: Int
         let to: Int
         let brightness: Int
         let contrast: Int
+
+        var revision: String {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
+            return (try? encoder.encode(self))?.base64EncodedString() ?? ""
+        }
+    }
+
+    private struct DarkUpdate: Encodable {
+        let dark: DarkPages
+        let revision: String
+        init(_ dark: DarkPages) { self.dark = dark; revision = dark.revision }
     }
 
     @Published private(set) var lastContact: Date?
@@ -54,6 +67,32 @@ final class BrowserBridge: ObservableObject {
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.magnus.focus.browser-bridge")
+    private var darkObservation: AnyCancellable?
+    private var currentDark: DarkPages?
+    private var darkWaiters: [UUID: NWConnection] = [:]
+
+    func observeDarkPages(_ settings: AppSettings) {
+        darkObservation = Publishers.CombineLatest4(settings.$darkPagesMode, settings.$darkPagesFrom,
+                                                     settings.$darkPagesTo, settings.$darkPagesBrightness)
+            .combineLatest(settings.$darkPagesContrast)
+            .map { values, contrast in
+                DarkPages(mode: values.0, from: values.1, to: values.2, brightness: values.3, contrast: contrast)
+            }
+            .removeDuplicates()
+            .debounce(for: .milliseconds(10), scheduler: queue)
+            .sink { [weak self] dark in self?.publishDark(dark) }
+    }
+
+    private func publishDark(_ dark: DarkPages) {
+        guard currentDark != dark else { return }
+        currentDark = dark
+        for id in Array(darkWaiters.keys) { finishDarkWait(id) }
+    }
+
+    private func finishDarkWait(_ id: UUID) {
+        guard let conn = darkWaiters.removeValue(forKey: id), let dark = currentDark else { return }
+        respond(conn, status: "200 OK", json: try? JSONEncoder().encode(DarkUpdate(dark)))
+    }
 
     func start() {
         guard listener == nil else { return }
@@ -83,6 +122,7 @@ final class BrowserBridge: ObservableObject {
     private struct Request {
         let method: String
         let path: String
+        let since: String?
         let headers: [String: String]
         let body: Data
 
@@ -103,6 +143,7 @@ final class BrowserBridge: ObservableObject {
             guard body.count >= length else { return nil }
             method = String(parts[0])
             path = String(parts[1].split(separator: "?").first ?? "")
+            since = URLComponents(string: String(parts[1]))?.queryItems?.first { $0.name == "since" }?.value
             headers = h
             self.body = Data(body.prefix(length))
         }
@@ -141,6 +182,28 @@ final class BrowserBridge: ObservableObject {
                 let body = self.stateProvider.flatMap { try? JSONEncoder().encode($0()) } ?? Data("{}".utf8)
                 self.queue.async { self.respond(conn, status: "200 OK", json: body) }
             }
+        case ("GET", "/dark"):
+            DispatchQueue.main.async {
+                self.lastContact = Date()
+                guard let dark = self.stateProvider?().darkPages else {
+                    self.queue.async { self.respond(conn, status: "503 Service Unavailable", json: nil) }
+                    return
+                }
+                self.queue.async {
+                    self.publishDark(dark)
+                    guard req.since == dark.revision else {
+                        self.respond(conn, status: "200 OK", json: try? JSONEncoder().encode(DarkUpdate(dark)))
+                        return
+                    }
+                    if self.darkWaiters.count >= 4, let id = self.darkWaiters.keys.first { self.finishDarkWait(id) }
+                    let id = UUID()
+                    self.darkWaiters[id] = conn
+                    conn.stateUpdateHandler = { [weak self] state in
+                        if case .cancelled = state { self?.darkWaiters.removeValue(forKey: id) }
+                    }
+                    self.queue.asyncAfter(deadline: .now() + 20) { [weak self] in self?.finishDarkWait(id) }
+                }
+            }
         case ("POST", "/tab"):
             let obj = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any]
             DispatchQueue.main.async {
@@ -171,8 +234,17 @@ final class BrowserBridge: ObservableObject {
             }
             DispatchQueue.main.async {
                 self.lastContact = Date()
+                let base = (try? JSONSerialization.jsonObject(with: req.body) as? [String: Any])?["baseRevision"] as? String
+                let latest = self.stateProvider?().darkPages
+                if let base, let latest, base != latest.revision {
+                    self.queue.async { self.respond(conn, status: "409 Conflict", json: try? JSONEncoder().encode(DarkUpdate(latest))) }
+                    return
+                }
                 self.onDarkPages?(dark)
-                self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
+                self.queue.async {
+                    self.publishDark(dark)
+                    self.respond(conn, status: "200 OK", json: try? JSONEncoder().encode(DarkUpdate(dark)))
+                }
             }
         case ("POST", "/events"):
             let events = Self.decodeEvents(req.body)
