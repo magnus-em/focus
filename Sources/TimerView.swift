@@ -83,7 +83,10 @@ struct TimerView: View {
                                 minutes: todayCategoryTotals[FocusCategories.leetCode] ?? 0,
                                 problemGoal: settings.leetCodeDailyGoal, minutesGoal: settings.leetCodeMinutesGoal,
                                 tracking: timer.isRunning && !timer.isOnBreak && timer.currentLabel == FocusCategories.leetCode,
-                                start: { timer.switchTo(FocusCategories.leetCode) }, open: onOpenLeetCode)
+                                start: { timer.switchTo(FocusCategories.leetCode) }, open: onOpenLeetCode,
+                                activeTitle: leetCode.workingOnProblem ? leetCode.activePractice?.title : nil,
+                                activeSeconds: leetCode.activeSeconds,
+                                done: { leetCode.finishPractice(); onOpenLeetCode() })
             wellbeingTotals
             if !timer.isActive {
                 if !FocusCategories.isLife(timer.currentLabel) { presets }
@@ -1142,6 +1145,9 @@ struct LeetCodeDailyGoalRow: View {
     let tracking: Bool
     let start: () -> Void
     let open: () -> Void
+    var activeTitle: String? = nil
+    var activeSeconds: Double = 0
+    var done: () -> Void = {}
 
     private var met: Bool {
         LeetCodeDailyGoal.isMet(problems: count, minutes: minutes, problemGoal: problemGoal, minutesGoal: minutesGoal)
@@ -1160,10 +1166,23 @@ struct LeetCodeDailyGoalRow: View {
             progress("Problems", value: "\(count) / \(max(1, problemGoal))", fraction: Double(count) / Double(max(1, problemGoal)))
             progress("Focused time", value: "\(durationText(minutes: minutes)) / \(durationText(minutes: Double(max(1, minutesGoal))))",
                      fraction: minutes / Double(max(1, minutesGoal)))
+            if let activeTitle {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(activeTitle).font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                    Spacer(minLength: 0)
+                    Text(String(format: "%02d:%02d", Int(activeSeconds) / 60, Int(activeSeconds) % 60))
+                        .font(.system(size: 13)).monospacedDigit()
+                        .accessibilityLabel("Problem work time")
+                }
+            }
             Text("\(newCount) new · \(redoCount) redo · from your log and timer")
                 .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
             HStack(spacing: 12) {
-                if tracking {
+                if activeTitle != nil {
+                    Button("Done with problem", action: done)
+                        .font(.system(size: 12, weight: .semibold)).buttonStyle(.plain)
+                        .frame(minHeight: 44)
+                } else if tracking {
                     Label("Tracking LeetCode", systemImage: "timer")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                 } else {
@@ -1173,7 +1192,7 @@ struct LeetCodeDailyGoalRow: View {
                         .frame(minHeight: 36)
                 }
                 Spacer(minLength: 0)
-                Button("Choose / log", action: open)
+                Button(tracking && activeTitle == nil ? "Choose problem" : "Choose / log", action: open)
                     .font(.system(size: 12, weight: .medium)).buttonStyle(.plain)
                     .frame(minHeight: 36)
                     .help("Choose a problem or log a solve in LeetCode")

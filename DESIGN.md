@@ -118,3 +118,5 @@ https://claude.ai/artifact/KSWGrRXt5A5qfnpwmQRKx4
 ## LeetCode practice — 10/18
 
 LeetCode is a separate focus category with its own orange accent and daily timer minutes, not a nested SWE label. The main Now screen shows a quiet daily card with problem and focused-time progress, new/redo counts, and explicit Start LeetCode / Choose or log actions. Starting interview-prep targets are4 problems and2 focused hours, editable in Settings. Do not repeat LeetCode minutes in both the daily card and the category capsules; the main goal ring still includes all focus time. Logged solves and tracked time are different evidence and both have labels.
+
+During a known LeetCode problem, the daily card adds its title and work clock, with Done with problem replacing Start. Show Done only for the active problem. Finishing opens the detailed log by user action; merely detecting a page opens nothing. The form labels the outcome, confidence, difficulty/pattern, hints, recorded time and notes, and retains unfinished drafts via Finish later.

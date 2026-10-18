@@ -31,7 +31,7 @@ struct LCProblem: Identifiable, Hashable {
 
     var id: String { slug }
     var url: String { "https://leetcode.com/problems/\(slug)/" }
-    var categories: [String] { [category] }
+    var categories: [String] { category.isEmpty ? [] : [category] }
     func isIn(_ list: LCList) -> Bool { listMask & list.rawValue != 0 }
     var isCurated: Bool { listMask != 0 }
 }

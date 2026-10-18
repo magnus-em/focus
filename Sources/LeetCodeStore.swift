@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UserNotifications
+import AppKit
 import FocusCore
 
 struct LCAttempt: Identifiable {
@@ -47,6 +48,17 @@ struct LCPick: Identifiable {
     var id: String { problem.slug }
 }
 
+struct LeetCodeLogDetails {
+    let title: String
+    let difficulty: ProblemDifficulty
+    let categories: [String]
+    let solved: Bool
+    let confidence: Confidence
+    let minutes: Int?
+    let usedHelp: Bool
+    let notes: String
+}
+
 /// LeetCode grind tracking on top of `ProblemStore`: every solve is a normal SWE
 /// `ProblemEntry` (so the review queue, dashboard and SWE goals keep working), matched
 /// back to the catalog by URL slug. This store only derives stats and runs the stopwatch.
@@ -77,6 +89,14 @@ final class LeetCodeStore: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var solveDrafts: LeetCodeSolveDraftStore?
     var onStartPractice: (() -> Void)?
+    @Published private(set) var practice = LeetCodePracticeState()
+    @Published var finishingPractice: LeetCodePracticeState.Session?
+    private weak var focusTimer: TimerManager?
+    private var practiceTick: Timer?
+    private var screenSlug: String?
+    private var screenAt: Date?
+    private var lastPracticeSave = Date.distantPast
+    private static let practiceKey = "leetCode.practice.v1"
 
     init(catalog: LeetCodeCatalog, problemStore: ProblemStore, settings: AppSettings) {
         self.catalog = catalog
@@ -84,9 +104,14 @@ final class LeetCodeStore: ObservableObject {
         self.settings = settings
 
         let d = UserDefaults.standard
-        activeSlug = d.string(forKey: "leetCode.activeSlug")
-        let start = d.double(forKey: "leetCode.activeStart")
-        activeStart = start > 0 ? Date(timeIntervalSince1970: start) : nil
+        if let data = d.data(forKey: Self.practiceKey), let saved = try? JSONDecoder().decode(LeetCodePracticeState.self, from: data) {
+            practice = saved
+            practice.restore()
+        } else if let slug = d.string(forKey: "leetCode.activeSlug") {
+            practice.select(slug: slug, title: catalog.problem(slug: slug)?.title ?? slug.replacingOccurrences(of: "-", with: " "), at: Date())
+        }
+        activeSlug = practice.active?.slug
+        activeStart = practice.active?.startedAt
 
         problemStore.$problems
             .sink { [weak self] in self?.recompute(from: $0) }
@@ -141,41 +166,155 @@ final class LeetCodeStore: ObservableObject {
 
     // MARK: - Stopwatch
 
-    var activeProblem: LCProblem? { activeSlug.flatMap(catalog.problem(slug:)) }
-
-    func start(_ p: LCProblem) {
-        onStartPractice?()
-        activeSlug = p.slug
-        activeStart = Date()
-        UserDefaults.standard.set(p.slug, forKey: "leetCode.activeSlug")
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "leetCode.activeStart")
+    var activeProblem: LCProblem? { practice.active.map(problem(for:)) }
+    var activePractice: LeetCodePracticeState.Session? { practice.active }
+    var activeSeconds: Double { practice.active?.seconds ?? 0 }
+    var practiceDrafts: [LeetCodePracticeState.Session] { practice.sessions.filter { $0.outcome == .draft }.reversed() }
+    var recentPractice: [LeetCodePracticeState.Session] { Array(practice.sessions.reversed().prefix(20)) }
+    var workingOnProblem: Bool {
+        practice.active != nil && (practice.isTracking || (settings.screenWatch && screenSlug == practice.active?.slug && screenAt.map { Date().timeIntervalSince($0) < 90 } == true) || (focusTimer?.isActive == true && focusTimer?.currentLabel == FocusCategories.leetCode && focusTimer?.isOnBreak == false))
     }
 
-    func cancelStopwatch() {
-        activeSlug = nil
-        activeStart = nil
-        UserDefaults.standard.removeObject(forKey: "leetCode.activeSlug")
+    func problem(for session: LeetCodePracticeState.Session) -> LCProblem {
+        let known = catalog.problem(slug: session.slug)
+        return LCProblem(number: known?.number ?? 0, title: session.title, slug: session.slug,
+            difficulty: session.difficulty ?? known?.difficulty ?? .medium, acceptance: known?.acceptance ?? 0,
+            paidOnly: known?.paidOnly ?? false, tags: known?.tags ?? [],
+            category: session.categories.first ?? known?.category ?? "", listMask: known?.listMask ?? 0)
+    }
+
+    func connectPractice(timer: TimerManager) {
+        focusTimer = timer
+        ScreenWatcher.shared.practiceObservations.sink { [weak self] observation in
+            guard let self, abs(Date().timeIntervalSince(observation.at)) < 45 else { return }
+            self.refreshPractice()
+            self.screenSlug = observation.slug
+            self.screenAt = observation.at
+            if let slug = observation.slug {
+                let title = self.catalog.problem(slug: slug)?.title ?? slug.replacingOccurrences(of: "-", with: " ").capitalized
+                self.practice.select(slug: slug, title: title, at: Date(), automatic: true)
+            }
+            self.refreshPractice(forceSave: true)
+        }.store(in: &cancellables)
+        timer.objectWillChange.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refreshPractice() }.store(in: &cancellables)
+        practiceTick = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshPractice() }
+        }
+        if let practiceTick { RunLoop.main.add(practiceTick, forMode: .common) }
+        NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification).sink { [weak self] _ in
+            self?.refreshPractice(forceSave: true)
+        }.store(in: &cancellables)
+        refreshPractice()
+    }
+
+    private func shouldTrackPractice(at now: Date) -> Bool {
+        guard practice.active != nil, !PresenceMonitor.shared.isAway else { return false }
+        if let focusTimer, focusTimer.isActive {
+            if !focusTimer.isRunning { return false }
+            if !focusTimer.isOnBreak && focusTimer.currentLabel == FocusCategories.leetCode { return true }
+            if focusTimer.isOnBreak { return false }
+        }
+        return settings.screenWatch && screenSlug == practice.active?.slug
+            && screenAt.map { now.timeIntervalSince($0) >= 0 && now.timeIntervalSince($0) <= 20 } == true
+            && PresenceMonitor.idleSeconds < 90
+    }
+
+    private func refreshPractice(forceSave: Bool = false) {
+        let now = Date()
+        guard practice.active != nil || forceSave else { return }
+        practice.update(at: now, tracking: shouldTrackPractice(at: now))
+        activeSlug = practice.active?.slug
+        activeStart = practice.active?.startedAt
+        if forceSave || now.timeIntervalSince(lastPracticeSave) >= 15 { savePractice() }
+    }
+
+    private func savePractice() {
+        practice.prune(at: Date())
+        if let data = try? JSONEncoder().encode(practice) { UserDefaults.standard.set(data, forKey: Self.practiceKey) }
+        lastPracticeSave = Date()
+        if let activeSlug { UserDefaults.standard.set(activeSlug, forKey: "leetCode.activeSlug") }
+        else { UserDefaults.standard.removeObject(forKey: "leetCode.activeSlug") }
         UserDefaults.standard.removeObject(forKey: "leetCode.activeStart")
     }
 
+    func start(_ p: LCProblem) {
+        refreshPractice()
+        practice.select(slug: p.slug, title: p.title, at: Date())
+        onStartPractice?()
+        refreshPractice(forceSave: true)
+    }
+
+    func resumePractice(_ session: LeetCodePracticeState.Session) {
+        practice.resume(id: session.id, at: Date())
+        onStartPractice?()
+        refreshPractice(forceSave: true)
+    }
+
+    func finishPractice() {
+        guard finishingPractice == nil else { return }
+        refreshPractice()
+        finishingPractice = practice.finish(at: Date())
+        if focusTimer?.currentLabel == FocusCategories.leetCode, focusTimer?.isActive == true { focusTimer?.stop(at: Date()) }
+        refreshPractice(forceSave: true)
+    }
+
+    func reviewPractice(_ session: LeetCodePracticeState.Session) {
+        guard finishingPractice == nil else { return }
+        if session.id == practice.activeID { finishPractice(); return }
+        finishingPractice = practice.prepareLog(id: session.id, at: Date())
+        savePractice()
+    }
+
+    func cancelStopwatch() {
+        finishPractice()
+    }
+
     func elapsedMinutes(for p: LCProblem) -> Int? {
-        guard activeSlug == p.slug, let s = activeStart else { return nil }
-        return max(1, Int((Date().timeIntervalSince(s) / 60).rounded()))
+        guard practice.active?.slug == p.slug else { return nil }
+        return practice.active?.minutes
+    }
+
+    func keepPracticeDetails(id: UUID, details: LeetCodePracticeState.Details) {
+        practice.keepDetails(id: id, details: details)
+        savePractice()
+    }
+
+    func completePractice(_ session: LeetCodePracticeState.Session, details: LeetCodeLogDetails) -> Bool {
+        guard practice.sessions.contains(where: { $0.id == session.id && $0.outcome == .draft }) else { return false }
+        if details.solved, !log(problem(for: session), confidence: details.confidence, minutes: details.minutes,
+            usedHelp: details.usedHelp, notes: details.notes, at: session.finishedAt ?? session.startedAt,
+            id: session.id, title: details.title, difficulty: details.difficulty, categories: details.categories) { return false }
+        practice.complete(id: session.id, solved: details.solved, confidence: details.confidence,
+                          usedHelp: details.usedHelp, notes: details.notes, title: details.title,
+                          difficulty: details.difficulty, categories: details.categories, minutes: details.minutes)
+        savePractice()
+        finishingPractice = nil
+        return true
+    }
+
+    func hasPractice(slug: String, on date: Date) -> Bool {
+        practice.sessions.contains { $0.slug == slug && Calendar.current.isDate($0.startedAt, inSameDayAs: date) }
     }
 
     // MARK: - Logging
 
     @discardableResult
-    func log(_ p: LCProblem, confidence: Confidence, minutes: Int?, usedHelp: Bool, notes: String, at date: Date = Date()) -> Bool {
+    func log(_ p: LCProblem, confidence: Confidence, minutes: Int?, usedHelp: Bool, notes: String, at date: Date = Date(),
+             id: UUID? = nil, title: String? = nil, difficulty: ProblemDifficulty? = nil, categories: [String]? = nil) -> Bool {
+        if let id, loggedProblems.contains(where: { $0.id == id }) { return true }
         let milestonesBefore = Set(milestones.filter(\.unlocked).map(\.id))
         let source = settings.problemSources.first { $0.localizedCaseInsensitiveContains("leetcode") } ?? "LeetCode"
-        guard problemStore.add(ProblemEntry(id: UUID(), date: date,
-            title: p.title, domain: .swe, categories: p.categories, difficulty: p.difficulty,
+        guard problemStore.add(ProblemEntry(id: id ?? UUID(), date: date,
+            title: title ?? p.title, domain: .swe, categories: categories ?? p.categories, difficulty: difficulty ?? p.difficulty,
             source: source, needsReview: usedHelp, confidence: confidence,
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             url: p.url, solveMinutes: minutes
         )) else { return false }
-        if activeSlug == p.slug { cancelStopwatch() }
+        if activeSlug == p.slug, let session = practice.finish(at: Date()) {
+            practice.complete(id: session.id, solved: true, confidence: confidence, usedHelp: usedHelp, notes: notes, title: title ?? p.title)
+            if focusTimer?.currentLabel == FocusCategories.leetCode, focusTimer?.isActive == true { focusTimer?.stop(at: Date()) }
+            refreshPractice(forceSave: true)
+        }
 
         let unlocked = milestones.filter { $0.unlocked && !milestonesBefore.contains($0.id) }
         if let m = unlocked.first {

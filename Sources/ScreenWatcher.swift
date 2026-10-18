@@ -102,6 +102,11 @@ final class ScreenWatcher: ObservableObject {
     /// Set by `ScreenCoach`: the running category, nil when nothing runs.
     var runningCategory: () -> String? = { nil }
 
+    struct PracticeObservation {
+        let at: Date
+        let slug: String?
+    }
+    let practiceObservations = PassthroughSubject<PracticeObservation, Never>()
     var onSample: ((ScreenSample) -> Void)?
     private(set) var samples: [ScreenSample] = []
     private var settings: AppSettings?
@@ -388,6 +393,7 @@ final class ScreenWatcher: ObservableObject {
         }
 
         if Self.privateApps.contains(bundle) {
+            practiceObservations.send(.init(at: now, slug: nil))
             taskContext.clear()
             record(ScreenSample(date: now, app: appName, bundleID: bundle, title: "", summary: "Private", category: nil,
                                 active: idle < 90))
@@ -472,6 +478,8 @@ final class ScreenWatcher: ObservableObject {
             report: focusReportAtCapture, capturedTitle: shot.title, windowChangedAt: windowChangedAtCapture,
             capturedAt: capturedAt, nativeWindowMatches: Self.frontWindowID(pid: app.processIdentifier) == shot.windowID,
             isChrome: bundle == "com.google.Chrome")) : .notBrowser
+        practiceObservations.send(.init(at: now, slug: LeetCodePracticeEvidence.slug(
+            url: url, privacy: privacy, active: idle < 90 && category != "Admin")))
         ScreenJournalStore.shared.record(.init(at: now, end: now.addingTimeInterval(Self.interval),
             app: appName, bundle: bundle, windowID: "\(app.processIdentifier):\(shot.windowID)", title: title,
             url: privacy == .incognito ? nil : url, category: category, trackedCategory: trackedAtCapture, active: idle < 90,
@@ -516,6 +524,7 @@ final class ScreenWatcher: ObservableObject {
 
     /// After sleep, lid close, lock or display off the old evidence is stale.
     func resetEvidence() {
+        practiceObservations.send(.init(at: Date(), slug: nil))
         sampleGeneration &+= 1
         samples.removeAll()
         taskContext.clear()

@@ -130,10 +130,23 @@ struct LeetCodeView: View {
         }
         .frame(minWidth: 920, minHeight: 620)
         .overlay(alignment: .top) { celebrationBanner }
+        .onChange(of: selectedSlug) { _, slug in
+            if let slug, let problem = catalog.problem(slug: slug) { store.start(problem) }
+        }
         .sheet(item: $logTarget) { p in
-            LCLogSheet(problem: p, suggestedMinutes: store.elapsedMinutes(for: p)) { conf, mins, help, notes in
-                store.log(p, confidence: conf, minutes: mins, usedHelp: help, notes: notes)
-                if pick?.problem.slug == p.slug { pick = nil }
+            LCLogSheet(problem: p, suggestedMinutes: store.elapsedMinutes(for: p)) { details in
+                let saved = store.log(p, confidence: details.confidence, minutes: details.minutes,
+                    usedHelp: details.usedHelp, notes: details.notes, title: details.title,
+                    difficulty: details.difficulty, categories: details.categories)
+                if saved, pick?.problem.slug == p.slug { pick = nil }
+                return saved
+            }
+        }
+        .sheet(item: $store.finishingPractice) { session in
+            LCLogSheet(problem: store.problem(for: session), suggestedMinutes: session.minutes,
+                       allowUnsolved: true, workedAt: session.startedAt, draft: session.draftDetails,
+                       onDefer: { store.keepPracticeDetails(id: session.id, details: $0) }) { details in
+                store.completePractice(session, details: details)
             }
         }
     }
@@ -241,6 +254,7 @@ struct LeetCodeView: View {
     private func grindTab(_ items: [LCProblem]) -> some View {
         todayCard
         if let p = store.activeProblem { activeCard(p) }
+        practiceSessionsCard
         if let p = selectedProblem, p.slug != store.activeSlug { problemCard(p) }
         pickCard(items)
         if !store.reviewQueue.isEmpty { reviewCard }
@@ -305,34 +319,66 @@ struct LeetCodeView: View {
         .frame(minWidth: 96, alignment: .leading)
     }
 
-    private func activeCard(_ p: LCProblem) -> some View {
-        let target = LeetCodeStore.targetMinutes[p.difficulty]!
-        return HStack(spacing: 14) {
-            TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                let secs = Int(ctx.date.timeIntervalSince(store.activeStart ?? ctx.date))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(format: "%02d:%02d", secs / 60, secs % 60))
-                        .font(.system(size: 30, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(secs / 60 >= target ? Color.red : .primary)
-                    Text(secs / 60 >= target ? "Over the \(target)m interview target" : "Target \(target)m")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+    private var practiceSessionsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Practice sessions").font(.system(size: 15, weight: .semibold))
+            Text("Work is saved automatically. Finish the log when you’re ready.")
+                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+            if store.recentPractice.isEmpty {
+                Text("Choose a problem or open a LeetCode problem page to begin.")
+                    .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+            }
+            ForEach(store.recentPractice.filter { $0.id != store.practice.activeID }.prefix(5)) { session in
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(session.title).font(.system(size: 13, weight: .medium))
+                        Text("\(durationText(minutes: session.seconds / 60)) · \(session.startedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())) · \(session.outcome == .draft ? "Details pending" : session.outcome == .solved ? "Solve logged" : "Not solved yet")")
+                            .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                    }
+                    Spacer()
+                    if session.outcome == .draft {
+                        Button("Resume") { store.resumePractice(session) }
+                        Button("Finish log") { store.reviewPractice(session) }
+                    } else if session.outcome == .unsolved {
+                        Button("Try again") { store.start(store.problem(for: session)) }
+                    }
                 }
             }
-            VStack(alignment: .leading, spacing: 3) {
-                Text("SOLVING").font(.system(size: 9, weight: .bold)).tracking(1).foregroundStyle(lcOrange)
-                Text("\(p.number). \(p.title)").font(.system(size: 14, weight: .semibold)).lineLimit(2)
-                Text("\(p.difficulty.rawValue) · \(p.category)").font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button("Open") { openOnLeetCode(p) }
-            Button("Give up") { store.cancelStopwatch() }
-            Button("Solved") { logTarget = p }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
         }
-        .padding(14)
-        .glassCard(cornerRadius: 12)
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color.primary.opacity(0.05)))
+    }
+
+    private func activeCard(_ p: LCProblem) -> some View {
+        let seconds = Int(store.activeSeconds)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Text(String(format: "%02d:%02d", seconds / 60, seconds % 60))
+                    .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(store.workingOnProblem ? "Working on" : "Paused problem")
+                        .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    Text(p.number > 0 ? "\(p.number). \(p.title)" : p.title)
+                        .font(.system(size: 14, weight: .semibold)).lineLimit(2)
+                    Text(p.category.isEmpty ? "Check difficulty and pattern when you log" : "\(p.difficulty.rawValue) · \(p.category)")
+                        .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack {
+                Button("Open problem") { openOnLeetCode(p) }
+                Spacer()
+                if store.workingOnProblem {
+                    Button("Done with problem") { store.finishPractice() }
+                        .buttonStyle(.borderedProminent)
+                } else if let session = store.activePractice {
+                    Button("Resume") { store.resumePractice(session) }
+                }
+            }
+            .controlSize(.large)
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color.primary.opacity(0.05)))
     }
 
     private func problemCard(_ p: LCProblem) -> some View {
@@ -939,97 +985,135 @@ private struct LCRow: View {
 
 // MARK: - Log sheet
 
-private struct LCLogSheet: View {
+struct LCLogSheet: View {
     let problem: LCProblem
-    let onSave: (Confidence, Int?, Bool, String) -> Void
+    let allowUnsolved: Bool
+    let workedAt: Date?
+    let onSave: (LeetCodeLogDetails) -> Bool
+    let onDefer: ((LeetCodePracticeState.Details) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
-    @State private var confidence: Confidence = .solid
+    @State private var title: String
+    @State private var difficulty: ProblemDifficulty?
+    @State private var categories: Set<String>
+    @State private var outcome: String
+    @State private var confidence: Confidence?
     @State private var minutes: Int
-    @State private var timed = true
+    @State private var timed: Bool
     @State private var usedHelp = false
     @State private var notes = ""
+    @State private var error: String?
     private let wasTimed: Bool
 
-    init(problem: LCProblem, suggestedMinutes: Int?, onSave: @escaping (Confidence, Int?, Bool, String) -> Void) {
-        self.problem = problem
-        self.onSave = onSave
+    init(problem: LCProblem, suggestedMinutes: Int?, allowUnsolved: Bool = false, workedAt: Date? = nil,
+         previewReady: Bool = false, draft: LeetCodePracticeState.Details? = nil,
+         onDefer: ((LeetCodePracticeState.Details) -> Void)? = nil, onSave: @escaping (LeetCodeLogDetails) -> Bool) {
+        self.problem = problem; self.allowUnsolved = allowUnsolved; self.workedAt = workedAt; self.onSave = onSave; self.onDefer = onDefer
         wasTimed = suggestedMinutes != nil
-        _minutes = State(initialValue: suggestedMinutes ?? LeetCodeStore.targetMinutes[problem.difficulty]!)
+        _title = State(initialValue: draft?.title ?? problem.title)
+        _difficulty = State(initialValue: draft?.difficulty ?? (problem.number == 0 && problem.category.isEmpty ? nil : problem.difficulty))
+        _categories = State(initialValue: Set(draft?.categories ?? problem.categories))
+        _outcome = State(initialValue: draft?.solved.map { $0 ? "Solved" : "Not solved yet" } ?? (allowUnsolved && !previewReady ? "" : "Solved"))
+        _confidence = State(initialValue: draft?.confidence ?? (previewReady ? .shaky : nil))
+        _minutes = State(initialValue: draft?.minutes ?? suggestedMinutes ?? 1)
+        _timed = State(initialValue: draft.map { $0.minutes != nil } ?? (suggestedMinutes != nil))
+        _usedHelp = State(initialValue: draft?.usedHelp ?? false)
+        _notes = State(initialValue: draft?.notes ?? "")
+    }
+
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !categories.isEmpty
+            && confidence != nil && difficulty != nil && !outcome.isEmpty
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("SOLVED").font(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(lcOrange)
-                Text("\(problem.number). \(problem.title)").font(.system(size: 16, weight: .semibold))
-                Text("\(problem.difficulty.rawValue) · \(problem.category)").font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("How did it go?").font(.system(size: 11, weight: .semibold))
-                HStack(spacing: 6) {
-                    ForEach(Confidence.allCases, id: \.self) { c in
-                        Button { confidence = c } label: {
-                            Text(c.rawValue)
-                                .font(.system(size: 12, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .foregroundStyle(confidence == c ? .white : c.color)
-                                .background(RoundedRectangle(cornerRadius: 8).fill(confidence == c ? c.color : c.color.opacity(0.12)))
+            Text(allowUnsolved ? "Finish your practice log" : "Log your solve")
+                .font(.system(size: 22, weight: .semibold))
+            Text(workedAt.map { "Started \($0.formatted(.dateTime.month(.abbreviated).day().hour().minute())). Your work time is already saved." }
+                 ?? "Check the problem details, then record how it went.")
+                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    TextField("Problem title", text: $title).textFieldStyle(.roundedBorder)
+                    Text("Difficulty").font(.system(size: 13, weight: .semibold))
+                    HStack(spacing: 8) {
+                        ForEach(ProblemDifficulty.allCases, id: \.self) { choice in
+                            Button { difficulty = choice } label: {
+                                Text(choice.rawValue).frame(maxWidth: .infinity, minHeight: 36)
+                                    .background(Capsule().fill(difficulty == choice ? categoryColor(FocusCategories.leetCode).opacity(0.2) : Color.primary.opacity(0.06)))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(difficulty == choice ? .isSelected : [])
                         }
-                        .buttonStyle(.plain)
                     }
-                }
-                Text(confidence == .solid ? "Could redo it cold in an interview."
-                     : confidence == .shaky ? "Got there, but wobbly — comes back in 3 days."
-                     : "Barely / needed a lot — comes back tomorrow.")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-            }
+                    Menu {
+                        ForEach(ProblemDomain.swe.categories, id: \.self) { category in
+                            Button {
+                                if categories.contains(category) { categories.remove(category) } else { categories.insert(category) }
+                            } label: {
+                                if categories.contains(category) { Label(category, systemImage: "checkmark") } else { Text(category) }
+                            }
+                        }
+                    } label: { Text(categories.isEmpty ? "Choose a pattern" : categories.sorted().joined(separator: ", ")).lineLimit(1) }
+                    if let url = URL(string: problem.url) { Link("Open problem page", destination: url) }
 
+                    if allowUnsolved {
+                        Picker("Outcome", selection: $outcome) {
+                            Text("Choose outcome").tag("")
+                            Text("Solved").tag("Solved")
+                            Text("Not solved yet").tag("Not solved yet")
+                        }
+                    }
+                    Text("How did it go?").font(.system(size: 13, weight: .semibold))
+                    HStack(spacing: 8) {
+                        ForEach(Confidence.allCases, id: \.self) { choice in
+                            Button { confidence = choice } label: {
+                                Text(choice.rawValue).font(.system(size: 12, weight: .medium))
+                                    .frame(maxWidth: .infinity, minHeight: 36)
+                                    .background(Capsule().fill(confidence == choice ? categoryColor(FocusCategories.leetCode).opacity(0.2) : Color.primary.opacity(0.06)))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(confidence == choice ? .isSelected : [])
+                        }
+                    }
+                    Toggle("Record work time", isOn: $timed)
+                    if timed {
+                        Stepper("\(minutes) minutes", value: $minutes, in: 1...1440)
+                        Text(wasTimed ? "From tracked work; pauses and app downtime are excluded. You can correct it." : "Enter only the time you know you spent.")
+                            .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    }
+                    Toggle("Used hints, AI or the solution", isOn: $usedHelp)
+                    Text("Key insight or what blocked you").font(.system(size: 13, weight: .semibold))
+                    TextField("The pattern, mistake or next step", text: $notes, axis: .vertical)
+                        .lineLimit(2...4).textFieldStyle(.roundedBorder)
+                    Text(outcome == "Not solved yet" ? "Saved as practice. It will not count toward your solve goal." : "Confidence and help used set the existing review schedule.")
+                        .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                }
+                .font(.system(size: 13))
+            }
+            if let error { Text(error).font(.system(size: 12)).foregroundStyle(.orange) }
             HStack {
-                Toggle("Timed", isOn: $timed).toggleStyle(.checkbox)
-                if timed {
-                    Stepper("\(minutes) min", value: $minutes, in: 1...240)
-                        .fixedSize()
-                    Text(wasTimed ? "from the stopwatch" : "target \(LeetCodeStore.targetMinutes[problem.difficulty]!)m")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                }
+                Button(allowUnsolved ? "Finish later" : "Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Spacer()
-            }
-            .font(.system(size: 12))
-
-            Toggle(isOn: $usedHelp) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Needed hints, AI or the solution").font(.system(size: 12))
-                    Text("Queues it for a redo tomorrow").font(.system(size: 10)).foregroundStyle(.tertiary)
+                Button(outcome == "Not solved yet" ? "Save practice" : "Log solve") {
+                    guard let confidence, let difficulty else { return }
+                    let details = LeetCodeLogDetails(title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                        difficulty: difficulty, categories: categories.sorted(), solved: outcome == "Solved",
+                        confidence: confidence, minutes: timed ? minutes : nil, usedHelp: usedHelp,
+                        notes: notes.trimmingCharacters(in: .whitespacesAndNewlines))
+                    if onSave(details) { dismiss() } else { error = "Couldn’t save. Your practice draft is safe; try again." }
                 }
-            }
-            .toggleStyle(.checkbox)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text("Key insight").font(.system(size: 11, weight: .semibold))
-                TextField("The trick, in one line — e.g. “monotonic stack of indices”", text: $notes, axis: .vertical)
-                    .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Log solve") {
-                    onSave(confidence, timed ? minutes : nil, usedHelp, notes)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
+                .disabled(!canSave).keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .tint(.green)
             }
+            .controlSize(.large)
         }
-        .padding(20)
-        .frame(width: 440)
+        .padding(20).frame(width: 460, height: 620)
+        .onDisappear {
+            onDefer?(.init(title: title, difficulty: difficulty, categories: categories.sorted(),
+                           solved: outcome.isEmpty ? nil : outcome == "Solved", confidence: confidence,
+                           minutes: timed ? minutes : nil, usedHelp: usedHelp, notes: notes))
+        }
     }
 }

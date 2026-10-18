@@ -37,9 +37,9 @@ final class LeetCodeSolveDraftStore: ObservableObject {
               seen[candidate.dailyKey] == nil, !pending.contains(where:{$0.candidate.dailyKey == candidate.dailyKey}),
               current?.candidate.dailyKey != candidate.dailyKey,
               !store.today.contains(where:{$0.problem.slug == candidate.slug}),
+              !store.hasPractice(slug: candidate.slug, on: candidate.observedAt),
               let problem = store.catalog.problem(slug:candidate.slug), pending.count < 5 else { return }
-        let minutes = LeetCodeSolveEvidence.stopwatchMinutes(slug:candidate.slug,activeSlug:store.activeSlug,
-            startedAt:store.activeStart,observedAt:candidate.observedAt)
+        let minutes = store.elapsedMinutes(for: problem)
         pending.append(Draft(candidate:candidate,problem:problem,minutes:minutes))
         showNext()
     }

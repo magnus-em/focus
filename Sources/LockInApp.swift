@@ -139,6 +139,7 @@ struct FocusApp: App {
         _onboardingController = StateObject(wrappedValue: onboarding)
         let leetCode = LeetCodeStore(catalog: .shared, problemStore: problems, settings: appSettings)
         leetCode.onStartPractice = { [weak timer] in timer?.switchTo(FocusCategories.leetCode) }
+        leetCode.connectPractice(timer: timer)
         let leetCodeCtrl = LeetCodeWindowController()
         _leetCodeStore       = StateObject(wrappedValue: leetCode)
         _leetCodeController  = StateObject(wrappedValue: leetCodeCtrl)
@@ -238,6 +239,23 @@ struct FocusApp: App {
                                   dayStore: days, timerManager: timer, browserStore: browser,
                                   initialDestination: ["dashboard-trends", "dashboard-week"].contains(name) ? "Week" : "Day"),
                     name: name, dark: dark, size: NSSize(width: 1100, height: 900))
+            case "leetcode-working":
+                DesignGallery.show(
+                    LeetCodeDailyGoalRow(count: 1, newCount: 1, redoCount: 0, minutes: 35, problemGoal: 4,
+                        minutesGoal: 120, tracking: true, start: {}, open: {},
+                        activeTitle: "Longest Substring Without Repeating Characters", activeSeconds: 1053, done: {}).padding(16),
+                    name: name, dark: dark, size: NSSize(width: 360, height: 310))
+            case "leetcode-finish", "leetcode-finish-ready", "leetcode-finish-unknown":
+                let unknown = name == "leetcode-finish-unknown"
+                let problem = LCProblem(number: unknown ? 0 : 3,
+                    title: unknown ? "New Practice Problem" : "Longest Substring Without Repeating Characters",
+                    slug: unknown ? "new-practice-problem" : "longest-substring-without-repeating-characters",
+                    difficulty: .medium, acceptance: 0, paidOnly: false, tags: [],
+                    category: unknown ? "" : "Sliding Window", listMask: 0)
+                DesignGallery.show(LCLogSheet(problem: problem, suggestedMinutes: unknown ? nil : 18,
+                    allowUnsolved: true, workedAt: Date().addingTimeInterval(-1080),
+                    previewReady: name == "leetcode-finish-ready", onSave: { _ in true }),
+                    name: name, dark: dark, size: NSSize(width: 500, height: 660))
             case "leetcode-goal", "leetcode-goal-done":
                 DesignGallery.show(
                     LeetCodeDailyGoalRow(count: name == "leetcode-goal-done" ? 4 : 1,
