@@ -60,6 +60,11 @@ public enum ScreenClassificationPolicy {
             if normalized(app) == "finder" {
                 return Decision(category: nil, reason: "A Finder folder lists files; it does not show the task", uncertain: true)
             }
+            // 10/18: a ChatGPT plan for reviewing the deep learning course (CPSC 7770: in-context
+            // learning, meta-learning, gradient descent as attention) was called Math while AI ran.
+            if category == "Math" || category == "SWE", supportsMLStudy(title: title, text: text) {
+                return Decision(category: "AI", reason: "Visible ML/deep-learning study or research material", uncertain: false)
+            }
             if category == "Math", showsMaterialCuriosity(title: title, text: text) {
                 return supportsEducationalReading(title: title, text: text)
                     ? Decision(category: "Reading", reason: "An educational explainer, without mathematics or coursework", uncertain: false)
@@ -230,7 +235,8 @@ public enum ScreenClassificationPolicy {
                        "diffusion model", "variational autoencoder", "generative adversarial network",
                        "support vector machine", "random forest", "supervised learning", "unsupervised learning",
                        "attention mechanism", "large language model", "representation learning", "contrastive learning",
-                       "recurrent neural network", "policy gradient", "q-learning", "stochastic gradient"]
+                       "recurrent neural network", "policy gradient", "q-learning", "stochastic gradient",
+                       "in-context learning", "meta-learning", "metalearning", "linear attention", "linear-attention", "pretraining"]
         let study = ["learn", "study", "research", "paper", "lecture", "tutorial", "derive", "derivation",
                      "explain", "understand", "notes", "course", "experiment", "implement", "train", "introduction"]
         let meta = ["focus app", "focuscore", "screen tracking", "screen watcher", "screenwatcher",

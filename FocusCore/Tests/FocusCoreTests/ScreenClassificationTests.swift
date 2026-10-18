@@ -248,4 +248,23 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Recruiting", app: "Google Chrome",
             title: "Compiler Explorer", text: "", source: .learned).category, "Recruiting")
     }
+
+    func testDeepLearningCourseworkIsAINotMath() {
+        let plan = ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Plan 7770 course review",
+            text: """
+            Deep Learning
+            so i want you to walk me through an indepth review of this class im taking 7770 as i really dedicate myself
+            to reading the papers and implementing stuff on my own
+            Start with a small, concrete problem that connects the presentation papers to attention, memory, and meta-learning
+            """)
+        XCTAssertEqual(plan.category, "AI")
+        let paper = ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Plan 7770 course review",
+            text: "This gives you an entry point into why an attention computation can implement the same update. "
+                + "The paper supplies a particular linear-attention construction. Every language model always performs ordinary gradient descent.")
+        XCTAssertEqual(paper.category, "AI")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Preview",
+            title: "pset6.pdf", text: "Prove by induction that every graph with n vertices").category, "Math")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "ChatGPT",
+            title: "Screen classifier for Focus app", text: "deep learning and in-context learning prompt for the focus app").category, "Admin")
+    }
 }
