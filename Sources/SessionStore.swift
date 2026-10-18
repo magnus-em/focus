@@ -83,7 +83,9 @@ class SessionStore: ObservableObject {
         // row synced in ending 5:50 AM the next day and an overlap merge made
         // the morning's Meals 19h 46m.
         if stored.contains(where: { TimeIntegrity.clampedEnd(of: $0.asValue, now: now, runningSince: runningSince?()) != nil }) {
-            LogEdit.clampFuture(now: now, runningSince: runningSince?(), in: context)
+            for s in LogEdit.clampFuture(now: now, runningSince: runningSince?(), in: context) {
+                SyncLog.event("futureEndClamped", ["id": s.id.uuidString, "minutes": s.durationMinutes])
+            }
         }
         sessions = stored.map { $0.asValue }
         overlaps = TimeIntegrity.overlaps(in: sessions, from: now.addingTimeInterval(-7 * 86400), to: now)

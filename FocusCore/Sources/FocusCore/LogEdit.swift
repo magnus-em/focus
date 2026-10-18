@@ -117,20 +117,18 @@ public enum LogEdit {
     /// Cuts every saved row that reaches past now (`TimeIntegrity.clampedEnd`)
     /// in one save. Run on each device when rows arrive from another one, so a
     /// future row from an older build or a stale device never feeds a merge,
-    /// a paint tail or the day's totals. Returns the rows it cut.
+    /// a paint tail or the day's totals. Returns the rows it cut, as they were.
     @discardableResult
-    public static func clampFuture(now: Date = Date(), runningSince: Date?, in context: ModelContext) -> [UUID] {
+    public static func clampFuture(now: Date = Date(), runningSince: Date?, in context: ModelContext) -> [WorkSession] {
         guard !context.hasChanges else { return [] }
         let floor = now.addingTimeInterval(-7 * 86400)
         let descriptor = FetchDescriptor<StoredWorkSession>(predicate: #Predicate { $0.startTime >= floor })
         guard let models = try? context.fetch(descriptor) else { return [] }
-        var cut: [UUID] = []
+        var cut: [WorkSession] = []
         for m in models {
             guard let end = TimeIntegrity.clampedEnd(of: m.asValue, now: now, runningSince: runningSince) else { continue }
-            SyncLog.event("futureEndClamped", ["id": m.id.uuidString, "minutes": m.durationMinutes,
-                                               "end": end])
+            cut.append(m.asValue)
             m.durationMinutes = end.timeIntervalSince(m.startTime) / 60
-            cut.append(m.id)
         }
         guard !cut.isEmpty else { return [] }
         do { try context.save() } catch { context.rollback(); return [] }

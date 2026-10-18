@@ -63,8 +63,10 @@ struct FocusPadApp: App {
     /// fixes and paints never build on time that hasn't happened (10/18).
     @MainActor static func clampFutureRows() {
         let engine = liveEngine
-        LogEdit.clampFuture(runningSince: engine?.isActive == true ? engine?.sessionStartTime : nil,
-                            in: sharedContainer.mainContext)
+        for s in LogEdit.clampFuture(runningSince: engine?.isActive == true ? engine?.sessionStartTime : nil,
+                                     in: sharedContainer.mainContext) {
+            SyncLog.event("futureEndClamped", ["id": s.id.uuidString, "minutes": s.durationMinutes])
+        }
     }
 
     private static var importObserver: NSObjectProtocol?
