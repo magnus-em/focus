@@ -336,6 +336,11 @@ class AppSettings: ObservableObject {
             d.set(true, forKey: "didAddRecruitingCategory")
         }
         // didSet doesn't fire in init, so the migrations above only wrote locally.
+        if !d.bool(forKey: "didAddLeetCodeSubcategory") {
+            if !tags.contains(FocusCategories.leetCode) { tags.append(FocusCategories.leetCode) }
+            lifeTags.removeAll { $0 == FocusCategories.leetCode }
+            d.set(true, forKey: "didAddLeetCodeSubcategory")
+        }
         sd.set(tags, forKey: "tags")
         sd.set(lifeTags, forKey: FocusCategories.lifeTagsKey)
 

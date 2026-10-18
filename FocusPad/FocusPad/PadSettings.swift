@@ -132,6 +132,15 @@ final class PadSettings: ObservableObject {
             d.set(true, forKey: "didAddRecruitingCategory")
         }
 
+        if !d.bool(forKey: "didAddLeetCodeSubcategory") {
+            if !tags.contains(FocusCategories.leetCode) { tags.append(FocusCategories.leetCode) }
+            sd.set(tags, forKey: "tags")
+            var lifeTags = d.stringArray(forKey: FocusCategories.lifeTagsKey) ?? FocusCategories.defaultLifeTags
+            lifeTags.removeAll { $0 == FocusCategories.leetCode }
+            sd.set(lifeTags, forKey: FocusCategories.lifeTagsKey)
+            d.set(true, forKey: "didAddLeetCodeSubcategory")
+        }
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(reloadFromDefaults),

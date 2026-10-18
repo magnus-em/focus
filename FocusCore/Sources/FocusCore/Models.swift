@@ -167,6 +167,25 @@ public enum FocusCategories {
     public static let wellbeingTags = ["Reading", "Journaling", "Exercise"]
     /// Added 10/17 as a focus category; appended so existing hotkeys keep their keys.
     public static let recruiting = "Recruiting"
+    public static let leetCode = "LeetCode"
+
+    public static func parentCategory(_ label: String) -> String {
+        label == leetCode ? "SWE" : label
+    }
+
+    public static func displayName(_ label: String) -> String {
+        label == leetCode ? "SWE › LeetCode" : label
+    }
+
+    public static func rolledUp(_ minutes: [String: Double]) -> [String: Double] {
+        var result: [String: Double] = [:]
+        for (label, value) in minutes { result[parentCategory(label), default: 0] += value }
+        return result
+    }
+
+    public static func screenAgrees(_ screen: String, running: String?) -> Bool {
+        screen == running || (running == leetCode && screen == "SWE")
+    }
     /// Focus categories that count toward the goal but never block sites:
     /// recruiting lives on LinkedIn, email and company sites.
     public static let neverBlocks: Set<String> = [recruiting]

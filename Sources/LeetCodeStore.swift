@@ -199,6 +199,7 @@ final class LeetCodeStore: ObservableObject {
 
     var today: [LCAttempt] { attempts(on: Date()) }
     var todayCount: Int { today.count }
+    var dailyMinimumCount: Int { LeetCodeDailyGoal.count(problemStore.problems, on: Date()) }
     var todayNew: Int { today.filter(\.isFirstSolve).count }
     var todayPoints: Int { today.reduce(0) { $0 + Self.points[$1.problem.difficulty]! } }
 

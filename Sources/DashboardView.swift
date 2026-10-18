@@ -2995,7 +2995,7 @@ struct InsightsSection: View {
         defer { writing = false }
         let weekAgo = Date().addingTimeInterval(-7 * 86400)
         var byCat: [String: Double] = [:]
-        for s in sessions where s.startTime >= weekAgo && s.isFocus { byCat[s.label ?? "Focus", default: 0] += s.durationMinutes }
+        for s in sessions where s.startTime >= weekAgo && s.isFocus { byCat[FocusCategories.parentCategory(s.label ?? "Focus"), default: 0] += s.durationMinutes }
         let drifts = watcher.drifts(sessions: sessions, from: weekAgo, to: Date())
         let topics = watcher.activities(from: weekAgo, to: Date()).filter { $0.minutes >= 20 && $0.category != nil }
             .map { watcher.name(for: $0) }

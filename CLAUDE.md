@@ -335,3 +335,10 @@ Homework stays the focus, but the app should cover the whole day with near-zero-
 - Screenshot QA: `SHOTS_WAIT=8 scripts/shots.sh <label> dashboard dashboard-review dashboard-trends`; all gallery surfaces stay on the hidden virtual display.
 
 - User rule: all Focus-project work in Claude, ChatGPT or Codex is Admin, never homework/SWE/AI. This explicit rule overrides old learned labels and may automatically switch to Admin after sustained active evidence, with Undo; other life-category switches still require a prompt.
+
+## LeetCode SWE subcategory — 10/18
+
+- `FocusCategories.leetCode` is a timer label with parent SWE (`parentCategory`, `rolledUp`). Both apps add it once to synced tags as focus time. Saved logs retain LeetCode detail; Mac Now daily totals, SessionStore tag stats, shared FocusStats.byTag and Week charts roll it into SWE once. It uses SWE's color/icon and normal focus site blocking. Now's switch menu nests LeetCode under SWE; idle chip and running title say “SWE › LeetCode”.
+- Mac Now always shows “1 LeetCode every day”, opening the existing LeetCode window. The checkmark uses actual SWE problem entries today, including official LeetCode URLs outside the catalog, a LeetCode source, or a known Grind 75 title. Timer minutes alone do not satisfy it. This minimum is independent of the configurable larger grind goal. Calendar-day change refreshes the indicator.
+- ScreenCoach treats a SWE screen label as compatible with a manually selected LeetCode block, preserving the user's subcategory; Admin and other mismatches retain their existing prompts/rules. No screen-driven subcategory switch added.
+- Validation: 201 core tests pass, including saved+live rollup without double counting, date/domain solve filtering and parent screen compatibility. Hidden gallery variants: `leetcode-goal`, `leetcode-goal-done`. Signed install and screenshot review pending in this session.

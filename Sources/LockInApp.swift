@@ -237,6 +237,10 @@ struct FocusApp: App {
                                   dayStore: days, timerManager: timer, browserStore: browser,
                                   initialDestination: ["dashboard-trends", "dashboard-week"].contains(name) ? "Week" : "Day"),
                     name: name, dark: dark, size: NSSize(width: 1100, height: 900))
+            case "leetcode-goal", "leetcode-goal-done":
+                DesignGallery.show(
+                    LeetCodeDailyGoalRow(count: name == "leetcode-goal-done" ? 1 : 0, open: {}).padding(16),
+                    name: name, dark: dark, size: NSSize(width: 360, height: 110))
             case "card":
                 let m = AwayPromptModel(icon: "eye", title: "Looks like Math", subtitle: "since 8:41 PM · 1m on screen",
                                         question: "Reviewing posets and chains for the MATH 244 midterm.",
@@ -672,7 +676,7 @@ struct PopoverContent: View {
             if selectedTab == 0 {
                 TimerView(
                     timer: timerManager, store: sessionStore, settings: settings, dayStore: dayStore,
-                    health: healthStore, showDayReview: $showDayReview,
+                    health: healthStore, leetCode: leetCodeStore, onOpenLeetCode: openLeetCode, showDayReview: $showDayReview,
                     detent: Binding(get: { detentOverride ?? (expandedStored ? .large : .small) },
                                     set: { if detentOverride != nil { detentOverride = $0 } else { expandedStored = $0 == .large } }),
                     onOpenDose: { UserDefaults.standard.set(HealthTracker.adderall.rawValue, forKey: "healthTracker"); selectedTab = 5 }

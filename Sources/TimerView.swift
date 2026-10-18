@@ -24,6 +24,8 @@ struct TimerView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var dayStore: DayStore
     @ObservedObject var health: HealthStore
+    @ObservedObject var leetCode: LeetCodeStore
+    var onOpenLeetCode: () -> Void
     @Binding var showDayReview: Bool
     @Binding var detent: Detent
     var onOpenDose: () -> Void = {}
@@ -60,7 +62,7 @@ struct TimerView: View {
     }
 
     private var todayFocusByCategory: [String: Double] {
-        todayCategoryTotals.filter { !settings.lifeTags.contains($0.key) }
+        FocusCategories.rolledUp(todayCategoryTotals.filter { !settings.lifeTags.contains($0.key) })
     }
 
     private var todayCategoryTotals: [String: Double] {
@@ -77,6 +79,7 @@ struct TimerView: View {
         VStack(spacing: 14) {
             hero
             focusTotals
+            LeetCodeDailyGoalRow(count: leetCode.dailyMinimumCount, open: onOpenLeetCode)
             wellbeingTotals
             if !timer.isActive {
                 if !FocusCategories.isLife(timer.currentLabel) { presets }
@@ -266,7 +269,14 @@ struct TimerView: View {
             let focus = settings.tags.filter { !settings.lifeTags.contains($0) }
             let life = settings.tags.filter { settings.lifeTags.contains($0) }
             Section("Focus · counts toward your goal") {
-                ForEach(focus, id: \.self) { t in Button(t) { pick(t) } }
+                ForEach(focus.filter { $0 != FocusCategories.leetCode || !focus.contains("SWE") }, id: \.self) { t in
+                    if t == "SWE", focus.contains(FocusCategories.leetCode) {
+                        Menu("SWE") {
+                            Button("General SWE") { pick("SWE") }
+                            Button("LeetCode") { pick(FocusCategories.leetCode) }
+                        }
+                    } else { Button(t) { pick(t) } }
+                }
             }
             Section("Wellbeing · counts up") {
                 ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { t in
@@ -283,7 +293,7 @@ struct TimerView: View {
         } label: {
             HStack(spacing: 6) {
                 Circle().fill(accent).frame(width: 10, height: 10)
-                Text(title).font(.system(size: 22, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(FocusCategories.displayName(title)).font(.system(size: 22, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
                 Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
             }
         }
@@ -377,7 +387,7 @@ struct TimerView: View {
                 Text("Focus · counts toward your goal").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                 FlowLayout(spacing: 6) {
                     ForEach(settings.tags.filter { !settings.lifeTags.contains($0) }, id: \.self) { tag in
-                        chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
+                        chip(FocusCategories.displayName(tag), color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
                     }
                 }
             }
@@ -385,7 +395,7 @@ struct TimerView: View {
                 Text("Wellbeing · counts up").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                 FlowLayout(spacing: 6) {
                     ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { tag in
-                        chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
+                        chip(FocusCategories.displayName(tag), color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
                     }
                 }
             }
@@ -449,7 +459,7 @@ struct TimerView: View {
         if let running, running != "Break", settings.screenWatch,
            let block = watcher.activities(from: Calendar.current.startOfDay(for: now), to: now)
                .last(where: { $0.device == nil && now.timeIntervalSince($0.end) < 90 }),
-           let c = block.category, c != running, now.timeIntervalSince(block.start) >= 60 {
+           let c = block.category, !FocusCategories.screenAgrees(c, running: running), now.timeIntervalSince(block.start) >= 60 {
             return .screen(category: c, since: block.start)
         }
         if syncMonitor.health == .failing { return .sync("iCloud sync is failing. See Settings.") }
@@ -1122,5 +1132,35 @@ struct WhereWasIRow: View {
         }
         .buttonStyle(.plain)
         .help(line.text + (line.url == nil ? "" : "\nOpens the page you were on"))
+    }
+}
+
+struct LeetCodeDailyGoalRow: View {
+    let count: Int
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 12) {
+                Image(systemName: count > 0 ? "checkmark.circle.fill" : "circle.dashed")
+                    .font(.system(size: 22))
+                    .foregroundStyle(count > 0 ? Color.green : categoryColor("SWE"))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("1 LeetCode every day").font(.system(size: 13, weight: .semibold))
+                    Text(count > 0 ? "Done today · \(count) logged" : "Solve and log one today")
+                        .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.secondaryText)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color.primary.opacity(0.05)))
+            .contentShape(RoundedRectangle(cornerRadius: 18))
+        }
+        .buttonStyle(.plain)
+        .help("Open LeetCode to choose a problem or log a solve. LeetCode time counts toward SWE and focus.")
+        .accessibilityLabel("One LeetCode every day. \(count > 0 ? "Done today" : "Still to do today"). Open LeetCode")
     }
 }
