@@ -54,6 +54,12 @@ class AppSettings: ObservableObject {
     @Published var todayCommitment: String {
         didSet { sd.set(todayCommitment, forKey: "todayCommitment") }
     }
+    @Published var leetCodeDailyGoal: Int {
+        didSet { sd.set(leetCodeDailyGoal, forKey: "leetCodeDailyGoal") }
+    }
+    @Published var leetCodeMinutesGoal: Int {
+        didSet { sd.set(leetCodeMinutesGoal, forKey: "leetCodeMinutesGoal") }
+    }
     /// Unique LeetCode problems to reach by `leetCodeDeadline`.
     @Published var leetCodeTarget: Int {
         didSet { sd.set(leetCodeTarget, forKey: "leetCodeTarget") }
@@ -225,6 +231,8 @@ class AppSettings: ObservableObject {
             "autoBreakEnabled": true,
             "commitmentEnabled": true,
             "commitmentReviewReminder": true,
+            "leetCodeDailyGoal": 4,
+            "leetCodeMinutesGoal": 120,
             "leetCodeTarget": 150,
             "leetCodeNudge": true,
             "leetCodeNudgeMinutes": 20 * 60,
@@ -276,6 +284,8 @@ class AppSettings: ObservableObject {
         todayCommitment = d.string(forKey: "todayCommitment") ?? ""
         commitmentReviewReminder = d.bool(forKey: "commitmentReviewReminder")
         commitmentReviewMinutes = d.integer(forKey: "commitmentReviewMinutes")
+        leetCodeDailyGoal = d.integer(forKey: "leetCodeDailyGoal")
+        leetCodeMinutesGoal = d.integer(forKey: "leetCodeMinutesGoal")
         leetCodeTarget = d.integer(forKey: "leetCodeTarget")
         let lcDeadline = d.double(forKey: "leetCodeDeadline")
         leetCodeDeadline = lcDeadline > 0 ? Date(timeIntervalSince1970: lcDeadline) : nil
@@ -379,6 +389,8 @@ class AppSettings: ObservableObject {
         todayCommitment = d.string(forKey: "todayCommitment") ?? todayCommitment
         commitmentReviewReminder = d.bool(forKey: "commitmentReviewReminder")
         commitmentReviewMinutes = d.integer(forKey: "commitmentReviewMinutes")
+        leetCodeDailyGoal = d.integer(forKey: "leetCodeDailyGoal")
+        leetCodeMinutesGoal = d.integer(forKey: "leetCodeMinutesGoal")
         leetCodeTarget = d.integer(forKey: "leetCodeTarget")
         let lcDeadline = d.double(forKey: "leetCodeDeadline")
         leetCodeDeadline = lcDeadline > 0 ? Date(timeIntervalSince1970: lcDeadline) : nil

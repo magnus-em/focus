@@ -20,6 +20,9 @@ public enum ScreenClassificationPolicy {
             return Decision(category: "Admin", reason: "Your rule: work on the Focus project is Admin", uncertain: false)
         }
         // 10/16: a LeetCode problem about order prices was called Math, twice, while SWE ran.
+        if isLeetCodePractice(title: title) {
+            return Decision(category: FocusCategories.leetCode, reason: "LeetCode or NeetCode interview practice", uncertain: false)
+        }
         if isCodingPractice(title: title) {
             return Decision(category: "SWE", reason: "A coding practice site", uncertain: false)
         }
@@ -115,6 +118,13 @@ public enum ScreenClassificationPolicy {
         let development = ["improve", "build", "implement", "redesign", "refactor", "debug", "develop", "review the codebase",
                            "install", "settings", "configure", "roadmap", "category", "work on", "working on"]
         return development.contains { body.contains($0) || title.contains($0) }
+    }
+
+    public static func isLeetCodePractice(title: String, url: String? = nil) -> Bool {
+        if let host = url.flatMap({ URL(string: $0)?.host?.lowercased() }),
+           ["leetcode.com", "neetcode.io"].contains(where: { host == $0 || host.hasSuffix("." + $0) }) { return true }
+        let title = normalized(String(title.prefix(240)))
+        return ["leetcode", "neetcode"].contains { title == $0 || title.hasSuffix("- " + $0) || title.hasSuffix("| " + $0) }
     }
 
     public static func isCodingPractice(title: String, url: String? = nil) -> Bool {

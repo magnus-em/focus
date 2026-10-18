@@ -138,6 +138,7 @@ struct FocusApp: App {
         let onboarding = OnboardingWindowController()
         _onboardingController = StateObject(wrappedValue: onboarding)
         let leetCode = LeetCodeStore(catalog: .shared, problemStore: problems, settings: appSettings)
+        leetCode.onStartPractice = { [weak timer] in timer?.switchTo(FocusCategories.leetCode) }
         let leetCodeCtrl = LeetCodeWindowController()
         _leetCodeStore       = StateObject(wrappedValue: leetCode)
         _leetCodeController  = StateObject(wrappedValue: leetCodeCtrl)
@@ -239,8 +240,11 @@ struct FocusApp: App {
                     name: name, dark: dark, size: NSSize(width: 1100, height: 900))
             case "leetcode-goal", "leetcode-goal-done":
                 DesignGallery.show(
-                    LeetCodeDailyGoalRow(count: name == "leetcode-goal-done" ? 1 : 0, open: {}).padding(16),
-                    name: name, dark: dark, size: NSSize(width: 360, height: 110))
+                    LeetCodeDailyGoalRow(count: name == "leetcode-goal-done" ? 4 : 1,
+                        newCount: name == "leetcode-goal-done" ? 3 : 1, redoCount: name == "leetcode-goal-done" ? 1 : 0,
+                        minutes: name == "leetcode-goal-done" ? 125 : 35, problemGoal: 4, minutesGoal: 120,
+                        tracking: false, start: {}, open: {}).padding(16),
+                    name: name, dark: dark, size: NSSize(width: 360, height: 260))
             case "card":
                 let m = AwayPromptModel(icon: "eye", title: "Looks like Math", subtitle: "since 8:41 PM · 1m on screen",
                                         question: "Reviewing posets and chains for the MATH 244 midterm.",

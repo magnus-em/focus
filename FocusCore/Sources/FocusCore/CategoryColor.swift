@@ -6,7 +6,8 @@ import SwiftUI
 public func categoryColor(_ tag: String) -> Color {
     switch tag.lowercased() {
     // Teal, not green: green means "goal met" (DESIGN.md).
-    case "swe", "leetcode":      return Color(red: 0.05, green: 0.62, blue: 0.66)
+    case "leetcode": return Color(red: 0.90, green: 0.40, blue: 0.08)
+    case "swe":      return Color(red: 0.05, green: 0.62, blue: 0.66)
     case "math":     return Color(red: 0.12, green: 0.36, blue: 1.00)
     case "quant":    return Color(red: 0.35, green: 0.78, blue: 0.98)
     case "ai", "ai/ml": return Color(red: 0.66, green: 0.38, blue: 0.94)
@@ -39,7 +40,8 @@ public func categoryIcon(_ category: String) -> String {
     case "chores": return "basket.fill"
     case "admin": return "tray.full.fill"
     case "journaling": return "book.closed.fill"
-    case "swe", "leetcode": return "chevron.left.forwardslash.chevron.right"
+    case "leetcode": return "curlybraces"
+    case "swe": return "chevron.left.forwardslash.chevron.right"
     case "quant": return "function"
     case "ai": return "sparkles"
     case "hw": return "pencil.and.list.clipboard"

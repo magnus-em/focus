@@ -111,7 +111,7 @@ struct WeekPage: View {
         for s in sessions where s.isFocus {
             let e = s.startTime.addingTimeInterval(s.durationMinutes * 60)
             let m = max(0, min(e, end).timeIntervalSince(max(s.startTime, start))) / 60
-            if m > 0 { minutes[FocusCategories.parentCategory(s.label ?? "Focus"), default: 0] += m }
+            if m > 0 { minutes[s.label ?? "Focus", default: 0] += m }
         }
         return minutes.map { ($0.key, $0.value) }.sorted { $0.minutes > $1.minutes }
     }
@@ -119,8 +119,8 @@ struct WeekPage: View {
     /// Focus categories with nothing this week, and when they last had time.
     private var quiet: [(label: String, last: Date?)] {
         let tracked = Set(trackedByCategory.map(\.label))
-        return settings.tags.filter { focus.contains($0) && $0 != FocusCategories.leetCode && !tracked.contains($0) }.map { label in
-            (label, sessions.filter { $0.isFocus && FocusCategories.parentCategory($0.label ?? "Focus") == label && $0.startTime < start }.map(\.startTime).max())
+        return settings.tags.filter { focus.contains($0) && !tracked.contains($0) }.map { label in
+            (label, sessions.filter { $0.isFocus && ($0.label ?? "Focus") == label && $0.startTime < start }.map(\.startTime).max())
         }
     }
 
@@ -510,7 +510,7 @@ struct FocusHistorySection: View {
             while a < end {
                 let day = cal.startOfDay(for: a)
                 let next = cal.date(byAdding: .day, value: 1, to: day)!
-                byDay[day, default: [:]][FocusCategories.parentCategory(s.label ?? "Focus"), default: 0] += min(end, next).timeIntervalSince(a) / 60
+                byDay[day, default: [:]][s.label ?? "Focus", default: 0] += min(end, next).timeIntervalSince(a) / 60
                 a = next
             }
         }

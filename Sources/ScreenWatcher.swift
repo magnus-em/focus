@@ -988,6 +988,11 @@ final class ScreenWatcher: ObservableObject {
             labelReason = "Your rule: work on the Focus project is Admin"
             return ("Admin", fallbackSummary)
         }
+        if candidates.contains(FocusCategories.leetCode), ScreenClassificationPolicy.isLeetCodePractice(title: title, url: url) {
+            labelSource = "LeetCode practice site"
+            labelReason = "LeetCode or NeetCode interview practice"
+            return (FocusCategories.leetCode, fallbackSummary)
+        }
         if candidates.contains("SWE"), ScreenClassificationPolicy.isCodingPractice(title: title, url: url) {
             labelSource = "coding practice site"
             labelReason = "A coding practice site"
@@ -1260,7 +1265,7 @@ final class ScreenCoach {
         guard !last.uncertain else { return last.reason ?? "Not enough evidence to suggest a switch" }
         guard last.active else { return "You've been idle, so snapshots don't count" }
         guard let c = last.category else { return "Last snapshot had no label" }
-        if FocusCategories.screenAgrees(c, running: running) { return "Screen agrees with \(c)" }
+        if c == running { return "Screen agrees with \(c)" }
         var start = last.date
         for s in recent.reversed() where s.active {
             if s.category == c { start = s.date } else { break }
@@ -1299,7 +1304,7 @@ final class ScreenCoach {
             return say(evidenceStatus(running: running))
         }
         if timer.isActive && !timer.isRunning { return say("Timer paused") }
-        guard !FocusCategories.screenAgrees(run.category, running: running) else { return say("Screen agrees with \(run.category)") }
+        guard running != run.category else { return say("Screen agrees with \(run.category)") }
         if let until = snoozed[run.category], until > Date() {
             return say("\(run.category) snoozed until \(until.formatted(date: .omitted, time: .shortened)) (you said Still)")
         }

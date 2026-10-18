@@ -104,6 +104,6 @@ User selected Quick Panel with the Fitness-style ring retained, daily cumulative
 
 - Coach live approval/install verified: user directly selected new + queued observations; installed8a48d7d includes live episode worker and final solve/recall fixes. Local status check observed18completed episodes and53spend-ledger rows; one uncertain request remains unknown without automatic retry. Final screenshots `.shots/coach-solve-fixed` and initial recall `.shots/coach-solve-final`; independent reviewer found no remaining blockers. Chrome extension reload/live browser privacy verification still requires follow-through; unknown windows remain excluded from cloud.
 
-## LeetCode follow-ups — 10/18
+## LeetCode standalone category — in flight, 10/18
 
-Mac feature is installed at `e5ad88e`; 201 core tests pass, 449 sessions preserved, hidden light/dark review 91/100. Optional polish: use the existing `Color.good` for the daily row's completed icon. Goal-row and full compact Now shots are in `.shots/leetcode-after`; the SWE submenu/selected child title have source/build verification but no interactive screenshot. iOS synced-tag migration source is included; no iOS install was performed for this change.
+User revised the earlier subcategory request. LeetCode is now separate from SWE in stats/pickers, still focus-counting. New daily card measures real timer minutes plus distinct solves/new/redos. Starting targets: 120min +4 problems, with3 new/1 redo suggested, editable independently of SWE. Screen-site recognition and problem-start timer integration included. Existing logs remain unchanged. Awaiting first interview date/company details for further tailoring; do not invent them. Mac signed install and hidden screenshot review next.

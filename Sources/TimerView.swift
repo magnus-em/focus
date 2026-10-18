@@ -62,7 +62,7 @@ struct TimerView: View {
     }
 
     private var todayFocusByCategory: [String: Double] {
-        FocusCategories.rolledUp(todayCategoryTotals.filter { !settings.lifeTags.contains($0.key) })
+        todayCategoryTotals.filter { !settings.lifeTags.contains($0.key) }
     }
 
     private var todayCategoryTotals: [String: Double] {
@@ -79,7 +79,11 @@ struct TimerView: View {
         VStack(spacing: 14) {
             hero
             focusTotals
-            LeetCodeDailyGoalRow(count: leetCode.dailyMinimumCount, open: onOpenLeetCode)
+            LeetCodeDailyGoalRow(count: leetCode.todayCount, newCount: leetCode.todayNew, redoCount: leetCode.todayRedo,
+                                minutes: todayCategoryTotals[FocusCategories.leetCode] ?? 0,
+                                problemGoal: settings.leetCodeDailyGoal, minutesGoal: settings.leetCodeMinutesGoal,
+                                tracking: timer.isRunning && !timer.isOnBreak && timer.currentLabel == FocusCategories.leetCode,
+                                start: { timer.switchTo(FocusCategories.leetCode) }, open: onOpenLeetCode)
             wellbeingTotals
             if !timer.isActive {
                 if !FocusCategories.isLife(timer.currentLabel) { presets }
@@ -144,10 +148,10 @@ struct TimerView: View {
 
     @ViewBuilder
     private var focusTotals: some View {
-        let totals = todayFocusByCategory.filter { $0.value > 2 }
+        let totals = todayFocusByCategory.filter { $0.value > 2 && $0.key != FocusCategories.leetCode }
         let labels = settings.tags.filter { totals[$0] != nil }
             + totals.keys.filter { !settings.tags.contains($0) }.sorted()
-        if labels.count > 1 || possibleDrift >= 1 {
+        if labels.count > 1 || (!labels.isEmpty && (todayCategoryTotals[FocusCategories.leetCode] ?? 0) > 2) || possibleDrift >= 1 {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Focus")
@@ -159,7 +163,7 @@ struct TimerView: View {
                             .help("The screen showed a non-focus category during focus blocks. Not taken off your focus time: the screen can be wrong, and work on paper or the iPad doesn't show here.")
                     }
                 }
-                if labels.count > 1 { FlowLayout(spacing: 8) {
+                if !labels.isEmpty { FlowLayout(spacing: 8) {
                     ForEach(labels, id: \.self) { label in
                         HStack(spacing: 6) {
                             Circle().fill(categoryColor(label)).frame(width: 7, height: 7)
@@ -269,14 +273,7 @@ struct TimerView: View {
             let focus = settings.tags.filter { !settings.lifeTags.contains($0) }
             let life = settings.tags.filter { settings.lifeTags.contains($0) }
             Section("Focus · counts toward your goal") {
-                ForEach(focus.filter { $0 != FocusCategories.leetCode || !focus.contains("SWE") }, id: \.self) { t in
-                    if t == "SWE", focus.contains(FocusCategories.leetCode) {
-                        Menu("SWE") {
-                            Button("General SWE") { pick("SWE") }
-                            Button("LeetCode") { pick(FocusCategories.leetCode) }
-                        }
-                    } else { Button(t) { pick(t) } }
-                }
+                ForEach(focus, id: \.self) { t in Button(t) { pick(t) } }
             }
             Section("Wellbeing · counts up") {
                 ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { t in
@@ -293,7 +290,7 @@ struct TimerView: View {
         } label: {
             HStack(spacing: 6) {
                 Circle().fill(accent).frame(width: 10, height: 10)
-                Text(FocusCategories.displayName(title)).font(.system(size: 22, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(title).font(.system(size: 22, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
                 Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
             }
         }
@@ -387,7 +384,7 @@ struct TimerView: View {
                 Text("Focus · counts toward your goal").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                 FlowLayout(spacing: 6) {
                     ForEach(settings.tags.filter { !settings.lifeTags.contains($0) }, id: \.self) { tag in
-                        chip(FocusCategories.displayName(tag), color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
+                        chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
                     }
                 }
             }
@@ -395,7 +392,7 @@ struct TimerView: View {
                 Text("Wellbeing · counts up").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                 FlowLayout(spacing: 6) {
                     ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { tag in
-                        chip(FocusCategories.displayName(tag), color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
+                        chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
                     }
                 }
             }
@@ -459,7 +456,7 @@ struct TimerView: View {
         if let running, running != "Break", settings.screenWatch,
            let block = watcher.activities(from: Calendar.current.startOfDay(for: now), to: now)
                .last(where: { $0.device == nil && now.timeIntervalSince($0.end) < 90 }),
-           let c = block.category, !FocusCategories.screenAgrees(c, running: running), now.timeIntervalSince(block.start) >= 60 {
+           let c = block.category, c != running, now.timeIntervalSince(block.start) >= 60 {
             return .screen(category: c, since: block.start)
         }
         if syncMonitor.health == .failing { return .sync("iCloud sync is failing. See Settings.") }
@@ -1137,30 +1134,66 @@ struct WhereWasIRow: View {
 
 struct LeetCodeDailyGoalRow: View {
     let count: Int
+    let newCount: Int
+    let redoCount: Int
+    let minutes: Double
+    let problemGoal: Int
+    let minutesGoal: Int
+    let tracking: Bool
+    let start: () -> Void
     let open: () -> Void
 
+    private var met: Bool {
+        LeetCodeDailyGoal.isMet(problems: count, minutes: minutes, problemGoal: problemGoal, minutesGoal: minutesGoal)
+    }
+    private var color: Color { categoryColor(FocusCategories.leetCode) }
+
     var body: some View {
-        Button(action: open) {
-            HStack(spacing: 12) {
-                Image(systemName: count > 0 ? "checkmark.circle.fill" : "circle.dashed")
-                    .font(.system(size: 22))
-                    .foregroundStyle(count > 0 ? Color.green : categoryColor("SWE"))
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("1 LeetCode every day").font(.system(size: 13, weight: .semibold))
-                    Text(count > 0 ? "Done today · \(count) logged" : "Solve and log one today")
-                        .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-                }
-                Spacer(minLength: 4)
-                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.secondaryText)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: met ? "checkmark.circle.fill" : "curlybraces")
+                    .foregroundStyle(met ? Color.good : color)
+                Text(met ? "LeetCode · daily goal met" : "LeetCode today")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer(minLength: 0)
             }
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 18).fill(Color.primary.opacity(0.05)))
-            .contentShape(RoundedRectangle(cornerRadius: 18))
+            progress("Problems", value: "\(count) / \(max(1, problemGoal))", fraction: Double(count) / Double(max(1, problemGoal)))
+            progress("Focused time", value: "\(durationText(minutes: minutes)) / \(durationText(minutes: Double(max(1, minutesGoal))))",
+                     fraction: minutes / Double(max(1, minutesGoal)))
+            Text("\(newCount) new · \(redoCount) redo · from your log and timer")
+                .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+            HStack(spacing: 12) {
+                if tracking {
+                    Label("Tracking LeetCode", systemImage: "timer")
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                } else {
+                    Button("Start LeetCode", action: start)
+                        .font(.system(size: 12, weight: .semibold))
+                        .buttonStyle(.plain).foregroundStyle(.primary)
+                        .frame(minHeight: 36)
+                }
+                Spacer(minLength: 0)
+                Button("Choose / log", action: open)
+                    .font(.system(size: 12, weight: .medium)).buttonStyle(.plain)
+                    .frame(minHeight: 36)
+                    .help("Choose a problem or log a solve in LeetCode")
+            }
         }
-        .buttonStyle(.plain)
-        .help("Open LeetCode to choose a problem or log a solve. LeetCode time counts toward SWE and focus.")
-        .accessibilityLabel("One LeetCode every day. \(count > 0 ? "Done today" : "Still to do today"). Open LeetCode")
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color.primary.opacity(0.05)))
+    }
+
+    private func progress(_ title: String, value: String, fraction: Double) -> some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text(title).foregroundStyle(Color.secondaryText)
+                Spacer()
+                Text(value).monospacedDigit()
+            }
+            .font(.system(size: 12))
+            ProgressView(value: min(1, max(0, fraction)))
+                .tint(fraction >= 1 ? Color.good : color)
+                .accessibilityLabel(title + ": " + value)
+        }
     }
 }

@@ -12,11 +12,11 @@ final class ReadingPolicyTests: XCTestCase {
         }
     }
 
-    func testCodingPracticeSitesAreSWE() {
+    func testCodingPracticeSitesUseLeetCodeOrSWE() {
         for (title, source) in [("Number of Orders in the Backlog - LeetCode", ScreenClassificationPolicy.Source.model),
                                 ("Problems - LeetCode", .learned), ("Two Sum | HackerRank", .held),
                                 ("Problem - 1801A - Codeforces", .model)] {
-            XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome", title: title, text: "", source: source).category, "SWE", title)
+            XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome", title: title, text: "", source: source).category, title.lowercased().contains("leetcode") ? "LeetCode" : "SWE", title)
         }
         XCTAssertTrue(ScreenClassificationPolicy.isCodingPractice(title: "Untitled", url: "https://leetcode.com/problems/two-sum/"))
         XCTAssertFalse(ScreenClassificationPolicy.isCodingPractice(title: "How LeetCode changed hiring - The Atlantic"))

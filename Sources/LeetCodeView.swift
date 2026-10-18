@@ -271,7 +271,7 @@ struct LeetCodeView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(count >= goal ? "Goal hit. Keep stacking." : "\(goal - count) to go today")
                     .font(.system(size: 15, weight: .semibold))
-                Text("\(store.todayNew) new · \(count - store.todayNew) redo · \(store.todayPoints) pts")
+                Text("\(store.todayNew) new · \(store.todayRedo) redo · \(store.todayPoints) pts")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 HStack(spacing: 6) {

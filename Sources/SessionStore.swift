@@ -420,7 +420,7 @@ class SessionStore: ObservableObject {
         var dict: [String: Double] = [:]
         for session in sessions where includeLife ? session.type == .work : session.isFocus {
             guard let label = session.label, !label.isEmpty else { continue }
-            dict[FocusCategories.parentCategory(label), default: 0] += session.durationMinutes
+            dict[label, default: 0] += session.durationMinutes
         }
         return dict.map { (tag: $0.key, minutes: $0.value) }.sorted { $0.minutes > $1.minutes }
     }
@@ -447,7 +447,7 @@ class SessionStore: ObservableObject {
         var dict: [String: Double] = [:]
         for s in sessions where s.isFocus && s.startTime >= start && s.startTime < end {
             guard let label = s.label, !label.isEmpty else { continue }
-            dict[FocusCategories.parentCategory(label), default: 0] += s.durationMinutes
+            dict[label, default: 0] += s.durationMinutes
         }
         return dict.map { (tag: $0.key, minutes: $0.value) }.sorted { $0.minutes > $1.minutes }
     }

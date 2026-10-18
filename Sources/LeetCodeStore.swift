@@ -73,8 +73,10 @@ final class LeetCodeStore: ObservableObject {
 
     private(set) var solvedSlugs: Set<String> = []
     private(set) var latestBySlug: [String: LCAttempt] = [:]
+    private var loggedProblems: [ProblemEntry] = []
     private var cancellables = Set<AnyCancellable>()
     private var solveDrafts: LeetCodeSolveDraftStore?
+    var onStartPractice: (() -> Void)?
 
     init(catalog: LeetCodeCatalog, problemStore: ProblemStore, settings: AppSettings) {
         self.catalog = catalog
@@ -112,6 +114,7 @@ final class LeetCodeStore: ObservableObject {
     }
 
     private func recompute(from problems: [ProblemEntry]) {
+        loggedProblems = problems
         var seen = Set<String>()
         var list: [LCAttempt] = []
         for e in problems.sorted(by: { $0.date < $1.date }) {
@@ -141,6 +144,7 @@ final class LeetCodeStore: ObservableObject {
     var activeProblem: LCProblem? { activeSlug.flatMap(catalog.problem(slug:)) }
 
     func start(_ p: LCProblem) {
+        onStartPractice?()
         activeSlug = p.slug
         activeStart = Date()
         UserDefaults.standard.set(p.slug, forKey: "leetCode.activeSlug")
@@ -188,9 +192,9 @@ final class LeetCodeStore: ObservableObject {
 
     // MARK: - Today / streak
 
-    var dailyGoal: Int { settings.sweGoal > 0 ? settings.sweGoal : 3 }
+    var dailyGoal: Int { max(1, settings.leetCodeDailyGoal) }
 
-    func setDailyGoal(_ n: Int) { settings.sweGoal = max(1, min(30, n)) }
+    func setDailyGoal(_ n: Int) { settings.leetCodeDailyGoal = max(1, min(30, n)) }
 
     private func attempts(on day: Date) -> [LCAttempt] {
         let cal = Calendar.current
@@ -198,9 +202,10 @@ final class LeetCodeStore: ObservableObject {
     }
 
     var today: [LCAttempt] { attempts(on: Date()) }
-    var todayCount: Int { today.count }
-    var dailyMinimumCount: Int { LeetCodeDailyGoal.count(problemStore.problems, on: Date()) }
-    var todayNew: Int { today.filter(\.isFirstSolve).count }
+    private var todaySummary: LeetCodeDailyGoal.Summary { LeetCodeDailyGoal.summary(loggedProblems, on: Date()) }
+    var todayCount: Int { todaySummary.total }
+    var todayNew: Int { todaySummary.new }
+    var todayRedo: Int { todaySummary.redo }
     var todayPoints: Int { today.reduce(0) { $0 + Self.points[$1.problem.difficulty]! } }
 
     private var activeDays: Set<Date> {

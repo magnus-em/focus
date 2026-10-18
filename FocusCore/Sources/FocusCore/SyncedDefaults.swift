@@ -37,6 +37,8 @@ public final class SyncedDefaults {
         "lifeTags",
         "quantGoal",
         "quantWeeklyGoal",
+        "leetCodeDailyGoal",
+        "leetCodeMinutesGoal",
         "sweGoal",
         "sweWeeklyGoal",
         "homeworkDailyGoal",

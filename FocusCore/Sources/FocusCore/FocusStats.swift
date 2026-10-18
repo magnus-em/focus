@@ -144,7 +144,7 @@ public enum FocusStats {
         var dict: [String: Double] = [:]
         for s in work {
             let key = (s.label?.isEmpty == false ? s.label! : "Untagged")
-            dict[FocusCategories.parentCategory(key), default: 0] += s.durationMinutes
+            dict[key, default: 0] += s.durationMinutes
         }
         return dict.map { (tag: $0.key, minutes: $0.value) }
             .sorted { $0.minutes > $1.minutes }

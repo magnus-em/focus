@@ -188,6 +188,11 @@ struct SettingsView: View {
                 }
 
                 SettingsCard("LeetCode") {
+                    Stepper("Problems per day: \(settings.leetCodeDailyGoal)", value: $settings.leetCodeDailyGoal, in: 1...30)
+                    Stepper("Focused minutes per day: \(settings.leetCodeMinutesGoal)", value: $settings.leetCodeMinutesGoal, in: 30...360, step: 15)
+                    Text("Interview prep starting target: 2 focused hours, 3 new problems and 1 redo from memory. Prioritize Mediums and review mistakes.")
+                        .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                     ToggleRow(label: "Evening nudge if under goal", isOn: $settings.leetCodeNudge)
                     if settings.leetCodeNudge {
                         HStack {
@@ -199,7 +204,7 @@ struct SettingsView: View {
                                 .datePickerStyle(.field)
                                 .fixedSize()
                         }
-                        Text("Only fires if you're below today's SWE problem goal — and warns when your streak is on the line.")
+                        Text("Only fires if you're below today's LeetCode problem goal — and warns when your streak is on the line.")
                             .font(.system(size: 11))
                             .foregroundStyle(Color.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
