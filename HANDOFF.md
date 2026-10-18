@@ -7,7 +7,7 @@ Last touched: 2026-10-15 night (Claude side session: Day/Week review, descriptor
 ## Chrome dark pages — 10/18 (Codex)
 
 - Popup compact layout and live settings listeners; direct Mac settings updates, independent mode-change queue, conflict protection for offline/rapid edits, native-theme rechecks and bundled Dark Reader site fixes implemented. Browser fixtures and bridge tests pass; separate visual review91/100.
-- Native install and extension activation status recorded in WORK_LOG.md. Reload Focus Blocker at chrome://extensions and refresh existing pages to pick up new content scripts; deploy.sh installs only native app.
+- Native sync installed at fd1bfeb (448 sessions before/after), live GET /dark verified. Screenshot-reported CSP and optional-image errors fixed in extension1.1.1; strict-policy/separate-world checks passed. Reload Focus Blocker at chrome://extensions and refresh existing pages to pick up new content scripts; deploy.sh installs only native app.
 
 Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 

@@ -269,13 +269,32 @@ async function injectDark(tabId) {
       func: () => !!globalThis.focusDarkLoaded,
     });
     const frameIds = found.filter((f) => !f.result).map((f) => f.frameId);
-    if (frameIds.length) await chrome.scripting.executeScript({ target: { tabId, frameIds }, files: DARK_SCRIPT.js });
+    if (frameIds.length) {
+      await chrome.scripting.executeScript({ target: { tabId, frameIds }, world: 'MAIN', files: ['vendor/darkreader-proxy.js'] });
+      await chrome.scripting.executeScript({ target: { tabId, frameIds }, files: DARK_SCRIPT.js });
+    }
   } catch {}
 }
 
 // Dark Reader reads cross-origin stylesheets and images to recolor them; a
 // content script can't (page CORS), the worker can.
+const failedDarkFetches = new Map();
+const activeDarkFetches = new Map();
 async function darkFetch(url) {
+  if ((failedDarkFetches.get(url) || 0) > Date.now()) return { ok: false };
+  if (activeDarkFetches.has(url)) return activeDarkFetches.get(url);
+  const request = fetchDarkResource(url).then((result) => {
+    if (!result.ok) {
+      if (failedDarkFetches.size >= 128) failedDarkFetches.delete(failedDarkFetches.keys().next().value);
+      failedDarkFetches.set(url, Date.now() + 60_000);
+    } else failedDarkFetches.delete(url);
+    return result;
+  }).finally(() => activeDarkFetches.delete(url));
+  activeDarkFetches.set(url, request);
+  return request;
+}
+
+async function fetchDarkResource(url) {
   if (!/^https?:/.test(url)) return { ok: false };
   try {
     const r = await fetch(url, { cache: 'force-cache', credentials: 'omit', signal: AbortSignal.timeout(15000) });

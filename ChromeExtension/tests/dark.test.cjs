@@ -94,3 +94,24 @@ test('bundled fixes select domains and exact paths without leaking to unrelated 
   assert.ok(global.css.includes('--darkreader-neutral-text'));
   assert.ok(github.css.length > global.css.length);
 });
+
+test('optional resource failures are deduplicated and cool down before retrying', async () => {
+  let requests = 0;
+  const w = worker((url) => {
+    if (url === 'https://assets.test/missing.gif') { requests++; return Promise.resolve(new Response('', { status: 404 })); }
+    return new Promise(() => {});
+  });
+  const results = await w.run("Promise.all([darkFetch('https://assets.test/missing.gif'), darkFetch('https://assets.test/missing.gif')])");
+  assert.equal(results[0].ok, false); assert.equal(results[1].ok, false);
+  await w.run("darkFetch('https://assets.test/missing.gif')");
+  assert.equal(requests, 1);
+});
+
+test('MV3 proxy runs as a packaged MAIN script instead of an inline DOM script', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+  const proxy = manifest.content_scripts.find((s) => s.js.includes('vendor/darkreader-proxy.js'));
+  assert.equal(proxy.world, 'MAIN'); assert.equal(proxy.run_at, 'document_start');
+  const source = fs.readFileSync(path.join(root, 'vendor/darkreader.js'), 'utf8');
+  assert.ok(source.includes('__focus_darkreader_proxy'));
+  assert.ok(!source.includes('proxyScript.append('));
+});
