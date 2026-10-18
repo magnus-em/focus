@@ -66,6 +66,11 @@ public enum ScreenClassificationPolicy {
         guard let category else {
             return Decision(category: nil, reason: "Not enough evidence to identify the task", uncertain: true)
         }
+        // 10/18: a Google search "diff between a compiler and an assembler" during an
+        // assembly pset was called Recruiting ("a common task in the recruiting category").
+        if category == "Recruiting", source == .model, !supportsRecruiting(title: title, text: text) {
+            return Decision(category: nil, reason: "Recruiting needs something about jobs, applications or recruiters on screen", uncertain: true)
+        }
         if category == "Reading" {
             if source == .model && !supportsEducationalReading(title: title, text: text) {
                 return Decision(category: nil, reason: "Not enough evidence of an educational article, book, paper or substantial explainer", uncertain: true)
@@ -133,6 +138,15 @@ public enum ScreenClassificationPolicy {
                          "upload resume", "uploading resume", "upload your resume", "cover letter", "apply now",
                          "submit application", "applied to", "recruiter", "careers page"]
         return bodyMarks.filter(body.contains).count >= 2
+    }
+
+    public static func supportsRecruiting(title: String, text: String) -> Bool {
+        if showsJobApplication(title: title, text: text) { return true }
+        let page = normalized(String(title.prefix(240))) + " " + normalized(String(text.prefix(2400)))
+        let marks = ["linkedin", "handshake", "glassdoor", "levels.fyi", "recruit", "internship", "job posting", "job offer",
+                     "offer letter", "hiring", "careers", "resume", "cover letter", "application status", "apply now",
+                     "applied to", "networking", "coffee chat", "superday", "onsite interview", "phone screen"]
+        return marks.contains(where: page.contains) || containsWordBeginning("jobs", in: page)
     }
 
     public static func isJournalApp(app: String, bundle: String = "") -> Bool {

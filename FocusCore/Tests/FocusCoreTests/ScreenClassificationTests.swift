@@ -234,4 +234,18 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Google Chrome",
             title: "Software Engineer Intern 2027 | Pinterest Careers", text: "").category, "Recruiting")
     }
+
+    func testModelRecruitingNeedsJobEvidence() {
+        let search = ScreenClassificationPolicy.evaluate(category: "Recruiting", app: "Google Chrome",
+            title: "sorry is there a diff nbetween …nd an assembler - Google Search",
+            text: "Yes, there is a fundamental difference between a compiler and an assembler. Quick Comparison Feature Compiler Assembler")
+        XCTAssertNil(search.category)
+        XCTAssertTrue(search.uncertain)
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Recruiting", app: "Google Chrome",
+            title: "Jane Street | LinkedIn", text: "").category, "Recruiting")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Recruiting", app: "Mail",
+            title: "Re: phone screen next week", text: "Thanks for your interest, our recruiting team").category, "Recruiting")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Recruiting", app: "Google Chrome",
+            title: "Compiler Explorer", text: "", source: .learned).category, "Recruiting")
+    }
 }
