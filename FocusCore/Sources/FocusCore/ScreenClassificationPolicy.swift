@@ -48,6 +48,11 @@ public enum ScreenClassificationPolicy {
             if category == "Admin", isVideo(title: title) {
                 return Decision(category: "Leisure", reason: "A video is not an errand", uncertain: false)
             }
+            // 10/17: Amazon.jobs sign-up, a résumé upload in a job-application agent and a chat
+            // about which internships to apply to were called Admin while Recruiting ran.
+            if category == "Admin" || category == "SWE", showsJobApplication(title: title, text: category == "Admin" ? text : "") {
+                return Decision(category: "Recruiting", reason: "A job or internship application", uncertain: false)
+            }
             // 10/14: a Desktop folder list with course folders was called SWE.
             if normalized(app) == "finder" {
                 return Decision(category: nil, reason: "A Finder folder lists files; it does not show the task", uncertain: true)
@@ -113,6 +118,21 @@ public enum ScreenClassificationPolicy {
         if sites.contains(where: { title.hasSuffix("- \($0)") || title.hasSuffix("| \($0)") || title == $0 }) { return true }
         guard let host = url.flatMap({ URL(string: $0)?.host?.lowercased() }) else { return false }
         return sites.contains { host == "\($0).com" || host == "\($0).io" || host.hasSuffix(".\($0).com") || host == "\($0).jp" }
+    }
+
+    public static func showsJobApplication(title: String, text: String) -> Bool {
+        let title = normalized(String(title.prefix(240)))
+        let titleMarks = [".jobs", "careers", "job search", "job application", "internship", "resume", "cover letter",
+                          "greenhouse", "lever.co", "workday", "handshake", "simplify jobs", "linkedin jobs"]
+        if titleMarks.contains(where: title.contains) || containsWordBeginning("jobs", in: title) && !title.contains("steve jobs") {
+            return true
+        }
+        guard !title.contains("inbox") else { return false }
+        let body = normalized(String(text.prefix(2400)))
+        let bodyMarks = ["job application", "internship", "greenhouse.io", "lever.co", "myworkdayjobs", "amazonjobs", "amazon.jobs",
+                         "upload resume", "uploading resume", "upload your resume", "cover letter", "apply now",
+                         "submit application", "applied to", "recruiter", "careers page"]
+        return bodyMarks.filter(body.contains).count >= 2
     }
 
     public static func isJournalApp(app: String, bundle: String = "") -> Bool {

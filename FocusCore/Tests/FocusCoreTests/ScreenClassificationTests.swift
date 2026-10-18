@@ -213,4 +213,25 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome",
             title: "Home • Threads", text: "", source: .learned).category)
     }
+
+    func testJobApplicationWorkIsRecruitingNotAdmin() {
+        let amazon = ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome",
+            title: "Create an account | Amazon.jobs", text: "Looks like you're new here.")
+        XCTAssertEqual(amazon.category, "Recruiting")
+        let agent = ScreenClassificationPolicy.evaluate(category: "Admin", app: "Muse", title: "Muse",
+            text: "Working job-boards.greenhouse.io\nUploading resume\nJob Application for Forward Deployed Engineer")
+        XCTAssertEqual(agent.category, "Recruiting")
+        let chat = ScreenClassificationPolicy.evaluate(category: "Admin", app: "Claude", title: "Yale email access",
+            text: "cross ref with which internships i've applied to/rejected from via my email")
+        XCTAssertEqual(chat.category, "Recruiting")
+    }
+
+    func testInboxAndCodeStayWithoutJobEvidence() {
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome",
+            title: "Inbox (2,049) - Gmail", text: "Your application to Jane Street\ninternship update").category, "Admin")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Code",
+            title: "main.c — pset5", text: "internship job application greenhouse.io").category, "SWE")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Google Chrome",
+            title: "Software Engineer Intern 2027 | Pinterest Careers", text: "").category, "Recruiting")
+    }
 }
