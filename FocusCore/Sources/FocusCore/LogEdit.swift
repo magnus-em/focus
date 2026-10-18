@@ -18,13 +18,17 @@ public enum LogEdit {
     /// changes, so a failed save can't roll back someone else's work, or when
     /// the save fails.
     public static func paint(start: Date, end: Date, label: String?, fill: Bool = true, in context: ModelContext) -> Undo? {
+        // Saved time can't reach past now; a row that did (10/18, Meals to
+        // 5:50 AM tomorrow) is cut there instead of keeping a future tail.
+        let now = Date()
+        let end = min(end, now)
         guard end.timeIntervalSince(start) >= 60, !context.hasChanges else { return nil }
         do {
             let models = try rows(start, end, in: context)
             let before = models.map(\.asValue)
             for model in models {
                 let a = model.startTime
-                let b = a.addingTimeInterval(model.durationMinutes * 60)
+                let b = min(a.addingTimeInterval(model.durationMinutes * 60), max(now, end))
                 guard a < end, b > start else { continue }
                 if b > end {
                     context.insert(StoredWorkSession(value: WorkSession(

@@ -73,8 +73,19 @@ class SessionStore: ObservableObject {
         )
         descriptor.includePendingChanges = true
         let stored = (try? context.fetch(descriptor)) ?? []
-        sessions = stored.map { $0.asValue }
         let now = Date()
+        // A saved block has ended, so it can't reach past now. 10/18 a Meals
+        // row synced in ending 5:50 AM the next day and an overlap merge made
+        // the morning's Meals 19h 46m.
+        let future = stored.filter { $0.startTime.addingTimeInterval($0.durationMinutes * 60) > now.addingTimeInterval(120) }
+        if !future.isEmpty, !context.hasChanges {
+            for m in future {
+                SyncLog.event("futureEndClamped", ["id": m.id.uuidString, "minutes": m.durationMinutes])
+                m.durationMinutes = max(0, now.timeIntervalSince(m.startTime)) / 60
+            }
+            save()
+        }
+        sessions = stored.map { $0.asValue }
         overlaps = TimeIntegrity.overlaps(in: sessions, from: now.addingTimeInterval(-7 * 86400), to: now)
         if !overlaps.isEmpty, autoResolve == nil {
             // Waits for a burst of CloudKit imports to settle, so both rows of a
@@ -122,7 +133,9 @@ class SessionStore: ObservableObject {
             }
             return
         }
-        context.insert(StoredWorkSession(value: session))
+        let row = StoredWorkSession(value: session)
+        row.durationMinutes = min(session.durationMinutes, max(0, Date().timeIntervalSince(start)) / 60)
+        context.insert(row)
         save()
         refresh()
     }

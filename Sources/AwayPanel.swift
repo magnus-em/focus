@@ -229,7 +229,10 @@ private final class AwayKeyablePanel: NSPanel {
 /// (same as ✕), from any app; registered only while a card is up. Once you
 /// click the card, plain ↩ and Esc do the same.
 final class AwayPanel {
-    private static weak var visible: AwayPanel?
+    // Screen and away coaches each own a panel; the keys act on the newest
+    // card still up and stay registered until the last one closes.
+    private static var shown: [AwayPanel] = []
+    private static var visible: AwayPanel? { shown.last }
     private static var keys: [GlobalHotKey] = []
     private var panel: NSPanel?
     private var host: NSHostingController<AwayPromptView>?
@@ -264,7 +267,7 @@ final class AwayPanel {
         panel = p
         layout()
         p.orderFrontRegardless()
-        Self.visible = self
+        Self.shown.append(self)
         Self.registerKeys()
 
         let work = DispatchWorkItem { [weak self] in
@@ -291,11 +294,14 @@ final class AwayPanel {
         keys = [accept, close].compactMap { $0 }
     }
 
+    /// Picking a category anywhere answers whatever a card was asking.
+    static func dismissAll() {
+        for p in shown.reversed() { p.dismiss() }
+    }
+
     func dismiss() {
-        if Self.visible === self {
-            Self.visible = nil
-            Self.keys = []
-        }
+        Self.shown.removeAll { $0 === self }
+        if Self.shown.isEmpty { Self.keys = [] }
         expire?.cancel()
         expire = nil
         panel?.close()

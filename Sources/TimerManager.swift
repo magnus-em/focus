@@ -513,6 +513,7 @@ class TimerManager: ObservableObject {
     }
 
     func switchTo(_ label: String, at requested: Date = Date()) {
+        AwayPanel.dismissAll()
         var date = min(requested, Date())
         if let start = sessionStartTime { date = max(date, start) }
         if currentPhase == .work, isActive {
@@ -555,6 +556,7 @@ class TimerManager: ObservableObject {
     }
 
     func stop(at date: Date) {
+        AwayPanel.dismissAll()
         cancelPauseGrace()
         let end = max(min(date, Date()), sessionStartTime ?? date)
         closeSegment(at: end)
@@ -641,6 +643,7 @@ class TimerManager: ObservableObject {
     }
 
     func startManualBreak(minutes: Double, kinds: [BreakKind] = [], at requested: Date = Date()) {
+        AwayPanel.dismissAll()
         var date = min(requested, Date())
         if let start = sessionStartTime { date = max(date, start) }
         cancelPauseGrace()

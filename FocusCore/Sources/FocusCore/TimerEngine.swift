@@ -846,7 +846,9 @@ public final class FocusTimerEngine: ObservableObject {
            dupes.contains(where: { $0.label == s.label }) {
             return
         }
-        ctx.insert(StoredWorkSession(value: s))
+        let row = StoredWorkSession(value: s)
+        row.durationMinutes = min(s.durationMinutes, max(0, Date().timeIntervalSince(s.startTime)) / 60)
+        ctx.insert(row)
         try? ctx.save()
         if s.type == .work {
             recomputeTodayCount()
