@@ -223,7 +223,7 @@ struct DayStoryPage: View {
                 Text(isToday ? "Nothing tracked yet today." : "Nothing tracked on this day.")
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText).padding(.vertical, 12)
             }
-            ForEach(Array(story.blocks.enumerated()), id: \.element.id) { i, block in
+            ForEach(Array(story.blocks.reversed().enumerated()), id: \.element.id) { i, block in
                 if i > 0 { Divider().padding(.leading, 76) }
                 if block.quiet { quietRow(block) } else { blockRow(block) }
             }
@@ -231,7 +231,7 @@ struct DayStoryPage: View {
     }
 
     private func storySubtitle(_ story: DayStory.Story) -> String {
-        var line = "Each stretch of your day and what you did in it; ⚠︎ marks time your log may have wrong."
+        var line = "Each stretch of your day, newest first, and what you did in it; ⚠︎ marks time your log may have wrong."
         if isToday, let asOf = story.headlineAsOf, story.headline != nil {
             line += " Rows after \(clock(asOf)) update as you go."
         }
