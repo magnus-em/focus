@@ -61,7 +61,7 @@ final class LeetCodeSolveDraftStore: ObservableObject {
         panel.contentView = host; panel.backgroundColor = .clear; panel.isOpaque = false; panel.hasShadow = true
         panel.level = .floating; panel.isReleasedWhenClosed = false; panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces,.fullScreenAuxiliary]
-        if let frame = NSScreen.main?.visibleFrame { panel.setFrameOrigin(NSPoint(x:frame.maxX-size.width-16,y:frame.maxY-size.height-12)) }
+        if let frame = NSScreen.underMouse?.visibleFrame { panel.setFrameOrigin(NSPoint(x:frame.maxX-size.width-16,y:frame.maxY-size.height-12)) }
         self.panel = panel; Self.visible = self; expires = Date().addingTimeInterval(900)
         panel.orderFrontRegardless()
     }

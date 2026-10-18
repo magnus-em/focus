@@ -219,7 +219,7 @@ private final class SwitcherPanel {
         p.isReleasedWhenClosed = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.hidesOnDeactivate = true
-        if let screen = NSScreen.main?.visibleFrame {
+        if let screen = NSScreen.underMouse?.visibleFrame {
             p.setFrameOrigin(NSPoint(x: screen.midX - size.width / 2, y: screen.midY + 80))
         }
         panel = p

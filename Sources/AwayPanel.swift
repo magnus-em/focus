@@ -350,10 +350,12 @@ final class AwayPanel {
     private var expire: DispatchWorkItem?
     private static let width: CGFloat = 340
 
+    private var placedOn: NSScreen?
     var isBusy: Bool { panel != nil }
 
     func show(_ m: AwayPromptModel) {
         dismiss()
+        placedOn = nil
         m.onClose = { [weak self] in self?.dismiss() }
         m.onResize = { [weak self] in DispatchQueue.main.async { self?.layout() } }
         model = m
@@ -389,7 +391,11 @@ final class AwayPanel {
     }
 
     private func layout() {
-        guard let p = panel, let h = host, let screen = NSScreen.main?.visibleFrame else { return }
+        // The screen you're on when the card appears, kept while it's up so a
+        // resize doesn't jump it. NSScreen.main follows the key window, which
+        // put cards on the other monitor (10/18).
+        if placedOn == nil { placedOn = NSScreen.underMouse }
+        guard let p = panel, let h = host, let screen = placedOn?.visibleFrame else { return }
         h.view.layoutSubtreeIfNeeded()
         let height = h.view.fittingSize.height
         p.setFrame(NSRect(x: screen.maxX - Self.width - 16, y: screen.maxY - height - 12,

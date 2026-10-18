@@ -58,7 +58,7 @@ final class RecallPanel {
     }
 
     private func resize(to height: CGFloat) {
-        guard let p = panel, let screen = NSScreen.main?.visibleFrame else { return }
+        guard let p = panel, let screen = NSScreen.underMouse?.visibleFrame else { return }
         let frame = NSRect(x: screen.maxX - Self.width - 16, y: screen.maxY - height - 12,
                            width: Self.width, height: height)
         p.setFrame(frame, display: true, animate: p.isVisible)
@@ -352,5 +352,13 @@ struct DraftCardsEditor: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
             }
         }
+    }
+}
+
+extension NSScreen {
+    /// Where corner cards and toasts go: the screen you're working on.
+    static var underMouse: NSScreen? {
+        let p = NSEvent.mouseLocation
+        return screens.first { NSMouseInRect(p, $0.frame, false) } ?? main
     }
 }

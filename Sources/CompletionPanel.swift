@@ -137,7 +137,7 @@ final class HotKeyToast {
         p.ignoresMouseEvents = true
         p.isReleasedWhenClosed = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        if let screen = NSScreen.main?.visibleFrame {
+        if let screen = NSScreen.underMouse?.visibleFrame {
             p.setFrameOrigin(NSPoint(x: screen.midX - size.width / 2, y: screen.maxY - size.height - 24))
         }
         p.orderFrontRegardless()
