@@ -104,6 +104,6 @@ User selected Quick Panel with the Fitness-style ring retained, daily cumulative
 
 - Coach live approval/install verified: user directly selected new + queued observations; installed8a48d7d includes live episode worker and final solve/recall fixes. Local status check observed18completed episodes and53spend-ledger rows; one uncertain request remains unknown without automatic retry. Final screenshots `.shots/coach-solve-fixed` and initial recall `.shots/coach-solve-final`; independent reviewer found no remaining blockers. Chrome extension reload/live browser privacy verification still requires follow-through; unknown windows remain excluded from cloud.
 
-## In flight — LeetCode subcategory (Codex, 10/18)
+## LeetCode follow-ups — 10/18
 
-SWE › LeetCode timer choice and the one-solve daily indicator are implemented; 201 core tests pass. Signed Mac install and hidden light/dark review are next. No historical sessions or solves inserted or relabeled. Configurable larger LeetCode grind goal is preserved.
+Mac feature is installed at `e5ad88e`; 201 core tests pass, 449 sessions preserved, hidden light/dark review 91/100. Optional polish: use the existing `Color.good` for the daily row's completed icon. Goal-row and full compact Now shots are in `.shots/leetcode-after`; the SWE submenu/selected child title have source/build verification but no interactive screenshot. iOS synced-tag migration source is included; no iOS install was performed for this change.
