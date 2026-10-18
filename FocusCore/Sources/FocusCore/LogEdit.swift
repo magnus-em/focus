@@ -81,10 +81,10 @@ public enum LogEdit {
     /// stretch both cover; with `removing`, that block goes entirely. Only the
     /// two blocks change, and only if they still look the way the user saw them.
     public static func fixOverlap(_ o: SessionOverlap, keep: UUID?, removing: WorkSession? = nil,
-                                  in context: ModelContext) -> Undo? {
+                                  now: Date = Date(), in context: ModelContext) -> Undo? {
         guard !context.hasChanges else { return nil }
         let edits = removing.map(TimeIntegrity.remove)
-            ?? keep.map { TimeIntegrity.resolve(o, keep: $0) } ?? TimeIntegrity.merge(o)
+            ?? keep.map { TimeIntegrity.resolve(o, keep: $0, now: now) } ?? TimeIntegrity.merge(o, now: now)
         let span = o.union
         func model(_ id: UUID) throws -> StoredWorkSession? {
             try context.fetch(FetchDescriptor<StoredWorkSession>(predicate: #Predicate { $0.id == id })).first
@@ -112,6 +112,29 @@ public enum LogEdit {
             context.rollback()
             return nil
         }
+    }
+
+    /// Cuts every saved row that reaches past now (`TimeIntegrity.clampedEnd`)
+    /// in one save. Run on each device when rows arrive from another one, so a
+    /// future row from an older build or a stale device never feeds a merge,
+    /// a paint tail or the day's totals. Returns the rows it cut.
+    @discardableResult
+    public static func clampFuture(now: Date = Date(), runningSince: Date?, in context: ModelContext) -> [UUID] {
+        guard !context.hasChanges else { return [] }
+        let floor = now.addingTimeInterval(-7 * 86400)
+        let descriptor = FetchDescriptor<StoredWorkSession>(predicate: #Predicate { $0.startTime >= floor })
+        guard let models = try? context.fetch(descriptor) else { return [] }
+        var cut: [UUID] = []
+        for m in models {
+            guard let end = TimeIntegrity.clampedEnd(of: m.asValue, now: now, runningSince: runningSince) else { continue }
+            SyncLog.event("futureEndClamped", ["id": m.id.uuidString, "minutes": m.durationMinutes,
+                                               "end": end])
+            m.durationMinutes = end.timeIntervalSince(m.startTime) / 60
+            cut.append(m.id)
+        }
+        guard !cut.isEmpty else { return [] }
+        do { try context.save() } catch { context.rollback(); return [] }
+        return cut
     }
 
     /// Restores the rows as they were, but only if nothing touched them since

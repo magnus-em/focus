@@ -96,6 +96,7 @@ struct FocusApp: App {
         let timer = TimerManager()
         timer.recoverPartialSession(into: store)
         timer.sessionStore = store
+        store.runningSince = { [weak timer] in timer?.isActive == true ? timer?.sessionStartTime : nil }
         timer.settings = appSettings
         timer.applySettings()
         let stateSync = TimerStateSync(container: focusContainer)

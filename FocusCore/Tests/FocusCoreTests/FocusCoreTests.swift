@@ -181,7 +181,7 @@ final class OverlapFixTests: XCTestCase {
     func testMergeTouchesOnlyThePair() {
         let a = block("Class", 0, 120), b = block("Class", 30, 60), c = block("Leisure", 90, 100)
         let o = TimeIntegrity.overlaps(in: [a, b, c], from: at(-1), to: at(200)).first { $0.second.id == b.id }!
-        let edits = TimeIntegrity.merge(o)
+        let edits = TimeIntegrity.merge(o, now: at(200))
         XCTAssertEqual(touched(edits), [a.id, b.id])
         guard case .setDuration(_, let m) = edits[0] else { return XCTFail() }
         XCTAssertEqual(m, 120, accuracy: 0.001)
@@ -190,12 +190,12 @@ final class OverlapFixTests: XCTestCase {
     func testPickingOneCutsOnlyTheOtherAndKeepsItsOutsideParts() {
         let swe = block("SWE", 0, 48.8), leisure = block("Leisure", 0.2, 55.6)
         let o = TimeIntegrity.overlaps(in: [swe, leisure], from: at(-1), to: at(100))[0]
-        let keepSWE = TimeIntegrity.resolve(o, keep: swe.id)
+        let keepSWE = TimeIntegrity.resolve(o, keep: swe.id, now: at(100))
         XCTAssertEqual(touched(keepSWE), [leisure.id])
         guard case .insert(let tail) = keepSWE.last else { return XCTFail() }
         XCTAssertEqual(tail.startTime, at(48.8))
         XCTAssertEqual(tail.label, "Leisure")
-        let keepLeisure = TimeIntegrity.resolve(o, keep: leisure.id)
+        let keepLeisure = TimeIntegrity.resolve(o, keep: leisure.id, now: at(100))
         XCTAssertEqual(touched(keepLeisure), [swe.id])
         guard case .setDuration(_, let m) = keepLeisure[0] else { return XCTFail() }
         XCTAssertEqual(m, 0.2, accuracy: 0.001)

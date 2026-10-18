@@ -90,4 +90,65 @@ final class LogEditTests: XCTestCase {
         XCTAssertNotNil(LogEdit.fixOverlap(overlap, keep: rows[1].id, in: c))
         XCTAssertEqual(try log(c), ["0+30 Math", "30+60 Reading"])
     }
+
+    /// 10/18: Meals 10:03:42 had synced in ending 5:50 AM the next day. The
+    /// Mac's own Meals save (14 s later, so not a dedup) merged into it, then
+    /// cutting it for Math left a future tail. Now the future row is cut at
+    /// now first, and merges and cuts never reach past now.
+    func testFutureRowNeverFeedsAMergeOrATail() throws {
+        let c = try context()
+        let now = at(63)
+        add(c, -634, 634, "Sleep")
+        add(c, 0, 1187, "Meals")
+        try c.save()
+        XCTAssertEqual(LogEdit.clampFuture(now: now, runningSince: nil, in: c).count, 1)
+        XCTAssertEqual(try log(c), ["-634+634 Sleep", "0+63 Meals"])
+        add(c, 0.25, 62.75, "Meals")
+        try c.save()
+        var rows = try c.fetch(FetchDescriptor<StoredWorkSession>()).map(\.asValue)
+        let dup = try XCTUnwrap(TimeIntegrity.overlaps(in: rows, from: at(-700), to: now).first)
+        XCTAssertNil(TimeIntegrity.autoKeep(dup))
+        XCTAssertNotNil(LogEdit.fixOverlap(dup, keep: nil, now: now, in: c))
+        XCTAssertEqual(try log(c), ["-634+634 Sleep", "0+63 Meals"])
+        add(c, 63, 2, "Math")
+        try c.save()
+        rows = try c.fetch(FetchDescriptor<StoredWorkSession>()).map(\.asValue)
+        XCTAssertTrue(TimeIntegrity.overlaps(in: rows, from: at(-700), to: at(65)).isEmpty)
+    }
+
+    func testMergeAndCutStopAtNowEvenWithoutAClamp() throws {
+        let c = try context()
+        add(c, 0, 60, "Meals")
+        add(c, 30, 1200, "Meals")
+        try c.save()
+        var rows = try c.fetch(FetchDescriptor<StoredWorkSession>(sortBy: [SortDescriptor(\.startTime)])).map(\.asValue)
+        let o = try XCTUnwrap(TimeIntegrity.overlaps(in: rows, from: at(-60), to: at(90)).first)
+        XCTAssertNotNil(LogEdit.fixOverlap(o, keep: nil, now: at(90), in: c))
+        XCTAssertEqual(try log(c), ["0+90 Meals"])
+
+        add(c, 100, 1200, "Meals")
+        add(c, 110, 5, "Math")
+        try c.save()
+        rows = try c.fetch(FetchDescriptor<StoredWorkSession>(sortBy: [SortDescriptor(\.startTime)])).map(\.asValue)
+        let cut = try XCTUnwrap(TimeIntegrity.overlaps(in: rows, from: at(95), to: at(120)).first)
+        XCTAssertEqual(TimeIntegrity.autoKeep(cut), cut.second.id)
+        XCTAssertNotNil(LogEdit.fixOverlap(cut, keep: cut.second.id, now: at(120), in: c))
+        XCTAssertEqual(try log(c), ["0+90 Meals", "100+10 Meals", "110+5 Math", "115+5 Meals"])
+    }
+
+    func testClampCutsAtWhatIsRunningAndLeavesPastRowsAlone() throws {
+        let c = try context()
+        add(c, 0, 30, "Math")
+        add(c, 30, 900, "Leisure")
+        try c.save()
+        XCTAssertEqual(LogEdit.clampFuture(now: at(100), runningSince: at(70), in: c).count, 1)
+        XCTAssertEqual(try log(c), ["0+30 Math", "30+40 Leisure"])
+        XCTAssertTrue(LogEdit.clampFuture(now: at(100), runningSince: at(70), in: c).isEmpty)
+    }
+
+    func testAutoResolveWaitsForTheLogToSettle() {
+        XCTAssertEqual(TimeIntegrity.autoResolveWait(lastChange: at(0), now: at(0))!, TimeIntegrity.settleSeconds, accuracy: 0.001)
+        XCTAssertNotNil(TimeIntegrity.autoResolveWait(lastChange: at(0), now: at(0.4)))
+        XCTAssertNil(TimeIntegrity.autoResolveWait(lastChange: at(0), now: at(0.5)))
+    }
 }

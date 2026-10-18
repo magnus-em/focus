@@ -55,6 +55,30 @@ struct FocusPadApp: App {
         // switched) updates the Lock Screen too.
         FocusLiveActivity.follow(e)
         DoseMirror.followRemoteChanges()
+        Self.clampFutureRowsOnImport()
+    }
+
+    /// Rows from another device (or an older build here) can end in the
+    /// future; cut them like the Mac does, so the Today list, its overlap
+    /// fixes and paints never build on time that hasn't happened (10/18).
+    @MainActor static func clampFutureRows() {
+        let engine = liveEngine
+        LogEdit.clampFuture(runningSince: engine?.isActive == true ? engine?.sessionStartTime : nil,
+                            in: sharedContainer.mainContext)
+    }
+
+    private static var importObserver: NSObjectProtocol?
+
+    private static func clampFutureRowsOnImport() {
+        guard importObserver == nil else { return }
+        importObserver = NotificationCenter.default.addObserver(
+            forName: .NSPersistentStoreRemoteChange, object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                clampFutureRows()
+            }
+        }
     }
 
     var body: some Scene {
@@ -73,6 +97,7 @@ struct FocusPadApp: App {
                     guard phase == .active else { return }
                     DoseMirror.update(from: container)
                     DayBriefStore.shared.reload()
+                    Self.clampFutureRows()
                     #if DEBUG && targetEnvironment(simulator)
                     if ProcessInfo.processInfo.arguments.contains("-seedDemo") { return }
                     #endif

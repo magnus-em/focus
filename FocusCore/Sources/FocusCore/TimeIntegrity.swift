@@ -35,9 +35,12 @@ public enum TimeIntegrity {
     /// Same category saved twice: the earlier block grows to cover both and
     /// the other goes. Any third block in that span is left alone (its own
     /// overlap shows next).
-    public static func merge(_ o: SessionOverlap) -> [OverlapEdit] {
-        [.setDuration(o.first.id, minutes: o.union.end.timeIntervalSince(o.first.startTime) / 60),
-         .delete(o.second.id)]
+    /// Neither block can end past `now`: a merge with a row that synced in
+    /// ending tomorrow (10/18, Meals to 5:50 AM) made the morning's Meals 19h 46m.
+    public static func merge(_ o: SessionOverlap, now: Date = Date()) -> [OverlapEdit] {
+        let end = max(o.first.startTime, min(o.union.end, now))
+        return [.setDuration(o.first.id, minutes: end.timeIntervalSince(o.first.startTime) / 60),
+                .delete(o.second.id)]
     }
 
     /// A block that overlaps several others is usually one a device saved
@@ -52,9 +55,9 @@ public enum TimeIntegrity {
 
     /// `keep` takes the stretch both cover; only the other block changes:
     /// it's cut around that stretch, keeping whatever lies outside it.
-    public static func resolve(_ o: SessionOverlap, keep: UUID) -> [OverlapEdit] {
+    public static func resolve(_ o: SessionOverlap, keep: UUID, now: Date = Date()) -> [OverlapEdit] {
         let loser = keep == o.first.id ? o.second : o.first
-        let a = loser.startTime, b = end(of: loser)
+        let a = loser.startTime, b = min(end(of: loser), now)
         var edits: [OverlapEdit] = a < o.start
             ? [.setDuration(loser.id, minutes: o.start.timeIntervalSince(a) / 60)]
             : [.delete(loser.id)]
@@ -74,6 +77,31 @@ public enum TimeIntegrity {
         if o.sameLabel { return nil }
         if o.second.startTime > o.first.startTime { return o.second.id }
         return o.first.durationMinutes <= o.second.durationMinutes ? o.first.id : o.second.id
+    }
+
+    /// How long the log must be quiet (no row arriving from another device,
+    /// no edit here) before overlaps are resolved without asking. A paint on
+    /// the phone reaches the Mac as several CloudKit changes; deciding between
+    /// them acts on a log that is half old, half new.
+    public static let settleSeconds: TimeInterval = 30
+
+    /// Waits for `settleSeconds` after the last change, so every device's
+    /// edit has fully landed. Returns how much longer to wait, or nil to act now.
+    public static func autoResolveWait(lastChange: Date, now: Date = Date()) -> TimeInterval? {
+        let wait = settleSeconds - now.timeIntervalSince(lastChange)
+        return wait > 0 ? wait : nil
+    }
+
+    /// A saved block has ended, so it can't reach past now. Rows that do (a
+    /// device's stale save, a tail of one) are cut at the start of what's
+    /// running when that comes after their start, else at now: their real end
+    /// is unknown and the running block owns the time from its start.
+    /// Returns the new end for rows more than `slack` past now, else nil.
+    public static func clampedEnd(of s: WorkSession, now: Date, runningSince: Date?,
+                                  slack: TimeInterval = 120) -> Date? {
+        guard end(of: s) > now.addingTimeInterval(slack) else { return nil }
+        if let run = runningSince, run > s.startTime, run < now { return run }
+        return max(s.startTime, now)
     }
 
     public static func end(of s: WorkSession) -> Date {

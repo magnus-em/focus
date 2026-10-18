@@ -20,6 +20,10 @@ class SessionStore: ObservableObject {
     private var remoteRefresh: DispatchWorkItem?
     private var diskCheckedAt = Date.distantPast
     private var autoResolve: DispatchWorkItem?
+    /// Last time the log changed here or arrived from another device.
+    private var lastChangeAt = Date()
+    /// Start of what the timer is running, so a future row is cut there.
+    var runningSince: (() -> Date?)?
 
     init(container: ModelContainer) {
         self.context = ModelContext(container)
@@ -32,6 +36,7 @@ class SessionStore: ObservableObject {
             forName: .NSPersistentStoreRemoteChange, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self else { return }
+            self.lastChangeAt = Date()
             self.remoteRefresh?.cancel()
             let work = DispatchWorkItem { [weak self] in self?.refresh() }
             self.remoteRefresh = work
@@ -77,26 +82,12 @@ class SessionStore: ObservableObject {
         // A saved block has ended, so it can't reach past now. 10/18 a Meals
         // row synced in ending 5:50 AM the next day and an overlap merge made
         // the morning's Meals 19h 46m.
-        let future = stored.filter { $0.startTime.addingTimeInterval($0.durationMinutes * 60) > now.addingTimeInterval(120) }
-        if !future.isEmpty, !context.hasChanges {
-            for m in future {
-                SyncLog.event("futureEndClamped", ["id": m.id.uuidString, "minutes": m.durationMinutes])
-                m.durationMinutes = max(0, now.timeIntervalSince(m.startTime)) / 60
-            }
-            save()
+        if stored.contains(where: { TimeIntegrity.clampedEnd(of: $0.asValue, now: now, runningSince: runningSince?()) != nil }) {
+            LogEdit.clampFuture(now: now, runningSince: runningSince?(), in: context)
         }
         sessions = stored.map { $0.asValue }
         overlaps = TimeIntegrity.overlaps(in: sessions, from: now.addingTimeInterval(-7 * 86400), to: now)
-        if !overlaps.isEmpty, autoResolve == nil {
-            // Waits for a burst of CloudKit imports to settle, so both rows of a
-            // block another device is still saving are there before deciding.
-            let work = DispatchWorkItem { [weak self] in
-                self?.autoResolve = nil
-                self?.resolveOverlaps()
-            }
-            autoResolve = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
-        }
+        if !overlaps.isEmpty { scheduleAutoResolve() }
         if now.timeIntervalSince(diskCheckedAt) > 60 {
             diskCheckedAt = now
             let free = (try? URL(fileURLWithPath: NSHomeDirectory())
@@ -143,6 +134,7 @@ class SessionStore: ObservableObject {
     /// Every save goes through here, so a failure shows in the popover
     /// instead of vanishing. Pending changes stay for the next try.
     private func save() {
+        lastChangeAt = Date()
         do {
             try context.save()
             if saveError != nil { saveError = nil }
@@ -152,13 +144,33 @@ class SessionStore: ObservableObject {
         }
     }
 
+    /// Re-armed by every change, so it runs once the log has been quiet for
+    /// `TimeIntegrity.settleSeconds`: a phone's paint arrives as several
+    /// CloudKit changes, and resolving between them acted on a half-applied
+    /// edit (10/18).
+    private func scheduleAutoResolve() {
+        autoResolve?.cancel()
+        let wait = TimeIntegrity.autoResolveWait(lastChange: lastChangeAt) ?? 1
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.autoResolve = nil
+            if TimeIntegrity.autoResolveWait(lastChange: self.lastChangeAt) != nil {
+                self.scheduleAutoResolve()
+            } else {
+                self.resolveOverlaps()
+            }
+        }
+        autoResolve = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
+    }
+
     private func resolveOverlaps() {
         for _ in 0..<200 {
             let now = Date()
             guard let o = TimeIntegrity.overlaps(in: sessions, from: now.addingTimeInterval(-7 * 86400), to: now).first
             else { break }
             let keep = TimeIntegrity.autoKeep(o)
-            guard LogEdit.fixOverlap(o, keep: keep, in: context) != nil else { break }
+            guard LogEdit.fixOverlap(o, keep: keep, now: now, in: context) != nil else { break }
             SyncLog.event("overlapAutoResolved", ["first": o.first.id.uuidString, "second": o.second.id.uuidString,
                                                   "kept": keep?.uuidString ?? "merged"])
             let descriptor = FetchDescriptor<StoredWorkSession>(sortBy: [SortDescriptor(\.startTime)])
