@@ -319,10 +319,16 @@ struct TimerView: View {
     private var doseLine: some View {
         TimelineView(.everyMinute) { ctx in
             Button(action: onOpenDose) {
-                if let dose = health.firstDoseToday(now: ctx.date) {
-                    Label("Adderall · \(durationText(minutes: (ctx.date.timeIntervalSince(dose.date) / 60).rounded(.down))) since \(dose.date.formatted(date: .omitted, time: .shortened))",
-                          systemImage: "pills")
-                        .help("Since your first dose today, \(dose.kind.displayName). Click to log or edit a dose.")
+                let doses = health.doses(on: ctx.date, through: ctx.date)
+                if !doses.isEmpty {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(doses, id: \.id) { dose in
+                                Text("Med \(dose.kind.shortName) · \(durationText(minutes: (ctx.date.timeIntervalSince(dose.date) / 60).rounded(.down))) since \(dose.date.formatted(date: .omitted, time: .shortened))")
+                            }
+                        }
+                    } icon: { Image(systemName: "pills") }
+                        .help("Each med dose today and how long since. Click to log or edit a dose.")
                 } else {
                     Label("Log morning dose", systemImage: "pills")
                 }
