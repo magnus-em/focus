@@ -781,19 +781,29 @@ enum MenuBarRing {
         return img
     }
 
-    /// The app icon's mark (ring closing on a point), as a template for the idle menu bar.
+    /// The app icon's mark (an eye with an iris ring, from make_icon.swift's 100-unit grid),
+    /// as a template for the idle menu bar.
     static let mark: NSImage = {
-        let img = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
-            let r = rect.insetBy(dx: 2, dy: 2)
-            let c = NSPoint(x: r.midX, y: r.midY)
-            let arc = NSBezierPath()
-            arc.appendArc(withCenter: c, radius: r.width / 2, startAngle: 90, endAngle: 90 - 290, clockwise: true)
-            arc.lineWidth = 2.2
-            arc.lineCapStyle = .round
+        let img = NSImage(size: NSSize(width: 20, height: 14), flipped: false) { rect in
+            let u: CGFloat = 0.215
+            let c = NSPoint(x: rect.midX, y: rect.midY)
+            func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: c.x + (x - 50) * u, y: c.y - (y - 50) * u) }
+            let eye = NSBezierPath()
+            eye.move(to: p(10, 50))
+            eye.curve(to: p(90, 50), controlPoint1: p(26, 26), controlPoint2: p(74, 26))
+            eye.curve(to: p(10, 50), controlPoint1: p(74, 74), controlPoint2: p(26, 74))
+            eye.close()
+            eye.lineWidth = 8 * u
+            eye.lineJoinStyle = .round
             NSColor.black.setStroke()
-            arc.stroke()
+            eye.stroke()
+            let ir = 15.5 * u
+            let iris = NSBezierPath(ovalIn: NSRect(x: c.x - ir, y: c.y - ir, width: ir * 2, height: ir * 2))
+            iris.lineWidth = 7 * u
+            iris.stroke()
+            let pr = 6.5 * u
             NSColor.black.setFill()
-            NSBezierPath(ovalIn: NSRect(x: c.x - 2.4, y: c.y - 2.4, width: 4.8, height: 4.8)).fill()
+            NSBezierPath(ovalIn: NSRect(x: c.x - pr, y: c.y - pr, width: pr * 2, height: pr * 2)).fill()
             return true
         }
         img.isTemplate = true

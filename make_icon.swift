@@ -1,8 +1,39 @@
 #!/usr/bin/env swift
 import Cocoa
 
-// The Focus mark: a goal ring closing on a single point. Same geometry as
-// `FocusMark` in LockInApp.swift (menu bar), drawn on the macOS icon grid.
+// The Focus mark: an eye with a warm iris ring (it sees what's on the screen).
+// Designed on a 100-unit grid; same geometry as `MenuBarRing.mark` in LockInApp.swift.
+func drawMark(in body: NSRect) {
+    let u = body.width * 0.0068
+    let c = NSPoint(x: body.midX, y: body.midY)
+    func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: c.x + (x - 50) * u, y: c.y - (y - 50) * u) }
+
+    let eye = NSBezierPath()
+    eye.move(to: p(10, 50))
+    eye.curve(to: p(90, 50), controlPoint1: p(26, 26), controlPoint2: p(74, 26))
+    eye.curve(to: p(10, 50), controlPoint1: p(74, 74), controlPoint2: p(26, 74))
+    eye.close()
+    eye.lineWidth = 7.5 * u
+    eye.lineJoinStyle = .round
+    NSColor.white.setStroke()
+    eye.stroke()
+
+    let ir = 16 * u
+    let iris = NSBezierPath(ovalIn: NSRect(x: c.x - ir, y: c.y - ir, width: ir * 2, height: ir * 2))
+    iris.lineWidth = 6.5 * u
+    NSColor(red: 1.0, green: 0.55, blue: 0.24, alpha: 1).setStroke()
+    iris.stroke()
+
+    let pr = 6.5 * u
+    NSColor.white.setFill()
+    NSBezierPath(ovalIn: NSRect(x: c.x - pr, y: c.y - pr, width: pr * 2, height: pr * 2)).fill()
+}
+
+let background = [
+    NSColor(red: 0.20, green: 0.22, blue: 0.36, alpha: 1),
+    NSColor(red: 0.07, green: 0.08, blue: 0.15, alpha: 1),
+]
+
 func renderIcon(size: Int) -> NSImage {
     let dim = CGFloat(size)
     let image = NSImage(size: NSSize(width: dim, height: dim))
@@ -22,33 +53,25 @@ func renderIcon(size: Int) -> NSImage {
     bgPath.fill()
     NSGraphicsContext.current?.restoreGraphicsState()
 
-    NSGradient(colors: [
-        NSColor(red: 0.20, green: 0.22, blue: 0.36, alpha: 1),
-        NSColor(red: 0.07, green: 0.08, blue: 0.15, alpha: 1),
-    ])?.draw(in: bgPath, angle: -90)
-
-    let c = NSPoint(x: body.midX, y: body.midY)
-    let r = body.width * 0.27
-    let line = body.width * 0.085
-
-    let track = NSBezierPath(ovalIn: NSRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
-    track.lineWidth = line
-    NSColor.white.withAlphaComponent(0.14).setStroke()
-    track.stroke()
-
-    let arc = NSBezierPath()
-    arc.appendArc(withCenter: c, radius: r, startAngle: 90, endAngle: 90 - 290, clockwise: true)
-    arc.lineWidth = line
-    arc.lineCapStyle = .round
-    NSColor.white.setStroke()
-    arc.stroke()
-
-    let d = body.width * 0.115
-    NSColor(red: 1.0, green: 0.55, blue: 0.24, alpha: 1).setFill()
-    NSBezierPath(ovalIn: NSRect(x: c.x - d, y: c.y - d, width: d * 2, height: d * 2)).fill()
+    NSGradient(colors: background)?.draw(in: bgPath, angle: -90)
+    drawMark(in: body)
 
     image.unlockFocus()
     return image
+}
+
+/// iOS wants a full-bleed, opaque square; the system applies the corner mask.
+func saveIOSIcon(to path: String) {
+    let cg = CGContext(data: nil, width: 1024, height: 1024, bitsPerComponent: 8, bytesPerRow: 0,
+                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    let rect = NSRect(x: 0, y: 0, width: 1024, height: 1024)
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: false)
+    NSGradient(colors: background)?.draw(in: rect, angle: -90)
+    drawMark(in: rect.insetBy(dx: 100, dy: 100))
+    NSGraphicsContext.restoreGraphicsState()
+    let rep = NSBitmapImageRep(cgImage: cg.makeImage()!)
+    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
 }
 
 func savePNG(_ image: NSImage, to path: String) {
@@ -58,7 +81,14 @@ func savePNG(_ image: NSImage, to path: String) {
     try? png.write(to: URL(fileURLWithPath: path))
 }
 
-let iconsetPath = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "/tmp/AppIcon.iconset"
+let args = CommandLine.arguments
+if args.count > 2, args[1] == "--ios" {
+    saveIOSIcon(to: args[2])
+    print("Done")
+    exit(0)
+}
+
+let iconsetPath = args.count > 1 ? args[1] : "/tmp/AppIcon.iconset"
 try? FileManager.default.createDirectory(atPath: iconsetPath, withIntermediateDirectories: true)
 
 let sizes = [16, 32, 64, 128, 256, 512, 1024]
