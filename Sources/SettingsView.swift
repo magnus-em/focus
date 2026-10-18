@@ -141,7 +141,8 @@ struct SettingsView: View {
                         IntRow(label: "After being away", value: $settings.awayPromptMinutes, range: 5...120, suffix: "min")
                     }
                     ToggleRow(label: "Nudge when nothing's running", isOn: $settings.idleNudge)
-                    Text("Away = screen locked, display off, Mac asleep, or no keyboard/mouse for 10 min. A card asks what that time was; nothing changes unless you pick something.")
+                    ToggleRow(label: "Overnight blocks become Sleep", isOn: $settings.autoSleepOvernight)
+                    Text("Away = screen locked, display off, Mac asleep, or no keyboard/mouse for 10 min. A card asks what that time was; nothing changes unless you pick something. One exception: a block left running through the night becomes Sleep for the hours no Mac, iPhone or iPad was used (3h+ over 1–6 AM), with Undo.")
                         .font(.system(size: 11))
                         .foregroundStyle(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)

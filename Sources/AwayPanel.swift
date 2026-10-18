@@ -33,6 +33,8 @@ final class AwayCoach {
             DispatchQueue.main.asyncAfter(deadline: .now() + 8) { self?.handleReturn(span) }
         }
         monitor.start()
+        // After the power-log backfill, so a night the app slept through counts.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in self?.applyOvernightSleep() }
         nudgeTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.checkIdle()
         }
@@ -58,6 +60,7 @@ final class AwayCoach {
     // MARK: - Away
 
     private func handleReturn(_ span: AwaySpan) {
+        if applyOvernightSleep() { return }
         guard settings.awayPrompts, !panel.isBusy, !(ScreenCoach.shared?.isBusy ?? false), !LeetCodeSolveDraftStore.isShowing else { return }
         let minMinutes = Double(settings.awayPromptMinutes)
         let overnight = span.minutes >= 180 && spansNight(span)
@@ -125,6 +128,113 @@ final class AwayCoach {
         m.onPick = { [weak self] label in
             self?.store.fill(start: gap.start, end: gap.end, label: label)
             self?.panel.dismiss()
+        }
+        panel.show(m)
+    }
+
+    // MARK: - Overnight
+
+    private static let sleptNightsKey = "overnightSleepNights"
+    private static let sleptSinceKey = "overnightSleepSince"
+
+    /// Turns the night part of any non-Sleep block into Sleep (`OvernightSleep`),
+    /// then shows what changed with Undo. Each night is handled once, so an
+    /// undone night stays undone. True when something changed.
+    @discardableResult
+    private func applyOvernightSleep() -> Bool {
+        guard settings.autoSleepOvernight else { return false }
+        let now = Date()
+        let from = now.addingTimeInterval(-36 * 3600)
+        let ud = UserDefaults.standard
+        // [start, end] pairs: the power-log backfill can move a night's edges.
+        var handled = (ud.array(forKey: Self.sleptNightsKey) as? [[Double]] ?? [])
+            .filter { $0.count == 2 && $0[1] > from.addingTimeInterval(-86400).timeIntervalSince1970 }
+
+        // Nights before the feature first ran stay as they were logged.
+        if ud.object(forKey: Self.sleptSinceKey) == nil { ud.set(now.timeIntervalSince1970, forKey: Self.sleptSinceKey) }
+        let since = max(from, Date(timeIntervalSince1970: ud.double(forKey: Self.sleptSinceKey)))
+        let away = monitor.spans.filter { $0.end > since }.map { DateInterval(start: $0.start, end: $0.end) }
+        // iPhone/iPad use (app opens, screen-notes blocks) wakes you.
+        let activity = MainActor.assumeIsolated {
+            ScreenWatcher.shared.activities(from: from, to: now)
+                .filter { $0.device != nil }
+                .map { DateInterval(start: $0.start, end: max($0.end, $0.start)) }
+        }
+        var blocks = store.sessions.compactMap { s -> OvernightSleep.Block? in
+            let end = s.startTime.addingTimeInterval(s.durationMinutes * 60)
+            guard end > from else { return nil }
+            return .init(start: s.startTime, end: end, label: s.type.isBreak ? nil : s.label)
+        }
+        if timer.isRunning, let start = timer.sessionStartTime {
+            blocks.append(.init(start: start, end: now, label: timer.isOnBreak ? nil : timer.currentLabel, running: true))
+        }
+        let fixes = OvernightSleep.fixes(away: away, activity: activity, blocks: blocks, now: now)
+            .filter { f in !handled.contains { $0[0] < f.night.end.timeIntervalSince1970 && $0[1] > f.night.start.timeIntervalSince1970 } }
+        guard !fixes.isEmpty else { return false }
+        for night in Set(fixes.map(\.night)) {
+            handled.append([night.start.timeIntervalSince1970, night.end.timeIntervalSince1970])
+        }
+        ud.set(handled, forKey: Self.sleptNightsKey)
+
+        var applied: [OvernightSleep.Fix] = []
+        var undos: [SessionStore.ReviewUndo] = []
+        for fix in fixes where !fix.running {
+            if let u = store.paintForReview(start: fix.start, end: fix.end, label: "Sleep") {
+                undos.append(u)
+                applied.append(fix)
+            }
+        }
+        if let fix = fixes.first(where: \.running), timer.isRunning, let start = timer.sessionStartTime, fix.start >= start {
+            timer.carveOut(from: fix.start, to: fix.end, as: "Sleep")
+            applied.append(fix)
+        }
+        let iso = ISO8601DateFormatter()
+        SyncLog.event("autoSleepOvernight", [
+            "fixes": fixes.map { "\($0.label ?? "Break") \(iso.string(from: $0.start))–\(iso.string(from: $0.end))\($0.running ? " running" : "")" },
+            "applied": applied.count,
+        ])
+        guard let first = applied.min(by: { $0.start < $1.start }), let last = applied.max(by: { $0.end < $1.end }) else { return false }
+        AwayPanel.dismissAll()
+        showSlept(applied, from: first.start, to: last.end, undos: undos)
+        return true
+    }
+
+    private func showSlept(_ fixes: [OvernightSleep.Fix], from: Date, to: Date, undos: [SessionStore.ReviewUndo]) {
+        guard !(ScreenCoach.shared?.isBusy ?? false), !LeetCodeSolveDraftStore.isShowing else { return }
+        var names: [String] = []
+        for f in fixes { let n = f.label ?? "Break"; if !names.contains(n) { names.append(n) } }
+        let running = fixes.first(where: \.running)
+        let resume = running?.label
+        var options: [String?] = []
+        if running != nil || !timer.isActive {
+            options = store.suggestions(for: TimeGap(start: to, end: to.addingTimeInterval(60)), tags: settings.tags)
+                .filter { $0 != "Sleep" && $0 != resume }
+            options = Array(options.prefix(3))
+        }
+        let m = AwayPromptModel(
+            icon: "moon.zzz",
+            title: "Logged your night as Sleep",
+            subtitle: "\(clock(from)) – \(clock(to)) · \(names.joined(separator: ", ")) was running",
+            question: options.isEmpty ? "No Mac, iPhone or iPad use all that time." : "What are you doing now?",
+            keep: running != nil && resume != nil ? "Still \(resume!)" : "OK",
+            options: options, tags: settings.tags.filter { $0 != "Sleep" }
+        )
+        m.onKeep = { [weak self] in self?.panel.dismiss() }
+        m.onPick = { [weak self] label in
+            guard let self else { return }
+            let at = self.timer.sessionStartTime.map { max($0, to) } ?? to
+            if let label { self.timer.switchTo(label, at: at) } else { self.timer.startManualBreak(minutes: 0, at: at) }
+            self.panel.dismiss()
+        }
+        m.endTitle = "Undo"
+        m.onEnd = { [weak self] in
+            guard let self else { return }
+            for u in undos.reversed() { _ = self.store.undoReview(u) }
+            if let running {
+                _ = self.store.paintForReview(start: running.start, end: running.end, label: running.label)
+            }
+            SyncLog.event("autoSleepOvernightUndo", ["from": "\(from)", "to": "\(to)"])
+            self.panel.dismiss()
         }
         panel.show(m)
     }

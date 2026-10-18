@@ -135,6 +135,11 @@ class AppSettings: ObservableObject {
     @Published var awayPromptMinutes: Int {
         didSet { sd.set(awayPromptMinutes, forKey: "awayPromptMinutes") }
     }
+    /// A block left running through the night becomes Sleep for the stretch
+    /// no device was used (`OvernightSleep`), with Undo.
+    @Published var autoSleepOvernight: Bool {
+        didSet { sd.set(autoSleepOvernight, forKey: "autoSleepOvernight") }
+    }
     /// Nudge when the day is open, you're at the Mac and nothing is running.
     @Published var idleNudge: Bool {
         didSet { sd.set(idleNudge, forKey: "idleNudge") }
@@ -222,6 +227,7 @@ class AppSettings: ObservableObject {
             "screenEverySwitch": false,
             "awayPromptMinutes": 15,
             "idleNudge": true,
+            "autoSleepOvernight": true,
         ])
         workMinutes = d.double(forKey: "workMinutes")
         shortBreakMinutes = d.double(forKey: "shortBreakMinutes")
@@ -268,6 +274,7 @@ class AppSettings: ObservableObject {
         screenEverySwitch = d.bool(forKey: "screenEverySwitch")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
+        autoSleepOvernight = d.bool(forKey: "autoSleepOvernight")
         let epoch = d.double(forKey: "interviewDate")
         interviewDate = epoch > 0 ? Date(timeIntervalSince1970: epoch) : nil
         hasCompletedOnboarding = d.bool(forKey: "hasCompletedOnboarding")
@@ -365,6 +372,7 @@ class AppSettings: ObservableObject {
         screenEverySwitch = d.bool(forKey: "screenEverySwitch")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
+        autoSleepOvernight = d.bool(forKey: "autoSleepOvernight")
         let epoch = d.double(forKey: "interviewDate")
         interviewDate = epoch > 0 ? Date(timeIntervalSince1970: epoch) : nil
     }
