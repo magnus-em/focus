@@ -1027,7 +1027,18 @@ struct LogFixView: View {
             .sorted { $0.startTime < $1.startTime }
             .map { (start: $0.startTime, end: TimeIntegrity.end(of: $0), label: $0.type.isBreak ? "Break" : ($0.label ?? "Focus")) }
         Task { @MainActor in
-            let blocks = await LogCorrection.propose(said, log: log, now: now, categories: categories)
+            let cloud: (@Sendable (String, String) async -> Data?)? = Coach.client.map { client in
+                { @Sendable system, prompt in
+                    let model = XAIClient.Model.fast
+                    let schema = LogCorrection.cloudSchema(categories: categories)
+                    let estimate = XAIClient.estimateUSD(model: model, text: system + prompt, images: 0, maxOutputTokens: 800)
+                    return try? await Coach.budget.run(estimateUSD: estimate, model: model, purpose: "fix-log") {
+                        try await client.complete(model: model, system: system, text: prompt, schema: schema,
+                                                  maxOutputTokens: 800, timeout: 30)
+                    }.json
+                }
+            }
+            let blocks = await LogCorrection.propose(said, log: log, now: now, categories: categories, cloud: cloud)
             guard let blocks else { return step = .typing("Couldn't read that. Try times like 1:00–1:40.") }
             step = blocks.isEmpty ? .typing("Didn't find any times in that. Try “Class 1–1:40, then Leisure”.")
                 : .preview(blocks, basis(for: blocks))

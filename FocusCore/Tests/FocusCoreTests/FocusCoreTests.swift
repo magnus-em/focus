@@ -405,3 +405,43 @@ final class CheckpointRunwayTests: XCTestCase {
         XCTAssertNil(FocusCategories.recoveryRunway(total: 1500, elapsed: -1))
     }
 }
+
+final class LogCorrectionModelInputTests: XCTestCase {
+    func testModelSeesTheLogAndItsTimesValidate() {
+        let cal = Calendar.current
+        let day = cal.startOfDay(for: Date())
+        func at(_ h: Int, _ m: Int) -> Date { cal.date(bySettingHour: h, minute: m, second: 0, of: day)! }
+        let now = at(15, 0)
+        let log = [(start: at(11, 8), end: at(12, 21), label: "HW"), (start: at(12, 21), end: at(13, 58), label: "SWE"),
+                   (start: at(13, 58), end: now, label: "SWE")]
+        let listing = LogCorrection.logListing(log, now: now)
+        XCTAssertTrue(listing.contains("2. 12:21–13:58 SWE"), listing)
+        XCTAssertTrue(listing.contains("3. 13:58–now (still running) SWE"), listing)
+        let reply = #"{"ranges":[{"from":"12:21","to":"13:58","category":"Break"}]}"#.data(using: .utf8)!
+        let raw = LogCorrection.raw(fromCloudJSON: reply)!
+        let blocks = LogCorrection.validate(raw, now: now, categories: ["SWE", "HW"], log: log)
+        XCTAssertEqual(blocks, [LogCorrection.Block(start: at(12, 21), end: at(13, 58), category: nil)])
+        XCTAssertEqual(LogCorrection.raw(fromCloudJSON: #"{"ranges":[]}"#.data(using: .utf8)!)?.count, 0)
+    }
+}
+
+final class LogCorrectionReferenceTests: XCTestCase {
+    func testABlockNamedByItsCategoryIsRelabelledWhole() {
+        let cal = Calendar.current
+        let day = cal.startOfDay(for: Date())
+        func at(_ h: Int, _ m: Int) -> Date { cal.date(bySettingHour: h, minute: m, second: 0, of: day)! }
+        let now = at(15, 0)
+        let log = [(start: at(10, 3), end: at(11, 6), label: "Meals"), (start: at(11, 8), end: at(12, 21), label: "HW"),
+                   (start: at(12, 21), end: at(13, 51), label: "SWE"), (start: at(13, 51), end: at(13, 58), label: "SWE")]
+        let cats = ["SWE", "HW", "Math", "Meals", "Leisure"]
+        func fix(_ said: String) -> String? {
+            LogCorrection.reference(said, log: log, now: now, categories: cats).map { "\($0.from)-\($0.to) \($0.category)" }
+        }
+        XCTAssertEqual(fix("last swe section was a break actually"), "12:21-13:58 Break")
+        XCTAssertEqual(fix("the hw block was math"), "11:08-12:21 Math")
+        XCTAssertEqual(fix("lunch was leisure"), "10:03-11:06 Leisure")
+        XCTAssertEqual(fix("that was a break"), "12:21-13:58 Break")
+        XCTAssertNil(fix("class 1-1:40 was leisure"))
+        XCTAssertNil(fix("swe was swe"))
+    }
+}
