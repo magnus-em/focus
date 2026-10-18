@@ -8,14 +8,17 @@
   <div class="row"><span class="dot" id="dot"></span><span id="conn">Checking…</span></div>
   <div class="big" id="status"></div>
   <div class="muted" id="today"></div>
-  <div class="muted" id="sites"></div>
+  <details class="sites" id="sites" hidden>
+    <summary id="sitesSummary"></summary>
+    <ul id="siteList" tabindex="0" aria-label="Configured distracting sites"></ul>
+  </details>
   <div class="muted" id="pending"></div>
   <div class="dark" id="dark">
-    <div class="row">Dark pages</div>
-    <div class="seg" id="darkMode">
+    <h2>Dark pages</h2>
+    <div class="seg" id="darkMode" role="group" aria-label="Dark page mode">
       <button data-mode="off">Off</button><button data-mode="night">Night</button><button data-mode="system" title="While the Mac is in dark mode">Mac</button><button data-mode="always">Always</button>
     </div>
-    <div class="hours" id="darkHours"><input type="time" id="darkFrom"> <span class="muted">to</span> <input type="time" id="darkTo"></div>
+    <div class="hours" id="darkHours"><input type="time" id="darkFrom" aria-label="Dark pages start time"> <span class="muted">to</span> <input type="time" id="darkTo" aria-label="Dark pages end time"></div>
     <div class="muted" id="darkWhen"></div>
     <div id="darkTune">
       <label class="slider"><span>Brightness</span><input type="range" min="50" max="150" step="5" id="darkBrightness"><output id="darkBrightnessOut"></output></label>

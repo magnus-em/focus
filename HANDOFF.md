@@ -4,6 +4,10 @@ Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). 
 
 Last touched: 2026-10-15 night (Claude side session: Day/Week review, descriptors, tabs back, midday record rewrites).
 
+## Chrome popup — 10/18 (Codex)
+
+- Compact site-count disclosure replaces the unbounded domain paragraph; 100-site light/dark fixtures fit at424px collapsed /548px expanded, including dark controls and per-site action. Extension-only change: reload Focus Blocker at chrome://extensions to activate; Mac deploy does not install extension assets.
+
 Live claims and agent mail: `scripts/agent status` (see AGENTS.md).
 
 ## Screens: Day and Week — 10/15 (start here)

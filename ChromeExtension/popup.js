@@ -8,8 +8,15 @@ chrome.runtime.sendMessage({ type: 'popup' }).then((res) => {
     ? `Blocking · ${state.label || 'Focus'}${state.isFocus ? ' (no unlocks)' : ''}`
     : state.label ? `Tracking ${state.label} · not blocking` : 'Idle · not blocking';
   if (state.connected) $('today').textContent = `${state.todayBlocked || 0} blocked today`;
-  if (state.domains && state.domains.length) $('sites').textContent = state.domains.join(', ');
-  if (pending) $('pending').textContent = `${pending} events waiting to sync`;
+  const domains = [...new Set(state.domains || [])];
+  $('sites').hidden = !domains.length;
+  $('sitesSummary').textContent = `${domains.length} distracting ${domains.length === 1 ? 'site' : 'sites'}`;
+  $('siteList').replaceChildren(...domains.map((domain) => {
+    const item = document.createElement('li');
+    item.textContent = domain;
+    return item;
+  }));
+  if (pending) $('pending').textContent = `${pending} ${pending === 1 ? 'event' : 'events'} waiting to sync`;
 });
 
 const clock = (m) => new Date(2000, 0, 1, Math.floor(m / 60), m % 60)
@@ -28,7 +35,11 @@ async function saveDark(patch) {
 }
 
 function renderDark(darkNight) {
-  for (const b of $('darkMode').children) b.classList.toggle('on', b.dataset.mode === dark.mode);
+  for (const b of $('darkMode').children) {
+    const selected = b.dataset.mode === dark.mode;
+    b.classList.toggle('on', selected);
+    b.setAttribute('aria-pressed', String(selected));
+  }
   $('darkHours').hidden = dark.mode !== 'night';
   $('darkTune').hidden = dark.mode === 'off';
   if (document.activeElement !== $('darkFrom')) $('darkFrom').value = toInput(dark.from);
