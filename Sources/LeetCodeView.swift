@@ -1026,6 +1026,16 @@ struct LCLogSheet: View {
             && confidence != nil && difficulty != nil && !outcome.isEmpty
     }
 
+    private var missingFields: String {
+        var fields: [String] = []
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { fields.append("a title") }
+        if difficulty == nil { fields.append("difficulty") }
+        if categories.isEmpty { fields.append("a pattern") }
+        if outcome.isEmpty { fields.append("an outcome") }
+        if confidence == nil { fields.append("confidence") }
+        return "Choose " + fields.joined(separator: ", ") + " to save."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(allowUnsolved ? "Finish your practice log" : "Log your solve")
@@ -1092,6 +1102,8 @@ struct LCLogSheet: View {
                 }
                 .font(.system(size: 13))
             }
+            .scrollIndicators(.visible)
+            if !canSave { Text(missingFields).font(.system(size: 12)).foregroundStyle(Color.secondaryText) }
             if let error { Text(error).font(.system(size: 12)).foregroundStyle(.orange) }
             HStack {
                 Button(allowUnsolved ? "Finish later" : "Cancel") { dismiss() }.keyboardShortcut(.cancelAction)

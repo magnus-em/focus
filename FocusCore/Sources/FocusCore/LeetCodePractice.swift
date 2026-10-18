@@ -100,6 +100,11 @@ public struct LeetCodePracticeState: Codable, Equatable, Sendable {
         return sessions[index]
     }
 
+    public mutating func finishForLog(slug: String, sessionID: UUID?, at now: Date) -> Session? {
+        guard active?.slug == slug, sessionID == nil || sessionID == activeID else { return nil }
+        return finish(at: now)
+    }
+
     public mutating func prepareLog(id: UUID, at now: Date) -> Session? {
         if activeID == id { return finish(at: now) }
         guard let index = sessions.firstIndex(where: { $0.id == id && $0.outcome == .draft }) else { return nil }

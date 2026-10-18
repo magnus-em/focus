@@ -1170,9 +1170,12 @@ struct LeetCodeDailyGoalRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(activeTitle).font(.system(size: 13, weight: .semibold)).lineLimit(2)
                     Spacer(minLength: 0)
-                    Text(String(format: "%02d:%02d", Int(activeSeconds) / 60, Int(activeSeconds) % 60))
-                        .font(.system(size: 13)).monospacedDigit()
-                        .accessibilityLabel("Problem work time")
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("Work time").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                        Text(String(format: "%02d:%02d", Int(activeSeconds) / 60, Int(activeSeconds) % 60))
+                            .font(.system(size: 13)).monospacedDigit()
+                    }
+                    .accessibilityElement(children: .combine)
                 }
             }
             Text("\(newCount) new · \(redoCount) redo · from your log and timer")

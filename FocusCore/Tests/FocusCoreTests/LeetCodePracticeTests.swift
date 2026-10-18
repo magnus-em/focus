@@ -145,4 +145,21 @@ final class LeetCodePracticeTests: XCTestCase {
         XCTAssertEqual(state.sessions.first { $0.id == first.id }?.seconds, 0)
     }
 
+    func testLoggingAnOlderDraftDoesNotStopANewerAttemptOfTheSameProblem() throws {
+        var state = LeetCodePracticeState()
+        state.select(slug: "two-sum", title: "Two Sum", at: start)
+        let older = try XCTUnwrap(state.finish(at: start))
+        state.select(slug: "two-sum", title: "Two Sum", at: start.addingTimeInterval(1))
+        let newer = state.activeID
+        state.update(at: start.addingTimeInterval(1), tracking: true)
+        XCTAssertNil(state.finishForLog(slug: "two-sum", sessionID: older.id, at: start.addingTimeInterval(3)))
+        state.complete(id: older.id, solved: true, confidence: .solid, usedHelp: false, notes: "", title: "Two Sum")
+        state.update(at: start.addingTimeInterval(4), tracking: true)
+        XCTAssertEqual(state.activeID, newer)
+        XCTAssertEqual(state.active?.seconds, 3)
+        XCTAssertEqual(state.active?.outcome, .draft)
+        XCTAssertNotNil(state.finishForLog(slug: "two-sum", sessionID: newer, at: start.addingTimeInterval(5)))
+        XCTAssertNil(state.activeID)
+    }
+
 }

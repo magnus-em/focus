@@ -298,7 +298,7 @@ final class LeetCodeStore: ObservableObject {
     }
 
     func hasPractice(slug: String, on date: Date) -> Bool {
-        practice.sessions.contains { $0.slug == slug && Calendar.current.isDate($0.startedAt, inSameDayAs: date) }
+        practice.sessions.contains { $0.slug == slug && ($0.id == practice.activeID || Calendar.current.isDate($0.finishedAt ?? $0.startedAt, inSameDayAs: date)) }
     }
 
     // MARK: - Logging
@@ -315,7 +315,7 @@ final class LeetCodeStore: ObservableObject {
             notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
             url: p.url, solveMinutes: minutes
         )) else { return false }
-        if activeSlug == p.slug, let session = practice.finish(at: Date()) {
+        if let session = practice.finishForLog(slug: p.slug, sessionID: id, at: Date()) {
             practice.complete(id: session.id, solved: true, confidence: confidence, usedHelp: usedHelp, notes: notes, title: title ?? p.title)
             if focusTimer?.currentLabel == FocusCategories.leetCode, focusTimer?.isActive == true { focusTimer?.stop(at: Date()) }
             refreshPractice(forceSave: true)
