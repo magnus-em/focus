@@ -70,6 +70,10 @@ public struct LeetCodePracticeState: Codable, Equatable, Sendable {
         wasTracking = tracking && active != nil
     }
 
+    public mutating func observePage(slug: String?) {
+        suppressed = suppressed.filter { $0.key == slug }
+    }
+
     @discardableResult
     public mutating func select(slug: String, title: String, at now: Date, automatic: Bool = false) -> Bool {
         if automatic, let date = suppressed[slug], Calendar.current.isDate(date, inSameDayAs: now) { return false }

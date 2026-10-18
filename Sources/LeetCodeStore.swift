@@ -172,7 +172,7 @@ final class LeetCodeStore: ObservableObject {
     var practiceDrafts: [LeetCodePracticeState.Session] { practice.sessions.filter { $0.outcome == .draft }.reversed() }
     var recentPractice: [LeetCodePracticeState.Session] { Array(practice.sessions.reversed().prefix(20)) }
     var workingOnProblem: Bool {
-        practice.active != nil && (practice.isTracking || (settings.screenWatch && screenSlug == practice.active?.slug && screenAt.map { Date().timeIntervalSince($0) < 90 } == true) || (focusTimer?.isActive == true && focusTimer?.currentLabel == FocusCategories.leetCode && focusTimer?.isOnBreak == false))
+        practice.active != nil && (practice.isTracking || (settings.screenWatch && screenSlug == practice.active?.slug && screenAt.map { Date().timeIntervalSince($0) >= 0 && Date().timeIntervalSince($0) < 90 } == true) || (focusTimer?.isActive == true && focusTimer?.currentLabel == FocusCategories.leetCode && focusTimer?.isOnBreak == false))
     }
 
     func problem(for session: LeetCodePracticeState.Session) -> LCProblem {
@@ -190,6 +190,7 @@ final class LeetCodeStore: ObservableObject {
             self.refreshPractice()
             self.screenSlug = observation.slug
             self.screenAt = observation.at
+            self.practice.observePage(slug: observation.slug)
             if let slug = observation.slug {
                 let title = self.catalog.problem(slug: slug)?.title ?? slug.replacingOccurrences(of: "-", with: " ").capitalized
                 self.practice.select(slug: slug, title: title, at: Date(), automatic: true)
@@ -209,6 +210,8 @@ final class LeetCodeStore: ObservableObject {
 
     private func shouldTrackPractice(at now: Date) -> Bool {
         guard practice.active != nil, !PresenceMonitor.shared.isAway else { return false }
+        if let screenSlug, screenSlug != practice.active?.slug,
+           screenAt.map({ now.timeIntervalSince($0) >= 0 && now.timeIntervalSince($0) <= 20 }) == true { return false }
         if let focusTimer, focusTimer.isActive {
             if !focusTimer.isRunning { return false }
             if !focusTimer.isOnBreak && focusTimer.currentLabel == FocusCategories.leetCode { return true }
@@ -239,12 +242,14 @@ final class LeetCodeStore: ObservableObject {
 
     func start(_ p: LCProblem) {
         refreshPractice()
+        screenSlug = nil; screenAt = nil
         practice.select(slug: p.slug, title: p.title, at: Date())
         onStartPractice?()
         refreshPractice(forceSave: true)
     }
 
     func resumePractice(_ session: LeetCodePracticeState.Session) {
+        screenSlug = nil; screenAt = nil
         practice.resume(id: session.id, at: Date())
         onStartPractice?()
         refreshPractice(forceSave: true)

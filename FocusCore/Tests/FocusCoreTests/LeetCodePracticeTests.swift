@@ -129,4 +129,20 @@ final class LeetCodePracticeTests: XCTestCase {
         XCTAssertEqual(restored.sessions.count, 1)
     }
 
+    func testReturningAfterNavigationStartsFreshWorkWithoutAutoSolving() throws {
+        var state = LeetCodePracticeState()
+        state.select(slug: "two-sum", title: "Two Sum", at: start)
+        let first = try XCTUnwrap(state.finish(at: start))
+        state.observePage(slug: "two-sum")
+        XCTAssertFalse(state.select(slug: "two-sum", title: "Two Sum", at: start, automatic: true))
+        state.observePage(slug: "valid-parentheses")
+        XCTAssertTrue(state.select(slug: "valid-parentheses", title: "Valid Parentheses", at: start, automatic: true))
+        state.observePage(slug: "two-sum")
+        XCTAssertTrue(state.select(slug: "two-sum", title: "Two Sum", at: start, automatic: true))
+        XCTAssertNotEqual(state.activeID, first.id)
+        XCTAssertEqual(state.active?.slug, "two-sum")
+        XCTAssertEqual(state.sessions.filter { $0.outcome == .solved }.count, 0)
+        XCTAssertEqual(state.sessions.first { $0.id == first.id }?.seconds, 0)
+    }
+
 }
