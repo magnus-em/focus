@@ -43,11 +43,12 @@ async function refreshState(force = false) {
 
   let next;
   let ok = lastOk;
+  const asked = Date.now();
   try {
     const r = await fetch(API + '/state', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
     next = { ...(await r.json()), connected: true };
     ok = Date.now();
-    if (next.darkPages) await saveDark(next.darkPages);
+    if (next.darkPages) await takeAppDark(next.darkPages, asked);
   } catch {
     next = state && Date.now() - lastOk < STALE_MS
       ? { ...state, connected: false }
@@ -119,9 +120,44 @@ const DARK_SCRIPT = {
   runAt: 'document_start',
 };
 
-async function saveDark(dark) {
-  const { dark: old } = await local.get('dark');
+// The popup and Focus's Settings both edit it. A popup edit wins until the app
+// has it (`darkPending`), so a /state read that raced the edit can't undo it.
+async function takeAppDark(dark, asked) {
+  const { dark: old, darkPending = false, darkEditedAt = 0 } = await local.get(['dark', 'darkPending', 'darkEditedAt']);
+  if (darkPending) return pushDark();
+  if (asked < darkEditedAt) return;
   if (JSON.stringify(old) !== JSON.stringify(dark)) await local.set({ dark });
+}
+
+async function setDark(dark) {
+  const d = {
+    mode: ['off', 'night', 'system', 'always'].includes(dark.mode) ? dark.mode : 'night',
+    from: clampInt(dark.from, 0, 1439),
+    to: clampInt(dark.to, 0, 1439),
+    brightness: clampInt(dark.brightness, 50, 150),
+    contrast: clampInt(dark.contrast, 50, 150),
+  };
+  await local.set({ dark: d, darkPending: true, darkEditedAt: Date.now() });
+  await syncDark();
+  pushDark();
+}
+
+const clampInt = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(Number(v) || 0)));
+
+async function pushDark() {
+  const { dark } = await local.get('dark');
+  if (!dark) return;
+  try {
+    const r = await fetch(API + '/dark', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dark),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!r.ok) return;
+    const { dark: now } = await local.get('dark');
+    if (JSON.stringify(now) === JSON.stringify(dark)) await local.set({ darkPending: false, darkEditedAt: Date.now() });
+  } catch {}
 }
 
 function inHours(from, to) {
@@ -333,6 +369,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         else await chrome.tabs.update(tab.id, { url: 'chrome://newtab' });
         return { ok: true };
       }
+      case 'setDark':
+        await setDark(msg.dark || {});
+        return { ok: true };
       case 'darkFetch':
         return darkFetch(msg.url);
       case 'popup': {

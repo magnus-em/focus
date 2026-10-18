@@ -171,6 +171,12 @@ class AppSettings: ObservableObject {
     @Published var darkPagesTo: Int {
         didSet { UserDefaults.standard.set(darkPagesTo, forKey: "darkPagesTo") }
     }
+    @Published var darkPagesBrightness: Int {
+        didSet { UserDefaults.standard.set(darkPagesBrightness, forKey: "darkPagesBrightness") }
+    }
+    @Published var darkPagesContrast: Int {
+        didSet { UserDefaults.standard.set(darkPagesContrast, forKey: "darkPagesContrast") }
+    }
     @Published var hasCompletedOnboarding: Bool {
         didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
     }
@@ -213,6 +219,8 @@ class AppSettings: ObservableObject {
             "darkPagesMode": "night",
             "darkPagesFrom": 19 * 60,
             "darkPagesTo": 7 * 60,
+            "darkPagesBrightness": 100,
+            "darkPagesContrast": 100,
             "pauseGraceMinutes": 10,
             "autoBreakEnabled": true,
             "commitmentEnabled": true,
@@ -256,6 +264,8 @@ class AppSettings: ObservableObject {
         darkPagesMode = d.string(forKey: "darkPagesMode") ?? "night"
         darkPagesFrom = d.integer(forKey: "darkPagesFrom")
         darkPagesTo = d.integer(forKey: "darkPagesTo")
+        darkPagesBrightness = d.integer(forKey: "darkPagesBrightness")
+        darkPagesContrast = d.integer(forKey: "darkPagesContrast")
         tags = d.stringArray(forKey: "tags") ?? []
         lifeTags = d.stringArray(forKey: FocusCategories.lifeTagsKey) ?? []
         quickStartTag = d.string(forKey: "quickStartTag") ?? "HW"

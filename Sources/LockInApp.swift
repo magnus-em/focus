@@ -168,10 +168,18 @@ struct FocusApp: App {
                 bypassAllowed: !timer.isFocusRunning,
                 sessionStart: timer.sessionStartTime.map { $0.timeIntervalSince1970 * 1000 },
                 todayBlocked: browser.blockCount(since: Calendar.current.startOfDay(for: Date())),
-                darkPages: .init(mode: appSettings.darkPagesMode, from: appSettings.darkPagesFrom, to: appSettings.darkPagesTo)
+                darkPages: .init(mode: appSettings.darkPagesMode, from: appSettings.darkPagesFrom, to: appSettings.darkPagesTo,
+                                 brightness: appSettings.darkPagesBrightness, contrast: appSettings.darkPagesContrast)
             )
         }
         BrowserBridge.shared.onEvents = { browser.ingest($0) }
+        BrowserBridge.shared.onDarkPages = { dark in
+            appSettings.darkPagesMode = dark.mode
+            appSettings.darkPagesFrom = dark.from
+            appSettings.darkPagesTo = dark.to
+            appSettings.darkPagesBrightness = dark.brightness
+            appSettings.darkPagesContrast = dark.contrast
+        }
         BrowserBridge.shared.start()
 
         CommitmentReminder.shared.install(dayStore: days, settings: appSettings) {

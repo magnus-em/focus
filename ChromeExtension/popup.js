@@ -14,22 +14,63 @@ chrome.runtime.sendMessage({ type: 'popup' }).then((res) => {
 
 const clock = (m) => new Date(2000, 0, 1, Math.floor(m / 60), m % 60)
   .toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+const toInput = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const fromInput = (v) => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+const DARK_DEFAULT = { mode: 'night', from: 19 * 60, to: 7 * 60, brightness: 100, contrast: 100 };
+const $ = (id) => document.getElementById(id);
+let dark = DARK_DEFAULT;
+
+async function saveDark(patch) {
+  dark = { ...dark, ...patch };
+  renderDark();
+  await chrome.runtime.sendMessage({ type: 'setDark', dark });
+  setTimeout(showDark, 300);
+}
+
+function renderDark(darkNight) {
+  for (const b of $('darkMode').children) b.classList.toggle('on', b.dataset.mode === dark.mode);
+  $('darkHours').hidden = dark.mode !== 'night';
+  $('darkTune').hidden = dark.mode === 'off';
+  if (document.activeElement !== $('darkFrom')) $('darkFrom').value = toInput(dark.from);
+  if (document.activeElement !== $('darkTo')) $('darkTo').value = toInput(dark.to);
+  $('darkBrightness').value = dark.brightness;
+  $('darkContrast').value = dark.contrast;
+  $('darkBrightnessOut').textContent = dark.brightness;
+  $('darkContrastOut').textContent = dark.contrast;
+  if (darkNight !== undefined) {
+    $('darkWhen').textContent = {
+      off: 'Bright pages stay bright',
+      always: 'On all the time',
+      system: 'On while the Mac is in dark mode',
+      night: darkNight ? `On now, until ${clock(dark.to)}` : `Off now, starts at ${clock(dark.from)}`,
+    }[dark.mode] || '';
+  }
+}
+
+for (const b of $('darkMode').children) b.onclick = () => saveDark({ mode: b.dataset.mode });
+for (const id of ['darkFrom', 'darkTo']) {
+  $(id).onchange = () => { if ($(id).value) saveDark({ [id === 'darkFrom' ? 'from' : 'to']: fromInput($(id).value) }); };
+}
+for (const [id, key] of [['darkBrightness', 'brightness'], ['darkContrast', 'contrast']]) {
+  let t;
+  $(id).oninput = () => {
+    $(id + 'Out').textContent = $(id).value;
+    clearTimeout(t);
+    t = setTimeout(() => saveDark({ [key]: Number($(id).value) }), 150);
+  };
+}
 
 async function showDark() {
-  const $ = (id) => document.getElementById(id);
-  const { dark, darkNight, darkSites = {} } = await chrome.storage.local.get(['dark', 'darkNight', 'darkSites']);
-  if (!dark || dark.mode === 'off') return;
-  $('dark').hidden = false;
-  $('darkWhen').textContent = {
-    always: 'On all the time',
-    system: 'On while the Mac is in dark mode',
-    night: darkNight ? `On until ${clock(dark.to)}` : `Starts at ${clock(dark.from)}`,
-  }[dark.mode] || '';
+  const s = await chrome.storage.local.get(['dark', 'darkNight', 'darkSites']);
+  const darkSites = s.darkSites || {};
+  dark = { ...DARK_DEFAULT, ...s.dark };
+  renderDark(!!s.darkNight);
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const res = tab && await chrome.tabs.sendMessage(tab.id, { type: 'darkStatus' }, { frameId: 0 }).catch(() => null);
   $('darkToggle').hidden = true;
-  if (!res || !res.host) return;
+  $('darkSite').textContent = '';
+  if (dark.mode === 'off' || !res || !res.host) return;
   const label = {
     on: 'Darkened',
     native: 'Already dark, left alone',

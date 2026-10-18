@@ -47,10 +47,14 @@
     else resolve();
   });
 
+  let theme = { brightness: 100, contrast: 100, sepia: 0 };
+  let applied = '';
   function set(next) {
     status = next;
     if (next === 'on') {
-      if (!DarkReader.isEnabled()) DarkReader.enable({ brightness: 100, contrast: 100, sepia: 0 });
+      const sig = JSON.stringify(theme);
+      if (!DarkReader.isEnabled() || sig !== applied) DarkReader.enable(theme);
+      applied = sig;
     } else if (DarkReader.isEnabled()) {
       DarkReader.disable();
     }
@@ -63,6 +67,7 @@
     const s = await chrome.storage.local.get(['dark', 'darkNight', 'darkSites', key]);
     if (id !== run) return;
     const mode = s.dark?.mode || 'off';
+    theme = { brightness: s.dark?.brightness ?? 100, contrast: s.dark?.contrast ?? 100, sepia: 0 };
     const scheduled = mode === 'always' || (mode === 'night' && s.darkNight) || (mode === 'system' && scheme.matches);
     const site = (s.darkSites || {})[host];
     if (!scheduled) return set('off');

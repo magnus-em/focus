@@ -10,9 +10,17 @@
   <div class="muted" id="today"></div>
   <div class="muted" id="sites"></div>
   <div class="muted" id="pending"></div>
-  <div class="dark" id="dark" hidden>
+  <div class="dark" id="dark">
     <div class="row">Dark pages</div>
+    <div class="seg" id="darkMode">
+      <button data-mode="off">Off</button><button data-mode="night">Night</button><button data-mode="system" title="While the Mac is in dark mode">Mac</button><button data-mode="always">Always</button>
+    </div>
+    <div class="hours" id="darkHours"><input type="time" id="darkFrom"> <span class="muted">to</span> <input type="time" id="darkTo"></div>
     <div class="muted" id="darkWhen"></div>
+    <div id="darkTune">
+      <label class="slider"><span>Brightness</span><input type="range" min="50" max="150" step="5" id="darkBrightness"><output id="darkBrightnessOut"></output></label>
+      <label class="slider"><span>Contrast</span><input type="range" min="50" max="150" step="5" id="darkContrast"><output id="darkContrastOut"></output></label>
+    </div>
     <div class="site"><span class="muted" id="darkSite"></span><button id="darkToggle" hidden></button></div>
   </div>
   <script src="popup.js"></script>

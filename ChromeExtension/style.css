@@ -40,3 +40,13 @@ body.popup { width: 260px; padding: 14px; }
 .site { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .site .muted { margin-top: 0; }
 .site button { flex: none; border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 8px; padding: 3px 10px; font-size: 12px; }
+.seg { display: flex; margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { flex: 1; border: 0; background: var(--card); color: var(--fg); padding: 4px 0; font-size: 12px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.on { background: var(--fg); color: var(--bg); font-weight: 600; }
+.hours { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.hours input { flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }
+.slider { display: grid; grid-template-columns: 68px 1fr 34px; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; }
+.slider input { width: 100%; accent-color: var(--fg); }
+.slider output { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+[hidden] { display: none !important; }

@@ -7,6 +7,7 @@ import FocusCore
 ///   GET  /state   → what to block right now (`State`)
 ///   POST /events  → `{ "events": [...] }` block hits, reasons, bypasses, browsing spans
 ///   POST /tab     → `{ "url", "title" }` the focused tab, for the screen watcher
+///   POST /dark    → `DarkPages` changed from the extension's popup
 ///
 /// Only browsers attach an `Origin`, and a web page can't forge one, so any
 /// request whose Origin isn't the extension is refused. Local processes are
@@ -31,10 +32,12 @@ final class BrowserBridge: ObservableObject {
     }
 
     /// The extension runs the schedule itself, so it keeps working while Focus is quit.
-    struct DarkPages: Encodable {
+    struct DarkPages: Codable {
         let mode: String
         let from: Int
         let to: Int
+        let brightness: Int
+        let contrast: Int
     }
 
     @Published private(set) var lastContact: Date?
@@ -47,6 +50,7 @@ final class BrowserBridge: ObservableObject {
 
     var stateProvider: (() -> State)?
     var onEvents: (([BrowserStore.Event]) -> Void)?
+    var onDarkPages: ((DarkPages) -> Void)?
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.magnus.focus.browser-bridge")
@@ -156,6 +160,18 @@ final class BrowserBridge: ObservableObject {
                         self.focusReport = nil
                     }
                 }
+                self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
+            }
+        case ("POST", "/dark"):
+            guard let dark = try? JSONDecoder().decode(DarkPages.self, from: req.body),
+                  ["off", "night", "system", "always"].contains(dark.mode),
+                  (0..<1440).contains(dark.from), (0..<1440).contains(dark.to),
+                  (50...150).contains(dark.brightness), (50...150).contains(dark.contrast) else {
+                return respond(conn, status: "400 Bad Request", json: Data(#"{"error":"dark"}"#.utf8))
+            }
+            DispatchQueue.main.async {
+                self.lastContact = Date()
+                self.onDarkPages?(dark)
                 self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
             }
         case ("POST", "/events"):
