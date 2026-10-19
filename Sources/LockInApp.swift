@@ -397,8 +397,6 @@ struct FocusApp: App {
         } label: {
             if timerManager.isActive {
                 TimerTicking(clock: timerManager.clock) {
-                    Image(nsImage: MenuBarRing.image(progress: timerManager.progress, color: NSColor(
-                        timerManager.isOnBreak ? TimerView.breakBlue : categoryColor(timerManager.currentLabel))))
                     Text("\(timerManager.isOnBreak ? "Break" : timerManager.currentLabel)  \(timerManager.menuBarTimeText)")
                 }
             } else {
@@ -783,33 +781,7 @@ struct PageBar: View {
     }
 }
 
-/// The menu bar's progress ring, in the running category's color (a
-/// non-template image, so macOS keeps the color).
 enum MenuBarRing {
-    static func image(progress: Double, color: NSColor) -> NSImage {
-        let size = NSSize(width: 14, height: 14)
-        let img = NSImage(size: size, flipped: false) { rect in
-            let r = rect.insetBy(dx: 1.75, dy: 1.75)
-            let track = NSBezierPath(ovalIn: r)
-            track.lineWidth = 2.5
-            color.withAlphaComponent(0.3).setStroke()
-            track.stroke()
-            let arc = NSBezierPath()
-            let c = NSPoint(x: r.midX, y: r.midY)
-            arc.appendArc(withCenter: c, radius: r.width / 2, startAngle: 90,
-                          endAngle: 90 - 360 * CGFloat(min(max(progress, 0), 1)), clockwise: true)
-            arc.lineWidth = 2.5
-            arc.lineCapStyle = .round
-            color.setStroke()
-            arc.stroke()
-            color.setFill()
-            NSBezierPath(ovalIn: NSRect(x: c.x - 2, y: c.y - 2, width: 4, height: 4)).fill()
-            return true
-        }
-        img.isTemplate = false
-        return img
-    }
-
     /// The app icon's mark (an eye looking down at three tape cells, the middle one solid),
     /// as a template for the idle menu bar. Drawn on a 100-unit grid, y down.
     static let mark: NSImage = {
