@@ -396,9 +396,11 @@ struct FocusApp: App {
             .modelContainer(focusContainer)
         } label: {
             if timerManager.isActive {
-                Image(nsImage: MenuBarRing.image(progress: timerManager.progress, color: NSColor(
-                    timerManager.isOnBreak ? TimerView.breakBlue : categoryColor(timerManager.currentLabel))))
-                Text("\(timerManager.isOnBreak ? "Break" : timerManager.currentLabel)  \(timerManager.menuBarTimeText)")
+                TimerTicking(clock: timerManager.clock) {
+                    Image(nsImage: MenuBarRing.image(progress: timerManager.progress, color: NSColor(
+                        timerManager.isOnBreak ? TimerView.breakBlue : categoryColor(timerManager.currentLabel))))
+                    Text("\(timerManager.isOnBreak ? "Break" : timerManager.currentLabel)  \(timerManager.menuBarTimeText)")
+                }
             } else {
                 Image(nsImage: MenuBarRing.mark)
             }

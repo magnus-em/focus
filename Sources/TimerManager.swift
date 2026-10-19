@@ -4,8 +4,21 @@ import Combine
 import UserNotifications
 import AppKit
 
+/// Fires on every tick. Only the views that show the running clock observe
+/// it, so the rest of the popover doesn't re-render twice a second.
+final class TimerClock: ObservableObject {}
+
 class TimerManager: ObservableObject {
-    @Published var timeRemaining: TimeInterval
+    let clock = TimerClock()
+    private var remaining: TimeInterval
+    var timeRemaining: TimeInterval {
+        get { remaining }
+        set {
+            objectWillChange.send()
+            clock.objectWillChange.send()
+            remaining = newValue
+        }
+    }
     @Published var totalTime: TimeInterval
     @Published var isRunning = false
     @Published var currentPhase: Phase = .work
@@ -118,7 +131,7 @@ class TimerManager: ObservableObject {
 
     init() {
         self.totalTime = 25 * 60
-        self.timeRemaining = 25 * 60
+        self.remaining = 25 * 60
         requestNotificationPermission()
     }
 
@@ -733,10 +746,13 @@ class TimerManager: ObservableObject {
         lastAliveAt = now
         guard let resumeTime = lastResumeTime else { return }
         let elapsed = elapsedBeforePause + Date().timeIntervalSince(resumeTime)
-        timeRemaining = max(0, totalTime - elapsed)
-        if timeRemaining <= 0 { extendRunway(); return }
+        clock.objectWillChange.send()
+        remaining = max(0, totalTime - elapsed)
+        if remaining <= 0 { extendRunway(); return }
         tickCount += 1
-        if tickCount % 60 == 0 { saveCheckpoint() }
+        // Live day totals elsewhere read the running block; refreshing them
+        // every 30s is plenty.
+        if tickCount % 60 == 0 { saveCheckpoint(); objectWillChange.send() }
     }
 
     /// Nothing ends on its own: a finished countdown rolls into overtime and

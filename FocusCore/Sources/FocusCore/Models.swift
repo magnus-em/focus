@@ -159,6 +159,41 @@ public struct WorkSession: Codable, Identifiable, Sendable {
     }
 }
 
+/// Stats call `isLife` per saved session, many times per popover render;
+/// reading UserDefaults each time made switching laggy (10/19).
+private final class LifeTagCache: @unchecked Sendable {
+    static let shared = LifeTagCache()
+    private let lock = NSLock()
+    private var cached: Set<String>?
+    private var observer: NSObjectProtocol?
+
+    private init() {
+        observer = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: nil
+        ) { [weak self] _ in self?.invalidate() }
+    }
+
+    private var generation = 0
+
+    private func invalidate() {
+        lock.lock(); cached = nil; generation += 1; lock.unlock()
+    }
+
+    // Defaults are read outside the lock so a defaults write posting its
+    // notification can never wait on a reader holding it.
+    var tags: Set<String> {
+        lock.lock()
+        if let cached { lock.unlock(); return cached }
+        let seen = generation
+        lock.unlock()
+        let tags = Set(UserDefaults.standard.stringArray(forKey: FocusCategories.lifeTagsKey) ?? FocusCategories.defaultLifeTags)
+        lock.lock()
+        if generation == seen { cached = tags }
+        lock.unlock()
+        return tags
+    }
+}
+
 /// Focus categories (homework, prep) count toward the daily goal; life
 /// categories (sleep, meals, ...) are tracked for the full-day picture only.
 /// The life set lives in synced defaults under `lifeTags`.
@@ -189,9 +224,11 @@ public enum FocusCategories {
     /// the model called a ChatGPT chat about C "Class".
     public static let notFromScreen: Set<String> = ["Sleep", "Meals", "Exercise", "Commute", "Chores", "Class", "Social"]
 
+    public static var lifeTags: Set<String> { LifeTagCache.shared.tags }
+
     public static func isLife(_ label: String?) -> Bool {
         guard let label, !label.isEmpty else { return false }
-        return (UserDefaults.standard.stringArray(forKey: lifeTagsKey) ?? defaultLifeTags).contains(label)
+        return lifeTags.contains(label)
     }
 
     // MARK: Timer display, derived only from (total, remaining) so every

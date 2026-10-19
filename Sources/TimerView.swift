@@ -211,13 +211,15 @@ struct TimerView: View {
             goalRing
             VStack(alignment: .leading, spacing: 2) {
                 categoryMenu
-                Text(timer.timeString)
-                    .font(.system(size: 46, weight: .semibold, design: .rounded).monospacedDigit())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .contentTransition(.numericText())
-                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: timer.timeString)
-                subline
+                TimerTicking(clock: timer.clock) {
+                    Text(timer.timeString)
+                        .font(.system(size: 46, weight: .semibold, design: .rounded).monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .contentTransition(.numericText())
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: timer.timeString)
+                    subline
+                }
                 doseLine
             }
             Spacer(minLength: 0)
@@ -882,6 +884,13 @@ struct FocusTransportControls: View {
 
 /// Floating glass capsule at the bottom of big windows, like Podcasts' Now
 /// Playing bar: what's running, for how long, and the three controls.
+/// Re-renders `content` on every timer tick; keep what's inside small.
+struct TimerTicking<Content: View>: View {
+    @ObservedObject var clock: TimerClock
+    @ViewBuilder let content: () -> Content
+    var body: some View { content() }
+}
+
 struct NowPlayingBar: View {
     @ObservedObject var timer: TimerManager
 
@@ -902,10 +911,12 @@ struct NowPlayingBar: View {
                 }
             }
             Spacer(minLength: 8)
-            Text(timer.timeString)
-                .font(.system(size: 17, weight: .semibold, design: .rounded).monospacedDigit())
-                .contentTransition(.numericText())
-                .fixedSize()
+            TimerTicking(clock: timer.clock) {
+                Text(timer.timeString)
+                    .font(.system(size: 17, weight: .semibold, design: .rounded).monospacedDigit())
+                    .contentTransition(.numericText())
+                    .fixedSize()
+            }
             FocusTransportControls(timer: timer).frame(minWidth: 250, maxWidth: 270)
         }
         .padding(.leading, 18)

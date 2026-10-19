@@ -4,7 +4,9 @@ import SwiftData
 import SwiftUI
 
 class SessionStore: ObservableObject {
-    @Published var sessions: [WorkSession] = []
+    @Published var sessions: [WorkSession] = [] { didSet { focusDaysCache = nil } }
+    /// Days with a focus session, for the streak the popover shows on every render.
+    private var focusDaysCache: (lifeTags: Set<String>, days: Set<Date>)?
     /// Saved blocks covering the same time in the last week, newest first.
     /// Resolved automatically a few seconds after they appear (`TimeIntegrity.autoKeep`).
     @Published private(set) var overlaps: [SessionOverlap] = []
@@ -320,11 +322,12 @@ class SessionStore: ObservableObject {
     }
 
     private func hasSessions(on date: Date) -> Bool {
+        let lifeTags = FocusCategories.lifeTags
+        if let cache = focusDaysCache, cache.lifeTags == lifeTags { return cache.days.contains(date) }
         let calendar = Calendar.current
-        let dayEnd = calendar.date(byAdding: .day, value: 1, to: date)!
-        return sessions.contains {
-            $0.isFocus && $0.startTime >= date && $0.startTime < dayEnd
-        }
+        let days = Set(sessions.filter(\.isFocus).map { calendar.startOfDay(for: $0.startTime) })
+        focusDaysCache = (lifeTags, days)
+        return days.contains(date)
     }
 
     // MARK: - Lifetime
