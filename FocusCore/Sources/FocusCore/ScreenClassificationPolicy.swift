@@ -60,6 +60,10 @@ public enum ScreenClassificationPolicy {
             if normalized(app) == "finder" {
                 return Decision(category: nil, reason: "A Finder folder lists files; it does not show the task", uncertain: true)
             }
+            // 10/18: a Reminders list was Recruiting because its sidebar has lists named Recruiting and Networking.
+            if normalized(app) == "reminders" {
+                return Decision(category: nil, reason: "A to-do list names tasks; it does not show which one you're doing", uncertain: true)
+            }
             // 10/18: a ChatGPT plan for reviewing the deep learning course (CPSC 7770: in-context
             // learning, meta-learning, gradient descent as attention) was called Math while AI ran.
             if category == "Math" || category == "SWE", supportsMLStudy(title: title, text: text) {
@@ -114,14 +118,17 @@ public enum ScreenClassificationPolicy {
     public static func isFocusProjectWork(title: String, text: String) -> Bool {
         let title = normalized(String(title.prefix(240)))
         let body = normalized(String(text.prefix(2400)))
-        let markers = ["focus app", "focus project", "focuscore", "screenwatcher.swift", "dashboardview.swift", "code/focus"]
+        // 10/18: "Logo ideas for Focus" / "Focus Logo Round 1" chats were SWE and drew six cards.
+        let markers = ["focus app", "focus project", "focuscore", "screenwatcher.swift", "dashboardview.swift", "code/focus",
+                       "focus logo", "focus icon", "focus-logo", "logo ideas for focus", "logo for focus", "icon for focus"]
         if title == "focus" || markers.contains(where: { title.contains($0) }) { return true }
         let project = markers.contains {
             title.contains($0) || body.contains($0)
         }
         guard project else { return false }
         let development = ["improve", "build", "implement", "redesign", "refactor", "debug", "develop", "review the codebase",
-                           "install", "settings", "configure", "roadmap", "category", "work on", "working on"]
+                           "install", "settings", "configure", "roadmap", "category", "work on", "working on",
+                           "logo", "icon", "menu bar"]
         return development.contains { body.contains($0) || title.contains($0) }
     }
 
@@ -185,7 +192,10 @@ public enum ScreenClassificationPolicy {
     public static func isPlaceholderPage(app: String, title: String) -> Bool {
         guard browsers.contains(normalized(app)) else { return false }
         let title = normalized(title).trimmingCharacters(in: .whitespaces)
-        return ["", "new tab", "new incognito tab", "new private tab", "start page", "untitled", "blocked · focus"].contains(title)
+        if ["", "new tab", "new incognito tab", "new private tab", "start page", "untitled", "blocked · focus"].contains(title) { return true }
+        // 10/18: Canvas and Yale CAS sign-in pages were Admin and drew a card on the way to coursework.
+        return title.range(of: #"^(?:log ?in|sign ?in|central authentication service)(?:$|\s*[-|:·])"#, options: .regularExpression) != nil
+            || title.hasSuffix("- sign in") || title.hasSuffix("| sign in")
     }
 
     public static func readingAlternative(title: String) -> String? {

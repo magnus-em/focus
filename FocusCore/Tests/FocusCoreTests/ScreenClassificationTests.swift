@@ -249,6 +249,30 @@ final class SocialFeedPolicyTests: XCTestCase {
             title: "Compiler Explorer", text: "", source: .learned).category, "Recruiting")
     }
 
+    func testFocusLogoChatsRemindersAndSignInPages() {
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Claude", title: "Focus Logo Round 1",
+            text: "Logo design for Focus").category, "Admin")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Claude", title: "Liant beriwinkle witn a cream beam ano cell",
+            text: "Focus Logo Round 1 v\nthe eye combined with other Focus ideas, solid marks, and states the menu bar could").category, "Admin")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Claude", title: "Logo ideas for Focus",
+            text: "").category, "Admin")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Code", title: "focus.tex",
+            text: "Let f be a focus of the ellipse; find the logo").category, "Math")
+
+        let reminders = ScreenClassificationPolicy.evaluate(category: "Recruiting", app: "Reminders", title: "Reminders",
+            text: "My Lists\nPrimary\nHomework\nRecruiting\nNetworking\nResearch presentation in meta learning")
+        XCTAssertNil(reminders.category)
+        XCTAssertTrue(reminders.uncertain)
+
+        for title in ["Login | Canvas @ Yale", "Central Authentication Service | Yale University", "Login", "Sign in - Google Accounts"] {
+            XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome", title: title, text: "").category, title)
+        }
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Google Chrome",
+            title: "Login systems: OAuth explained", text: "").category, "SWE")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome",
+            title: "Dashboard", text: "MATH 2440 pset 5").category, "Math")
+    }
+
     func testDeepLearningCourseworkIsAINotMath() {
         let plan = ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Plan 7770 course review",
             text: """
