@@ -939,14 +939,16 @@ final class ScreenWatcher: ObservableObject {
     /// Up to 4 windows you've labeled whose titles mean something close to
     /// this one ("Plan MATH 244 midterm prep" for "MATH 244 problem set 6").
     private func examples(like title: String, among categories: [String]) -> [(title: String, category: String)] {
-        guard let emb = titleEmbedding, title.count >= 4, let q = emb.vector(for: title.lowercased()) else { return [] }
+        let subject = LearnedTitlePolicy.subject(title)
+        guard let emb = titleEmbedding, subject.count >= 4, let q = emb.vector(for: subject) else { return [] }
         var scored: [(sim: Double, title: String, category: String)] = []
         for (key, label) in Self.memory where categories.contains(label) {
             guard let bar = key.firstIndex(of: "|") else { continue }
             let t = String(key[key.index(after: bar)...])
             guard t.count >= 4, t != title.lowercased(), LearnedTitlePolicy.reason(t) == nil else { continue }
-            guard let v = titleVectors[t] ?? emb.vector(for: t) else { continue }
-            titleVectors[t] = v
+            let ts = LearnedTitlePolicy.subject(t)
+            guard ts.count >= 4, let v = titleVectors[ts] ?? emb.vector(for: ts) else { continue }
+            titleVectors[ts] = v
             scored.append((Self.cosine(q, v), t, label))
         }
         let top = scored.filter { $0.sim >= 0.55 }.sorted { $0.sim > $1.sim }.prefix(4)

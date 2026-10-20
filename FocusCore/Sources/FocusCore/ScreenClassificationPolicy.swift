@@ -64,9 +64,17 @@ public enum ScreenClassificationPolicy {
             if normalized(app) == "reminders" {
                 return Decision(category: nil, reason: "A to-do list names tasks; it does not show which one you're doing", uncertain: true)
             }
+            // 10/19: a glance at Calendar and a Zoom window ("Upgrade to Zoom Pro") were Admin and drew two cards mid-AI.
+            if normalized(app) == "calendar" {
+                return Decision(category: nil, reason: "A calendar shows plans; it does not show what you're doing", uncertain: true)
+            }
+            if isVideoCall(app: app) {
+                return Decision(category: nil, reason: "A call window does not show what the call is about", uncertain: true)
+            }
             // 10/18: a ChatGPT plan for reviewing the deep learning course (CPSC 7770: in-context
             // learning, meta-learning, gradient descent as attention) was called Math while AI ran.
-            if category == "Math" || category == "SWE", supportsMLStudy(title: title, text: text) {
+            // 10/19: the CPSC 7770 syllabus and a meta-learning review article were called Reading while AI ran.
+            if category == "Math" || category == "SWE" || category == "Reading", supportsMLStudy(title: title, text: text) {
                 return Decision(category: "AI", reason: "Visible ML/deep-learning study or research material", uncertain: false)
             }
             if category == "Math", showsMaterialCuriosity(title: title, text: text) {
@@ -84,6 +92,10 @@ public enum ScreenClassificationPolicy {
             return Decision(category: nil, reason: "Recruiting needs something about jobs, applications or recruiters on screen", uncertain: true)
         }
         if category == "Reading" {
+            // 10/19: "nature machine intelligence - Google Search" was Reading.
+            if isSearchResults(title: title) {
+                return Decision(category: nil, reason: "Search results are not long-form reading", uncertain: true)
+            }
             if source == .model && !supportsEducationalReading(title: title, text: text) {
                 return Decision(category: nil, reason: "Not enough evidence of an educational article, book, paper or substantial explainer", uncertain: true)
             }
@@ -187,6 +199,15 @@ public enum ScreenClassificationPolicy {
         return title.hasSuffix("- youtube") || title.range(of: #"^(\(\d+\+?\) )?youtube$"#, options: .regularExpression) != nil
     }
 
+    public static func isSearchResults(title: String) -> Bool {
+        let title = normalized(String(title.prefix(240)))
+        return ["- google search", "- bing", "at duckduckgo", "- search", "- perplexity"].contains { title.hasSuffix($0) }
+    }
+
+    public static func isVideoCall(app: String) -> Bool {
+        ["zoom", "zoom.us", "zoom workplace", "facetime", "microsoft teams", "webex"].contains(normalized(app))
+    }
+
     private static let browsers = ["google chrome", "safari", "arc", "firefox", "microsoft edge", "brave browser", "chromium"]
 
     public static func isPlaceholderPage(app: String, title: String) -> Bool {
@@ -238,7 +259,8 @@ public enum ScreenClassificationPolicy {
 
     public static func supportsMLStudy(title: String, text: String) -> Bool {
         let title = normalized(String(title.prefix(240)))
-        let body = normalized(String(text.prefix(2400)))
+        let body = normalized(String(text.prefix(2400))).components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }.joined(separator: " ")
         let domains = ["machine learning", "deep learning", "neural network", "backpropagation",
                        "gradient descent", "self attention", "self-attention", "transformer architecture",
                        "convolutional network", "reinforcement learning", "loss function", "language model training",
@@ -246,7 +268,10 @@ public enum ScreenClassificationPolicy {
                        "support vector machine", "random forest", "supervised learning", "unsupervised learning",
                        "attention mechanism", "large language model", "representation learning", "contrastive learning",
                        "recurrent neural network", "policy gradient", "q-learning", "stochastic gradient",
-                       "in-context learning", "meta-learning", "metalearning", "linear attention", "linear-attention", "pretraining"]
+                       "in-context learning", "meta-learning", "metalearning", "linear attention", "linear-attention", "pretraining",
+                       "chain-of-thought", "chain of thought", "latent reasoning", "interpretability", "mech interp",
+                       "hidden states", "scaling law", "rlhf", "fine-tuning", "next-token prediction", "scalable oversight",
+                       "sequence model", "state space model", "few-shot learning", "catastrophic forgetting"]
         let study = ["learn", "study", "research", "paper", "lecture", "tutorial", "derive", "derivation",
                      "explain", "understand", "notes", "course", "experiment", "implement", "train", "introduction"]
         let meta = ["focus app", "focuscore", "screen tracking", "screen watcher", "screenwatcher",
@@ -265,7 +290,7 @@ public enum ScreenClassificationPolicy {
         // even when the discussion quotes the definition of the AI category.
         guard !meta.contains(where: { title.contains($0) || body.contains($0) }) else { return false }
         let hits = domains.filter { body.contains($0) }.count
-        return hits >= 2 && study.contains { containsWordBeginning($0, in: body) }
+        return hits >= 2 && study.contains { containsWordBeginning($0, in: title + " " + body) }
     }
 
     private static func normalized(_ value: String) -> String {

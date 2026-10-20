@@ -16,6 +16,20 @@ public enum LearnedTitlePolicy {
         (#"^(?:xcodebuild|swiftc|swift-frontend|clang|git|npm|python3?)\s+(?:-{1,2}[\w-]|\S.*\s-{1,2}[\w-])"#, "Looks like a terminal command")
     ]
 
+    /// The part of a window title that names the page, without the unread counter
+    /// and site/mailbox suffix ("Inbox (2,634) - me@yale.edu - Yale University Mail" → "inbox").
+    /// 10/19: whole titles matched "magnus resume - …yale university mail" at 0.8+ on the shared
+    /// suffix alone, so the inbox took that thread's SWE label.
+    public static func subject(_ title: String) -> String {
+        var t = title.lowercased().replacingOccurrences(of: #"^\(\d[\d,]*\+?\)\s*"#, with: "", options: .regularExpression)
+        if let r = t.range(of: #"\s+[-|–—]\s+"#, options: .regularExpression) {
+            let head = String(t[..<r.lowerBound])
+            if head.count >= 4 { t = head }
+        }
+        return t.replacingOccurrences(of: #"\s*\(\d[\d,]*\+?\)$"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
     public static func reason(_ title: String) -> String? {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return "Has no window title" }

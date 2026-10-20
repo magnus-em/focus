@@ -291,4 +291,33 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "ChatGPT",
             title: "Screen classifier for Focus app", text: "deep learning and in-context learning prompt for the focus app").category, "Admin")
     }
+
+    func testOctober19Glances() {
+        let syllabus = ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome",
+            title: "Syllabus for CPSC 7770 01 (FA…l-Purpose Sequence Processing",
+            text: "Course Description\nThis graduate seminar will introduce participants to general-purpose sequence processing and related topics in\ndeep learning. Sequence-processing neural networks are ubiquitous. Course materials, including the lecture slides")
+        XCTAssertEqual(syllabus.category, "AI")
+        let review = ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome",
+            title: "Overcoming classic challenges f…practice - Princeton University",
+            text: "Research output\nSince the earliest proposals for artificial neural network models of the mind and brain. Here we review recent work that uses metalearning to overcome catastrophic forgetting, few-shot learning and multi-step reasoning.")
+        XCTAssertEqual(review.category, "AI")
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome",
+            title: "nature machine intelligence - Google Search", text: "Nature Machine Intelligence is an online-only journal publishing research").category)
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Zoom", title: "Zoom Meeting", text: "Upgrade to Zoom Pro").category)
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Calendar", title: "Calendar", text: "Monday Tuesday").category)
+        let chat = ScreenClassificationPolicy.evaluate(category: "AI", app: "Claude", title: "Kazuki Irie and Alex Lew research intersection",
+            text: "is this related to reasoning in latent space? Latent reasoning means doing multi-step reasoning inside hidden states rather than as visible chain-of-thought tokens. CoT monitorability as a safety control")
+        XCTAssertEqual(chat.category, "AI")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome",
+            title: "Inside the Intel 8087 chip: floating-point addition and subtraction",
+            text: "This article explains the history of the chip because engineers wanted for example faster math").category, "Reading")
+    }
+
+    func testTitleSubjectDropsCountersAndSiteSuffix() {
+        XCTAssertEqual(LearnedTitlePolicy.subject("Inbox (2,634) - magnus.melbourn…ale.edu - Yale University Mail"), "inbox")
+        XCTAssertEqual(LearnedTitlePolicy.subject("magnus resume - magnus.melbour…le.edu - yale university mail"), "magnus resume")
+        XCTAssertEqual(LearnedTitlePolicy.subject("(18) Can Erol | LinkedIn"), "can erol")
+        XCTAssertEqual(LearnedTitlePolicy.subject("MATH 244 problem set 6"), "math 244 problem set 6")
+        XCTAssertEqual(LearnedTitlePolicy.subject("X - Home"), "x - home")
+    }
 }
