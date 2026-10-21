@@ -75,28 +75,39 @@ struct TimerView: View {
 
     private var running: String? { timer.isActive ? (onBreak ? "Break" : timer.currentLabel) : nil }
 
+    private var showsLeetCodeContext: Bool {
+        leetCode.workingOnProblem || (timer.isActive && !timer.isOnBreak && timer.currentLabel == FocusCategories.leetCode)
+    }
+
     var body: some View {
         VStack(spacing: 14) {
             hero
-            focusTotals
-            LeetCodeDailyGoalRow(count: leetCode.todayCount, newCount: leetCode.todayNew, redoCount: leetCode.todayRedo,
-                                minutes: todayCategoryTotals[FocusCategories.leetCode] ?? 0,
-                                problemGoal: settings.leetCodeDailyGoal, minutesGoal: settings.leetCodeMinutesGoal,
-                                tracking: timer.isRunning && !timer.isOnBreak && timer.currentLabel == FocusCategories.leetCode,
-                                start: { timer.switchTo(FocusCategories.leetCode) }, open: onOpenLeetCode,
-                                activeTitle: leetCode.workingOnProblem ? leetCode.activePractice?.title : nil,
-                                activeSeconds: leetCode.activeSeconds,
-                                done: { leetCode.finishPractice(); onOpenLeetCode() })
-            wellbeingTotals
             if !timer.isActive {
                 if !FocusCategories.isLife(timer.currentLabel) { presets }
-                startChips
+            }
+            if showsLeetCodeContext && detent == .small {
+                LeetCodeSessionRow(
+                    title: leetCode.workingOnProblem ? leetCode.activePractice?.title : nil,
+                    seconds: leetCode.activeSeconds,
+                    choose: onOpenLeetCode,
+                    done: { leetCode.finishPractice(); onOpenLeetCode() }
+                )
             }
             attention
-            if let whereWasI { WhereWasIRow(line: whereWasI, color: categoryColor(timer.currentLabel)) }
             controlBar
             detailsButton
             if detent == .large {
+                focusTotals
+                LeetCodeDailyGoalRow(count: leetCode.todayCount, newCount: leetCode.todayNew, redoCount: leetCode.todayRedo,
+                                    minutes: todayCategoryTotals[FocusCategories.leetCode] ?? 0,
+                                    problemGoal: settings.leetCodeDailyGoal, minutesGoal: settings.leetCodeMinutesGoal,
+                                    tracking: timer.isRunning && !timer.isOnBreak && timer.currentLabel == FocusCategories.leetCode,
+                                    start: { timer.switchTo(FocusCategories.leetCode) }, open: onOpenLeetCode,
+                                    activeTitle: leetCode.workingOnProblem ? leetCode.activePractice?.title : nil,
+                                    activeSeconds: leetCode.activeSeconds,
+                                    done: { leetCode.finishPractice(); onOpenLeetCode() })
+                wellbeingTotals
+                if let whereWasI { WhereWasIRow(line: whereWasI, color: categoryColor(timer.currentLabel)) }
                 dayStrip
                 if #available(macOS 26.0, *), LogCorrection.available {
                     LogFixView(timer: timer, store: store, categories: settings.tags)
@@ -183,25 +194,31 @@ struct TimerView: View {
         }
     }
 
+    @ViewBuilder
     private var wellbeingTotals: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Wellbeing")
-                .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
-            FlowLayout(spacing: 8) {
-                ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { label in
-                    HStack(spacing: 6) {
-                        Circle().fill(categoryColor(label)).frame(width: 7, height: 7)
-                        Text(label).font(.system(size: 13, weight: .medium))
-                        Text(hm(todayCategoryTotals[label] ?? 0))
-                            .font(.system(size: 13).monospacedDigit()).foregroundStyle(Color.secondaryText)
+        let labels = FocusCategories.wellbeingTags.filter {
+            settings.tags.contains($0) && (todayCategoryTotals[$0] ?? 0) > 2
+        }
+        if !labels.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Wellbeing")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                FlowLayout(spacing: 8) {
+                    ForEach(labels, id: \.self) { label in
+                        HStack(spacing: 6) {
+                            Circle().fill(categoryColor(label)).frame(width: 7, height: 7)
+                            Text(label).font(.system(size: 13, weight: .medium))
+                            Text(hm(todayCategoryTotals[label] ?? 0))
+                                .font(.system(size: 13).monospacedDigit()).foregroundStyle(Color.secondaryText)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 8)
+                        .background(Capsule().fill(Color.primary.opacity(0.05)))
+                        .accessibilityElement(children: .combine)
                     }
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(Capsule().fill(Color.primary.opacity(0.05)))
-                    .accessibilityElement(children: .combine)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Hero
@@ -381,42 +398,6 @@ struct TimerView: View {
                 .buttonStyle(.plain)
             }
         }
-    }
-
-    private var startChips: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Focus · counts toward your goal").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
-                FlowLayout(spacing: 6) {
-                    ForEach(settings.tags.filter { !settings.lifeTags.contains($0) }, id: \.self) { tag in
-                        chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
-                    }
-                }
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Wellbeing · counts up").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
-                FlowLayout(spacing: 6) {
-                    ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { tag in
-                        chip(tag, color: categoryColor(tag), selected: timer.currentLabel == tag) { pick(tag) }
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func chip(_ name: String, color: Color, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Circle().fill(color).frame(width: 7, height: 7)
-                Text(name).font(.system(size: 13, weight: selected ? .semibold : .regular)).lineLimit(1)
-            }
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(Capsule().fill(selected ? color.opacity(0.22) : Color.primary.opacity(0.06)))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
     }
 
     private func pick(_ tag: String) {
@@ -1143,6 +1124,41 @@ struct WhereWasIRow: View {
         }
         .buttonStyle(.plain)
         .help(line.text + (line.url == nil ? "" : "\nOpens the page you were on"))
+    }
+}
+
+struct LeetCodeSessionRow: View {
+    let title: String?
+    let seconds: Double
+    let choose: () -> Void
+    let done: () -> Void
+
+    private var color: Color { categoryColor(FocusCategories.leetCode) }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "curlybraces")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(color)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title ?? "LeetCode")
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                Text(title == nil ? "Choose the problem you're working on" : String(format: "%02d:%02d work time", Int(seconds) / 60, Int(seconds) % 60))
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(Color.secondaryText)
+            }
+            Spacer(minLength: 4)
+            Button(title == nil ? "Choose" : "Done", action: title == nil ? choose : done)
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(Capsule().fill(color.opacity(0.16)))
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 46)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05)))
     }
 }
 

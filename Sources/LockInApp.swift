@@ -433,6 +433,7 @@ struct PopoverContent: View {
 
     @State private var selectedTab = 0
     @AppStorage("quickPanelDetails") private var expandedStored = false
+    @AppStorage("quickPanelCompactResetV2") private var didResetToCompact = false
     /// Gallery shots set this instead of the stored size, so a screenshot
     /// never changes how your own popover opens.
     @State private var detentOverride: TimerView.Detent?
@@ -452,6 +453,10 @@ struct PopoverContent: View {
             .onAppear {
                 if let initialTab { selectedTab = initialTab }
                 if let initialDetent { detentOverride = initialDetent }
+                if initialDetent == nil && !didResetToCompact {
+                    expandedStored = false
+                    didResetToCompact = true
+                }
                 // Force "today"-scoped views to re-evaluate every time the
                 // popover opens. Without this, a menu-bar app that's been
                 // running since yesterday would still display yesterday's
