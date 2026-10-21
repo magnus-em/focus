@@ -24,8 +24,11 @@ const clock = (m) => new Date(2000, 0, 1, Math.floor(m / 60), m % 60)
 const toInput = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const fromInput = (v) => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
 const DARK_DEFAULT = { mode: 'night', from: 19 * 60, to: 7 * 60, brightness: 100, contrast: 100 };
+const YOUTUBE_DEFAULT = { mode: 'focus', hideHome: true, hideRelated: true, hideShorts: true,
+  hideEndScreens: true, disableAutoplay: true, hideComments: false };
 const $ = (id) => document.getElementById(id);
 let dark = DARK_DEFAULT;
+let youtube = YOUTUBE_DEFAULT;
 
 async function saveDark(patch) {
   dark = { ...dark, ...patch };
@@ -116,9 +119,53 @@ async function showDark() {
 }
 showDark();
 
+async function saveYouTube(patch) {
+  youtube = { ...youtube, ...patch };
+  const result = await chrome.runtime.sendMessage({ type: 'setYouTube', settings: youtube });
+  renderYouTube(result?.active);
+}
+
+function renderYouTube(active = false) {
+  for (const button of $('youtubeMode').children) {
+    const selected = button.dataset.mode === youtube.mode;
+    button.classList.toggle('on', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  }
+  const summary = youtube.mode === 'off' ? 'Off' : youtube.mode === 'always' ? 'Always on' : active ? 'Active now' : 'During focus';
+  $('youtubeSummary').textContent = summary;
+  $('youtubeWhen').textContent = youtube.mode === 'off' ? 'YouTube is unchanged'
+    : youtube.mode === 'always' ? 'Distractions stay hidden even when Focus is idle'
+      : active ? 'Recommendations are hidden for this focus block' : 'Turns on with your next focus block';
+  $('youtubeSettings').classList.toggle('disabled', youtube.mode === 'off');
+  for (const input of document.querySelectorAll('[data-youtube]')) {
+    input.checked = !!youtube[input.dataset.youtube];
+    input.disabled = youtube.mode === 'off';
+  }
+}
+
+async function showYouTube() {
+  const [stored, state] = await Promise.all([
+    chrome.storage.local.get('youtubeFocus'),
+    chrome.runtime.sendMessage({ type: 'youtubeState' }).catch(() => null),
+  ]);
+  youtube = { ...YOUTUBE_DEFAULT, ...(stored.youtubeFocus || state?.settings) };
+  renderYouTube(!!state?.active);
+}
+
+for (const button of $('youtubeMode').children) button.onclick = () => saveYouTube({ mode: button.dataset.mode });
+for (const input of document.querySelectorAll('[data-youtube]')) {
+  input.onchange = () => saveYouTube({ [input.dataset.youtube]: input.checked });
+}
+showYouTube();
+
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.dark || changes.darkNight || changes.darkSites)) showDark();
+  if (area === 'local' && changes.youtubeFocus) showYouTube();
 });
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'darkStatusChanged') showDark();
+  if (message?.type === 'youtubeFocusChanged') {
+    youtube = { ...YOUTUBE_DEFAULT, ...message.settings };
+    renderYouTube(!!message.active);
+  }
 });

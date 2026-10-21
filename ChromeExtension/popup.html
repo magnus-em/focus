@@ -13,6 +13,23 @@
     <ul id="siteList" tabindex="0" aria-label="Configured distracting sites"></ul>
   </details>
   <div class="muted" id="pending"></div>
+  <details class="feature youtube" id="youtube">
+    <summary><span>YouTube focus</span><span class="summaryValue" id="youtubeSummary">During focus</span></summary>
+    <div class="featureBody">
+      <div class="seg three" id="youtubeMode" role="group" aria-label="YouTube focus mode">
+        <button data-mode="off">Off</button><button data-mode="focus">During focus</button><button data-mode="always">Always</button>
+      </div>
+      <div class="muted" id="youtubeWhen"></div>
+      <div id="youtubeSettings">
+        <label class="check"><input type="checkbox" data-youtube="hideHome"> <span><strong>Home feed</strong><small>Keep search and Subscriptions</small></span></label>
+        <label class="check"><input type="checkbox" data-youtube="hideRelated"> <span><strong>Related videos</strong><small>Beside and below the player</small></span></label>
+        <label class="check"><input type="checkbox" data-youtube="hideShorts"> <span><strong>Shorts</strong><small>Hide shelves and offer regular player</small></span></label>
+        <label class="check"><input type="checkbox" data-youtube="hideEndScreens"> <span><strong>End-screen suggestions</strong><small>Leave the video controls available</small></span></label>
+        <label class="check"><input type="checkbox" data-youtube="disableAutoplay"> <span><strong>Autoplay</strong><small>Keep the next video from starting</small></span></label>
+        <label class="check"><input type="checkbox" data-youtube="hideComments"> <span><strong>Comments</strong><small>Optional; visible by default</small></span></label>
+      </div>
+    </div>
+  </details>
   <div class="dark" id="dark">
     <h2>Dark pages</h2>
     <div class="seg" id="darkMode" role="group" aria-label="Dark page mode">

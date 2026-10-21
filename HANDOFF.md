@@ -2,7 +2,12 @@
 
 Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-10-15 night (Claude side session: Day/Week review, descriptors, tabs back, midday record rewrites).
+Last touched: 2026-10-21 (Codex: YouTube focus guard in the Chrome extension).
+
+## YouTube focus — 10/21 (Codex)
+
+- Extension 1.2.0 adds Off/During focus/Always controls. During focus follows the app's explicit `isFocus` state, not every running life category. Defaults hide Home recommendations, related videos, Shorts, end-screen suggestions and autoplay; comments remain visible unless selected. Search, Subscriptions, playlists, direct videos and player controls stay available.
+- Node logic suite and hidden Chrome Home/watch/Shorts/popup fixture pass; screenshots `.shots/youtube-focus`. Extension-only change: reload Focus Blocker at chrome://extensions, then refresh existing YouTube tabs. Live youtube.com structure still needs a real-use smoke check after reload because the automated fixture is intentionally local.
 
 ## Chrome dark pages — 10/18 (Codex)
 

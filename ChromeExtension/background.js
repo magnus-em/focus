@@ -13,6 +13,15 @@ const IDLE_SECS = 120;
 const CHECKPOINT_MS = 60_000;
 const BYPASS_MS = 5 * 60_000;
 const RULE_ID = 1;
+const YOUTUBE_DEFAULT = {
+  mode: 'focus',
+  hideHome: true,
+  hideRelated: true,
+  hideShorts: true,
+  hideEndScreens: true,
+  disableAutoplay: true,
+  hideComments: false,
+};
 
 const local = chrome.storage.local;
 const session = chrome.storage.session;
@@ -58,6 +67,7 @@ async function refreshState(force = false) {
   }
   await session.set({ state: next, fetchedAt: Date.now(), lastOk: ok });
   await applyRules(next);
+  await syncYouTube(next);
   await syncDark();
   return next;
 }
@@ -108,6 +118,45 @@ async function sweep(domains) {
 function isBlocked(url, state) {
   const host = domainOf(url);
   return !!(host && state.blocking && (state.domains || []).some((d) => matches(host, d)));
+}
+
+// MARK: - YouTube focus
+
+function normalizeYouTube(value = {}) {
+  const mode = ['off', 'focus', 'always'].includes(value.mode) ? value.mode : YOUTUBE_DEFAULT.mode;
+  const result = { ...YOUTUBE_DEFAULT, mode };
+  for (const key of Object.keys(YOUTUBE_DEFAULT).filter((key) => key !== 'mode')) {
+    if (typeof value[key] === 'boolean') result[key] = value[key];
+  }
+  return result;
+}
+
+function isYouTubeActive(settings, state) {
+  if (settings.mode === 'always') return true;
+  if (settings.mode !== 'focus') return false;
+  return !!(state?.isFocus ?? state?.blocking);
+}
+
+async function syncYouTube(state, force = false) {
+  const stored = await local.get('youtubeFocus');
+  const settings = normalizeYouTube(stored.youtubeFocus);
+  const active = isYouTubeActive(settings, state);
+  const old = await session.get('youtubeFocusActive');
+  if (old.youtubeFocusActive !== active) await session.set({ youtubeFocusActive: active });
+  if (force || old.youtubeFocusActive !== active) {
+    const tabs = await chrome.tabs.query({ url: ['*://www.youtube.com/*', '*://m.youtube.com/*'] });
+    await Promise.all(tabs.map((tab) => chrome.tabs.sendMessage(tab.id, {
+      type: 'youtubeFocusChanged', settings, active,
+    }).catch(() => {})));
+  }
+  return { settings, active };
+}
+
+async function setYouTube(value) {
+  const settings = normalizeYouTube(value);
+  await local.set({ youtubeFocus: settings });
+  const stored = await session.get('state');
+  return syncYouTube(stored.state, true);
 }
 
 // MARK: - Dark pages
@@ -473,6 +522,12 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return darkFixesFor(sender.url || sender.tab?.url || '');
       case 'darkFetch':
         return darkFetch(msg.url);
+      case 'youtubeState': {
+        const state = await refreshState();
+        return syncYouTube(state);
+      }
+      case 'setYouTube':
+        return setYouTube(msg.settings || {});
       case 'popup': {
         const state = await refreshState(true);
         const { queue = [] } = await local.get('queue');

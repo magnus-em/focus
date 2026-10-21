@@ -1,0 +1,113 @@
+html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"] ytd-rich-grid-renderer,
+html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"] ytd-two-column-browse-results-renderer #primary > ytd-section-list-renderer,
+html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"] ytm-rich-grid-renderer {
+  display: none !important;
+}
+
+html[data-focus-youtube-active][data-focus-youtube-hide-related] #related,
+html[data-focus-youtube-active][data-focus-youtube-hide-related] ytd-watch-next-secondary-results-renderer,
+html[data-focus-youtube-active][data-focus-youtube-hide-related] ytm-item-section-renderer[data-content-type="related"] {
+  display: none !important;
+}
+
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts] ytd-reel-shelf-renderer,
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts] ytd-rich-shelf-renderer[is-shorts],
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts] ytd-guide-entry-renderer:has(a[href^="/shorts"]),
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts] ytd-mini-guide-entry-renderer:has(a[href^="/shorts"]),
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts] ytd-video-renderer:has(a[href^="/shorts"]),
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts] ytd-grid-video-renderer:has(a[href^="/shorts"]),
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts] ytd-rich-item-renderer:has(a[href^="/shorts"]),
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts] ytm-reel-shelf-renderer,
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts] ytm-pivot-bar-item-renderer:has(a[href^="/shorts"]) {
+  display: none !important;
+}
+
+html[data-focus-youtube-active][data-focus-youtube-hide-end-screens] .ytp-ce-element,
+html[data-focus-youtube-active][data-focus-youtube-hide-end-screens] .ytp-endscreen-content,
+html[data-focus-youtube-active][data-focus-youtube-hide-end-screens] .ytp-autonav-endscreen-upnext-container,
+html[data-focus-youtube-active][data-focus-youtube-hide-end-screens] .ytp-suggestion-set {
+  display: none !important;
+}
+
+html[data-focus-youtube-active][data-focus-youtube-hide-comments] ytd-comments#comments,
+html[data-focus-youtube-active][data-focus-youtube-hide-comments] #comments.ytd-watch-flexy,
+html[data-focus-youtube-active][data-focus-youtube-hide-comments] ytm-comment-section-renderer {
+  display: none !important;
+}
+
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts][data-focus-youtube-page="shorts"] body > :not(#focus-youtube-shorts-block) {
+  visibility: hidden !important;
+}
+
+#focus-youtube-home-message,
+#focus-youtube-shorts-block {
+  display: none;
+  color: var(--yt-spec-text-primary, #0f0f0f);
+  font-family: Roboto, Arial, sans-serif;
+}
+
+html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"] #focus-youtube-home-message {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  min-height: 55vh;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+#focus-youtube-home-message strong,
+#focus-youtube-shorts-block strong {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+#focus-youtube-home-message p,
+#focus-youtube-shorts-block p {
+  max-width: 430px;
+  margin: 0;
+  color: var(--yt-spec-text-secondary, #606060);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#focus-youtube-home-message a,
+#focus-youtube-shorts-block a,
+#focus-youtube-shorts-block button {
+  min-height: 38px;
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--yt-spec-button-chip-background-hover, #e5e5e5);
+  color: var(--yt-spec-text-primary, #0f0f0f);
+  font: 500 14px/20px Roboto, Arial, sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+html[data-focus-youtube-active][data-focus-youtube-hide-shorts][data-focus-youtube-page="shorts"] #focus-youtube-shorts-block {
+  position: fixed;
+  z-index: 2200;
+  inset: 56px 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  background: var(--yt-spec-base-background, #fff);
+  text-align: center;
+}
+
+#focus-youtube-shorts-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  #focus-youtube-home-message,
+  #focus-youtube-shorts-block { color: var(--yt-spec-text-primary, #f1f1f1); }
+  #focus-youtube-home-message p,
+  #focus-youtube-shorts-block p { color: var(--yt-spec-text-secondary, #aaa); }
+}
