@@ -1014,6 +1014,11 @@ final class ScreenWatcher: ObservableObject {
             labelReason = "A journal app"
             return ("Journaling", fallbackSummary)
         }
+        if candidates.contains("AI"), ScreenClassificationPolicy.supportsMLStudy(title: title, text: text) {
+            labelSource = "visible ML study rule"
+            labelReason = "Visible ML/deep-learning study or research material"
+            return ("AI", fallbackSummary)
+        }
         if !generic, Self.usableMemoryKey(Self.memoryKey(bundle: bundle, title: title)),
            let known = Self.memory[Self.memoryKey(bundle: bundle, title: title)], candidates.contains(known) {
             let decision = ScreenClassificationPolicy.evaluate(category: known, app: app, title: title, text: text, source: .learned)

@@ -52,6 +52,21 @@ final class ScreenClassificationPolicyTests: XCTestCase {
             text: "Gradient descent\nWe derive the loss function", source: .learned).category, "AI")
     }
 
+    func testTransformerCourseVideoOverridesLeisureAndOldHeldLabels() {
+        let title = "(605) Attention in transformers…p Learning Chapter 6 - YouTube"
+        let text = "Attention(Q, K, V) = softmax(KᵀQ) V\nAttention in transformers, step-by-step\n3Blue1Brown"
+        for source in [ScreenClassificationPolicy.Source.model, .learned, .held] {
+            let result = ScreenClassificationPolicy.evaluate(category: "Leisure", app: "Google Chrome",
+                                                              title: title, text: text, source: source)
+            XCTAssertEqual(result.category, "AI")
+            XCTAssertFalse(result.uncertain)
+        }
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome",
+            title: "(583) Saturday Night Live - YouTube 🔊", text: "Comedy sketch").category, "Leisure")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Leisure", app: "Google Chrome",
+            title: "Transformers movie trailer - YouTube", text: "Official movie trailer").category, "Leisure")
+    }
+
     func testOldLearnedAndHeldAILabelsNeedFreshEvidence() {
         for source in [ScreenClassificationPolicy.Source.learned, .held] {
             let result = ScreenClassificationPolicy.evaluate(category: "AI", app: "Claude",

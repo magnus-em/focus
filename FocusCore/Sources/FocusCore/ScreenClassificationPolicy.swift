@@ -34,6 +34,11 @@ public enum ScreenClassificationPolicy {
         if isPlaceholderPage(app: app, title: title) {
             return Decision(category: nil, reason: "An empty tab or block page does not show the task", uncertain: true)
         }
+        // 10/21: the model repeatedly called 3Blue1Brown's "Attention in transformers ·
+        // Deep Learning Chapter 6" video Leisure, even with the attention equation visible.
+        if supportsMLStudy(title: title, text: text) {
+            return Decision(category: "AI", reason: "Visible ML/deep-learning study or research material", uncertain: false)
+        }
         if category == "Reading", isVideo(title: title) {
             return Decision(category: nil, reason: "Reading means reading; a video needs a fresh label", uncertain: true)
         }
@@ -70,12 +75,6 @@ public enum ScreenClassificationPolicy {
             }
             if isVideoCall(app: app) {
                 return Decision(category: nil, reason: "A call window does not show what the call is about", uncertain: true)
-            }
-            // 10/18: a ChatGPT plan for reviewing the deep learning course (CPSC 7770: in-context
-            // learning, meta-learning, gradient descent as attention) was called Math while AI ran.
-            // 10/19: the CPSC 7770 syllabus and a meta-learning review article were called Reading while AI ran.
-            if category == "Math" || category == "SWE" || category == "Reading", supportsMLStudy(title: title, text: text) {
-                return Decision(category: "AI", reason: "Visible ML/deep-learning study or research material", uncertain: false)
             }
             if category == "Math", showsMaterialCuriosity(title: title, text: text) {
                 return supportsEducationalReading(title: title, text: text)
@@ -261,7 +260,7 @@ public enum ScreenClassificationPolicy {
         let title = normalized(String(title.prefix(240)))
         let body = normalized(String(text.prefix(2400))).components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }.joined(separator: " ")
-        let domains = ["machine learning", "deep learning", "neural network", "backpropagation",
+        let domains = ["machine learning", "deep learning", "neural network", "backpropagation", "transformer",
                        "gradient descent", "self attention", "self-attention", "transformer architecture",
                        "convolutional network", "reinforcement learning", "loss function", "language model training",
                        "diffusion model", "variational autoencoder", "generative adversarial network",

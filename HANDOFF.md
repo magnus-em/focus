@@ -2,7 +2,12 @@
 
 Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-10-21 (Codex: YouTube focus guard in the Chrome extension).
+Last touched: 2026-10-21 (Codex: transformer course video AI-label correction).
+
+## Transformer course video label — 10/21 (Codex)
+
+- Prompt log and fresh `focus://screen-debug` showed the exact 3Blue1Brown “Attention in transformers · Deep Learning Chapter 6” page repeatedly labeled Leisure. One earlier correct AI classification was also delayed by the window anti-flapping hold.
+- Strict visible-ML evidence now resolves to AI before learned/cache/model/hysteresis paths. Exact screenshot regression covers model/learned/held Leisure labels; a Transformers movie trailer remains Leisure. Clean isolated FocusCore suite: 219 pass. Native commit/install details are in `WORK_LOG.md`.
 
 ## YouTube focus — 10/21 (Codex)
 
