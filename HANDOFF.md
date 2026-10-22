@@ -2,12 +2,14 @@
 
 Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-10-21 (Codex: transformer course video AI-label correction).
+Last touched: 2026-10-21 (Codex: deep-learning course AI-label corrections).
 
-## Transformer course video label — 10/21 (Codex)
+## Deep-learning course labels — 10/21 (Codex)
 
 - Prompt log and fresh `focus://screen-debug` showed the exact 3Blue1Brown “Attention in transformers · Deep Learning Chapter 6” page repeatedly labeled Leisure. One earlier correct AI classification was also delayed by the window anti-flapping hold.
-- Strict visible-ML evidence now resolves to AI before learned/cache/model/hysteresis paths. Exact screenshot regression covers model/learned/held Leisure labels; a Transformers movie trailer remains Leisure. Clean isolated FocusCore suite: 219 pass. Native commit/install details are in `WORK_LOG.md`.
+- A 3:09 PM follow-up then showed SWE: Chrome had shortened “Deep Learning” to “…earning”, defeating the remaining study-word check and rejecting even the user's learned “Still AI” label. Unambiguous attention/transformer title phrases now supply current ML evidence despite middle elision.
+- A 3:27 PM Chapter 7 page then exposed another title gap (`How might LLMs store…`, MLP/ReLU/weights and biases), and at 7:21 PM the prompt log showed the exact CPSC 7770 softmax/linear-attention slides repeatedly becoming Math after initially holding AI. Numbered deep-learning chapter titles, LLM questions and attention derivations now provide bounded deterministic evidence.
+- Strict visible-ML evidence resolves to AI before learned/cache/model/hysteresis paths. Exact regressions cover the bad Leisure, SWE and Math labels across model/learned/held sources; a Transformers movie trailer remains Leisure and a plain mathematical softmax derivation remains Math. Clean isolated FocusCore suite: 220 pass. Native commit/install details are in `WORK_LOG.md`.
 
 ## YouTube focus — 10/21 (Codex)
 

@@ -270,15 +270,27 @@ public enum ScreenClassificationPolicy {
                        "in-context learning", "meta-learning", "metalearning", "linear attention", "linear-attention", "pretraining",
                        "chain-of-thought", "chain of thought", "latent reasoning", "interpretability", "mech interp",
                        "hidden states", "scaling law", "rlhf", "fine-tuning", "next-token prediction", "scalable oversight",
-                       "sequence model", "state space model", "few-shot learning", "catastrophic forgetting"]
+                       "sequence model", "state space model", "few-shot learning", "catastrophic forgetting",
+                       "multilayer perceptron", "weights and biases"]
         let study = ["learn", "study", "research", "paper", "lecture", "tutorial", "derive", "derivation",
                      "explain", "understand", "notes", "course", "experiment", "implement", "train", "introduction"]
         let meta = ["focus app", "focuscore", "screen tracking", "screen watcher", "screenwatcher",
                     "activity tracking", "activity classifier", "classification policy", "dashboard",
                     "ai category", "ai means", "category means"]
-        let titleHasDomain = domains.contains { title.contains($0) }
+        let titleWords = title.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        let titleHasDomain = domains.contains { title.contains($0) } || titleWords.contains("llm") || titleWords.contains("llms")
         let titleIsMeta = meta.contains { title.contains($0) }
-        let subjectQuestion = ["what is ", "how does ", "how do ", "why "].contains { title.hasPrefix($0) }
+        let transformerAttentionTitle = ["attention in transformer", "transformer attention", "multi-head attention", "multihead attention"]
+            .contains { title.contains($0) }
+        let learningChapterTitle = title.range(
+            of: #"(?:deep |machine )?learning chapter [0-9]+|(?:…|\.\.\.)earning chapter [0-9]+"#,
+            options: .regularExpression
+        ) != nil
+        if (transformerAttentionTitle || learningChapterTitle) && !titleIsMeta { return true }
+        let subjectQuestion = title.range(
+            of: #"^(?:\([0-9]+\+?\)\s*)?(?:what is|how does|how do|how might|why)\b"#,
+            options: .regularExpression
+        ) != nil
         if titleHasDomain && !titleIsMeta && (domains.contains(title) || subjectQuestion || study.contains(where: { containsWordBeginning($0, in: title) })) {
             return true
         }
@@ -288,8 +300,16 @@ public enum ScreenClassificationPolicy {
         // A tracker discussing its model is evidence about building the tracker,
         // even when the discussion quotes the definition of the AI category.
         guard !meta.contains(where: { title.contains($0) || body.contains($0) }) else { return false }
-        let hits = domains.filter { body.contains($0) }.count
-        return hits >= 2 && study.contains { containsWordBeginning($0, in: title + " " + body) }
+        let hasStudyEvidence = study.contains { containsWordBeginning($0, in: title + " " + body) }
+        let strongBodyDomain = ["softmax attention", "linear attention", "linear-attention", "self attention", "self-attention",
+                                "multi-head attention", "multihead attention", "attention mechanism", "transformer architecture"]
+            .contains { body.contains($0) }
+            || body.contains("softmax") && body.contains("attention")
+        if strongBodyDomain && hasStudyEvidence { return true }
+        let bodyWords = body.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        let abbreviatedHits = ["relu", "mlp"].filter { bodyWords.contains($0) }.count
+        let hits = domains.filter { body.contains($0) }.count + abbreviatedHits
+        return hits >= 2 && hasStudyEvidence
     }
 
     private static func normalized(_ value: String) -> String {

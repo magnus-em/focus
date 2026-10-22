@@ -53,18 +53,47 @@ final class ScreenClassificationPolicyTests: XCTestCase {
     }
 
     func testTransformerCourseVideoOverridesLeisureAndOldHeldLabels() {
-        let title = "(605) Attention in transformers…p Learning Chapter 6 - YouTube"
-        let text = "Attention(Q, K, V) = softmax(KᵀQ) V\nAttention in transformers, step-by-step\n3Blue1Brown"
-        for source in [ScreenClassificationPolicy.Source.model, .learned, .held] {
-            let result = ScreenClassificationPolicy.evaluate(category: "Leisure", app: "Google Chrome",
-                                                              title: title, text: text, source: source)
-            XCTAssertEqual(result.category, "AI")
-            XCTAssertFalse(result.uncertain)
+        let pages = [
+            ("(605) Attention in transformers…p Learning Chapter 6 - YouTube",
+             "Attention(Q, K, V) = softmax(KᵀQ) V\nAttention in transformers, step-by-step\n3Blue1Brown", "Leisure"),
+            ("(606) Attention in transformers…earning Chapter 6 - YouTube 🔊",
+             "It's a lot to hold in your head!\nW(1) W(2) W(3)\nMultiple heads", "SWE"),
+            ("(606) How might LLMs store fac…earning Chapter 7 - YouTube 🔊",
+             "MLP\nLinear\nReLU\nWeights and biases", "SWE"),
+        ]
+        for (title, text, wrongCategory) in pages {
+            for source in [ScreenClassificationPolicy.Source.model, .learned, .held] {
+                let result = ScreenClassificationPolicy.evaluate(category: wrongCategory, app: "Google Chrome",
+                                                                  title: title, text: text, source: source)
+                XCTAssertEqual(result.category, "AI", title)
+                XCTAssertFalse(result.uncertain, title)
+            }
         }
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome",
             title: "(583) Saturday Night Live - YouTube 🔊", text: "Comedy sketch").category, "Leisure")
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Leisure", app: "Google Chrome",
             title: "Transformers movie trailer - YouTube", text: "Official movie trailer").category, "Leisure")
+    }
+
+    func testSoftmaxAttentionSlidesOverrideMathLabels() {
+        let text = """
+        Remember that I'm trying to get through this presentation just to inform my von Oswald presentation.
+        It starts by rewriting softmax attention in a general way. Kappa is the kernel, a score for how similar
+        this key and query are. The derivation regroups the numerator after replacing the attention function.
+        """
+        for source in [ScreenClassificationPolicy.Source.model, .learned, .held] {
+            let chat = ScreenClassificationPolicy.evaluate(category: "Math", app: "Claude",
+                title: "Session 4 Q&A tutor", text: text, source: source)
+            XCTAssertEqual(chat.category, "AI")
+            XCTAssertFalse(chat.uncertain)
+
+            let slides = ScreenClassificationPolicy.evaluate(category: "Math", app: "Preview",
+                title: "CPSC7770-Fall2026-Session04-slides_v2.pdf", text: text, source: source)
+            XCTAssertEqual(slides.category, "AI")
+            XCTAssertFalse(slides.uncertain)
+        }
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Preview",
+            title: "analysis.pdf", text: "Derive the softmax function and prove its Jacobian.").category, "Math")
     }
 
     func testOldLearnedAndHeldAILabelsNeedFreshEvidence() {
