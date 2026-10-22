@@ -374,6 +374,33 @@ final class SocialFeedPolicyTests: XCTestCase {
             text: "This article explains the history of the chip because engineers wanted for example faster math").category, "Reading")
     }
 
+    func testOctober21CareerChatsYouTubeHomeAndCourseFiles() {
+        let career = ScreenClassificationPolicy.evaluate(category: "AI", app: "Claude", title: "Threads > Von Oswald paper walkthrough",
+            text: "what stuff does he resaerch that i could get involved with that meta superintel labs would find the most employable\n"
+                + "Good question. I'Il check what Meta Superintelligence Labs is hiring for now, then map it onto Irie's research.\n"
+                + "1. Hybrid fast-weight + attention models. softmax attention recalls precisely; the delta rule from Session 4 handles long sequences. "
+                + "2. Mixture-of-experts efficiency. SwitchHead applies experts to attention.")
+        XCTAssertNil(career.category)
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "AI", app: "Claude", title: "Threads > MLresearch pay outlook",
+            text: "Self-reported entry-level totals on levels.fyi are about $370K. Anthropic currently has no new-grad program. "
+                + "Code that plugs into flash-linear-attention, an open-source library for linear-attention models. Learn systems engineering.").category)
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "AI", app: "Claude", title: "Session 4 Q&A tutor",
+            text: "returns. That correction is exactly the error term in gradient descent. Improved Update Rule & DeltaNet. "
+                + "DeltaNet replaces the purely additive rule with an improved rule. Extra scalar = dynamic learning rate").category, "AI")
+
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "AI", app: "Google Chrome", title: "(607) YouTube",
+            text: "Attention in transformers | Deep Learning Chapter 6 3Blue1Brown. How might LLMs store facts").category, "Leisure")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "AI", app: "Google Chrome",
+            title: "(606) Attention in transformers…earning Chapter 6 - YouTube", text: "").category, "AI")
+
+        let files = ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome", title: "Files",
+            text: "All My Files\nCPSC 7770 01 (FA26): Advanced Topics in Deep Learning: General-Purpose Sequence Process... › Presentation_slides\n"
+                + "CPSC7770-Fall2026-Session04-slides_v2.pdf Kazuki Irie")
+        XCTAssertEqual(files.category, "AI")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome", title: "Files",
+            text: "All My Files\nMATH 244 Discrete Mathematics › Problem sets\npset6.pdf").category, "Math")
+    }
+
     func testTitleSubjectDropsCountersAndSiteSuffix() {
         XCTAssertEqual(LearnedTitlePolicy.subject("Inbox (2,634) - magnus.melbourn…ale.edu - Yale University Mail"), "inbox")
         XCTAssertEqual(LearnedTitlePolicy.subject("magnus resume - magnus.melbour…le.edu - yale university mail"), "magnus resume")

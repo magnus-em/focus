@@ -34,6 +34,10 @@ public enum ScreenClassificationPolicy {
         if isPlaceholderPage(app: app, title: title) {
             return Decision(category: nil, reason: "An empty tab or block page does not show the task", uncertain: true)
         }
+        // 10/21: the YouTube home feed was AI because its recommendations listed deep-learning videos.
+        if isYouTubeHome(title: title) {
+            return Decision(category: "Leisure", reason: "The YouTube home feed", uncertain: false)
+        }
         // 10/21: the model repeatedly called 3Blue1Brown's "Attention in transformers ·
         // Deep Learning Chapter 6" video Leisure, even with the attention equation visible.
         if supportsMLStudy(title: title, text: text) {
@@ -195,7 +199,20 @@ public enum ScreenClassificationPolicy {
 
     public static func isVideo(title: String) -> Bool {
         let title = normalized(String(title.prefix(240))).trimmingCharacters(in: CharacterSet.alphanumerics.union(.punctuationCharacters).inverted)
-        return title.hasSuffix("- youtube") || title.range(of: #"^(\(\d+\+?\) )?youtube$"#, options: .regularExpression) != nil
+        return title.hasSuffix("- youtube") || isYouTubeHome(title: title)
+    }
+
+    public static func isYouTubeHome(title: String) -> Bool {
+        let title = normalized(String(title.prefix(240))).trimmingCharacters(in: CharacterSet.alphanumerics.union(.punctuationCharacters).inverted)
+        return title.range(of: #"^(\(\d+\+?\) )?youtube$"#, options: .regularExpression) != nil
+    }
+
+    // 10/21: career questions in an ML paper chat ("what research would Meta Superintelligence Labs
+    // find most employable", "ML research pay outlook") were AI and drew six cards; all kept Leisure.
+    private static func showsCareerTalk(_ page: String) -> Bool {
+        let marks = ["employable", "hiring", "levels.fyi", "new-grad", "new grad", "salary", "salaries", "compensation",
+                     "job offer", "full-time offer", "recruiter", "pay outlook", "total comp", "interview loop"]
+        return marks.filter(page.contains).count >= 2
     }
 
     public static func isSearchResults(title: String) -> Bool {
@@ -271,7 +288,8 @@ public enum ScreenClassificationPolicy {
                        "chain-of-thought", "chain of thought", "latent reasoning", "interpretability", "mech interp",
                        "hidden states", "scaling law", "rlhf", "fine-tuning", "next-token prediction", "scalable oversight",
                        "sequence model", "state space model", "few-shot learning", "catastrophic forgetting",
-                       "multilayer perceptron", "weights and biases"]
+                       "multilayer perceptron", "weights and biases", "deltanet", "delta rule", "delta-rule",
+                       "fast weight", "fast-weight", "kv cache", "mixture of experts", "mixture-of-experts"]
         let study = ["learn", "study", "research", "paper", "lecture", "tutorial", "derive", "derivation",
                      "explain", "understand", "notes", "course", "experiment", "implement", "train", "introduction"]
         let meta = ["focus app", "focuscore", "screen tracking", "screen watcher", "screenwatcher",
@@ -301,6 +319,7 @@ public enum ScreenClassificationPolicy {
         // A tracker discussing its model is evidence about building the tracker,
         // even when the discussion quotes the definition of the AI category.
         guard !meta.contains(where: { title.contains($0) || body.contains($0) }) else { return false }
+        guard !showsCareerTalk(title + " " + body) else { return false }
         let hasStudyEvidence = study.contains { containsWordBeginning($0, in: title + " " + body) }
         let strongBodyDomain = ["softmax attention", "linear attention", "linear-attention", "self attention", "self-attention",
                                 "multi-head attention", "multihead attention", "attention mechanism", "transformer architecture"]
@@ -312,7 +331,9 @@ public enum ScreenClassificationPolicy {
         if keyValueMemoryStudy && hasStudyEvidence { return true }
         let bodyWords = body.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
         let abbreviatedHits = ["relu", "mlp"].filter { bodyWords.contains($0) }.count
-        let hits = domains.filter { body.contains($0) }.count + abbreviatedHits
+        // 10/21: the CPSC 7770 Canvas Files page ("Advanced Topics in Deep Learning") was Math.
+        let courseHit = body.range(of: #"\bcpsc\s*7770\b"#, options: .regularExpression) != nil ? 1 : 0
+        let hits = domains.filter { body.contains($0) }.count + abbreviatedHits + courseHit
         return hits >= 2 && hasStudyEvidence
     }
 
