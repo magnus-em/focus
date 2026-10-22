@@ -282,11 +282,12 @@ public enum ScreenClassificationPolicy {
         let titleIsMeta = meta.contains { title.contains($0) }
         let transformerAttentionTitle = ["attention in transformer", "transformer attention", "multi-head attention", "multihead attention"]
             .contains { title.contains($0) }
+        let knownMLCourseTitle = title.range(of: #"\bcpsc\s*7770\b"#, options: .regularExpression) != nil
         let learningChapterTitle = title.range(
             of: #"(?:deep |machine )?learning chapter [0-9]+|(?:…|\.\.\.)earning chapter [0-9]+"#,
             options: .regularExpression
         ) != nil
-        if (transformerAttentionTitle || learningChapterTitle) && !titleIsMeta { return true }
+        if (transformerAttentionTitle || knownMLCourseTitle || learningChapterTitle) && !titleIsMeta { return true }
         let subjectQuestion = title.range(
             of: #"^(?:\([0-9]+\+?\)\s*)?(?:what is|how does|how do|how might|why)\b"#,
             options: .regularExpression
@@ -306,6 +307,9 @@ public enum ScreenClassificationPolicy {
             .contains { body.contains($0) }
             || body.contains("softmax") && body.contains("attention")
         if strongBodyDomain && hasStudyEvidence { return true }
+        let keyValueMemoryStudy = body.contains("outer product") && body.contains("memory")
+            && containsWordBeginning("key", in: body) && containsWordBeginning("value", in: body)
+        if keyValueMemoryStudy && hasStudyEvidence { return true }
         let bodyWords = body.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
         let abbreviatedHits = ["relu", "mlp"].filter { bodyWords.contains($0) }.count
         let hits = domains.filter { body.contains($0) }.count + abbreviatedHits

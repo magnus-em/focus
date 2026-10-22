@@ -96,6 +96,23 @@ final class ScreenClassificationPolicyTests: XCTestCase {
             title: "analysis.pdf", text: "Derive the softmax function and prove its Jacobian.").category, "Math")
     }
 
+    func testCoursePrerequisiteSlidesStayWithDeepLearningContext() {
+        let reminder = """
+        Please walk me through these reminders and explain why they're relevant.
+        The outer product stores a value under the label key. Multiplying by the key retrieves the value,
+        so the rank-one matrix acts like one piece of memory.
+        """
+        for source in [ScreenClassificationPolicy.Source.model, .learned, .held] {
+            XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Preview",
+                title: "CPSC7770-Fall2026-Session04-slides_v2.pdf", text: "Before that: reminder about the outer product",
+                source: source).category, "AI")
+            XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Claude",
+                title: "Session 4 Q&A tutor", text: reminder, source: source).category, "AI")
+        }
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Preview",
+            title: "Linear algebra notes", text: "Explain the outer product of vectors x and y.").category, "Math")
+    }
+
     func testOldLearnedAndHeldAILabelsNeedFreshEvidence() {
         for source in [ScreenClassificationPolicy.Source.learned, .held] {
             let result = ScreenClassificationPolicy.evaluate(category: "AI", app: "Claude",
