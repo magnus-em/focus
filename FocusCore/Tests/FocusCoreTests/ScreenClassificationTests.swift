@@ -268,6 +268,17 @@ final class SocialFeedPolicyTests: XCTestCase {
             text: "CS Systems Deep Learning Discrete Math").category)
     }
 
+    func testCodeEditorNeedsASourceFileForSWE() {
+        for title in ["Visual Studio Code", "Presentation", "von_oswald_review.md — Presentation", "● notes.txt — hw"] {
+            XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Code", title: title,
+                text: "Explorer\npaper1_von_Oswald_2023.pdf\npaper2_Garg_2022.pdf").category, title)
+        }
+        for title in ["main.c — pset3", "● server.py — api", "Solution.java"] {
+            XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Code", title: title, text: "").category, "SWE", title)
+        }
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Code", title: "hw1.ipynb — Math", text: "").category, "Math")
+    }
+
     func testCodeThreadsStaySWEAndOldFeedReadingNeedsFreshLabel() {
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Google Chrome",
             title: "POSIX threads tutorial", text: "pthread_create").category, "SWE")

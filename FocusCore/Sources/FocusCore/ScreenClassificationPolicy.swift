@@ -80,6 +80,11 @@ public enum ScreenClassificationPolicy {
             if isVideoCall(app: app) {
                 return Decision(category: nil, reason: "A call window does not show what the call is about", uncertain: true)
             }
+            // 10/22: VS Code with no folder open, then a review of in-context-learning papers
+            // (von_oswald_review.md beside paper PDFs), was SWE: "Code editor interface visible."
+            if category == "SWE", isCodeEditor(app: app), !editsSourceFile(title: title) {
+                return Decision(category: nil, reason: "A code editor without a source file open does not show coding", uncertain: true)
+            }
             if category == "Math", showsMaterialCuriosity(title: title, text: text) {
                 return supportsEducationalReading(title: title, text: text)
                     ? Decision(category: "Reading", reason: "An educational explainer, without mathematics or coursework", uncertain: false)
@@ -222,6 +227,21 @@ public enum ScreenClassificationPolicy {
 
     public static func isVideoCall(app: String) -> Bool {
         ["zoom", "zoom.us", "zoom workplace", "facetime", "microsoft teams", "webex"].contains(normalized(app))
+    }
+
+    public static func isCodeEditor(app: String) -> Bool {
+        ["code", "visual studio code", "cursor", "zed", "sublime text", "windsurf", "nova", "bbedit"].contains(normalized(app))
+    }
+
+    /// Editors title windows "file — workspace"; a bare workspace, the app name or a
+    /// prose document (notes, a paper, a review) is not source code.
+    public static func editsSourceFile(title: String) -> Bool {
+        let file = normalized(title).components(separatedBy: " — ").first?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "● ").union(.whitespaces)) ?? ""
+        guard let dot = file.lastIndex(of: "."), dot != file.startIndex else { return false }
+        let ext = String(file[file.index(after: dot)...])
+        guard !ext.isEmpty, ext.count <= 6, ext.allSatisfy({ $0.isLetter || $0.isNumber }) else { return false }
+        return !["md", "markdown", "txt", "rtf", "pdf", "docx", "doc", "tex", "bib", "csv", "log"].contains(ext)
     }
 
     private static let browsers = ["google chrome", "safari", "arc", "firefox", "microsoft edge", "brave browser", "chromium"]
