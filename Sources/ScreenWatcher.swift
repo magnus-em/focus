@@ -145,7 +145,21 @@ final class ScreenWatcher: ObservableObject {
     private var lastSampleAt = Date.distantPast
     private var lastSampled = ""
     private var titleWatch: Timer?
+    private var lastSeenTitle = ""
     private var otherScreensReadAt: [String: Date] = [:]
+    private struct Read {
+        let fingerprint: [UInt8]
+        let width: Int, height: Int
+        let skipTop: CGFloat, includeSidebar: Bool
+        let result: (text: String, fullText: String, header: String?)
+        let at: Date
+        var imageID: UUID?
+    }
+    /// Last OCR per window. A window that hasn't visibly changed reuses it for
+    /// up to `readReuseSeconds`: Vision's accurate pass on every 3600px capture
+    /// kept a core busy all day (10/22: load average 112, beach balls).
+    private var lastRead: [CGWindowID: Read] = [:]
+    private static let readReuseSeconds: TimeInterval = 60
     private var activationObserver: NSObjectProtocol?
     /// Study notes per activity block, keyed by block start.
     @Published private(set) var activityNotes: [Date: ActivityNotes] = [:]
@@ -218,13 +232,18 @@ final class ScreenWatcher: ObservableObject {
         }
         Task { await pollDevices() }
         // A new tab or document in the same app doesn't activate anything;
-        // window titles are cheap to read, so check them between ticks.
+        // window titles are cheap to read, so check them between ticks. Only
+        // a title that held for one check counts: spinners and streaming
+        // output in terminal/agent titles change every second and kept a full
+        // capture running every 4s.
         titleWatch = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self, !self.busy, Date().timeIntervalSince(self.lastSampleAt) > 4,
-                      let app = NSWorkspace.shared.frontmostApplication, let bundle = app.bundleIdentifier,
-                      let title = Self.frontTitle(pid: app.processIdentifier),
-                      "\(bundle)|\(title)" != self.lastSampled else { return }
+                guard let self, let app = NSWorkspace.shared.frontmostApplication, let bundle = app.bundleIdentifier,
+                      let title = Self.frontTitle(pid: app.processIdentifier) else { return }
+                let seen = "\(bundle)|\(title)"
+                defer { self.lastSeenTitle = seen }
+                guard !self.busy, Date().timeIntervalSince(self.lastSampleAt) > 4,
+                      seen == self.lastSeenTitle, seen != self.lastSampled else { return }
                 await self.sample()
             }
         }
@@ -421,9 +440,22 @@ final class ScreenWatcher: ObservableObject {
         let skip = Self.chromeFraction(shot, bundle: bundle)
         stage = "Reading text in \(appName)"
         let includeSidebar = !Self.chatApps.contains(bundle)
-        let read = await Task.detached(priority: .utility) {
-            Self.recognize(shot.image, skipTop: skip, includeSidebar: includeSidebar)
-        }.value
+        let print = await Task.detached(priority: .utility) { Self.fingerprint(shot.image) }.value
+        let reused = lastRead[shot.windowID].flatMap { r in
+            r.width == shot.image.width && r.height == shot.image.height && r.skipTop == skip
+                && r.includeSidebar == includeSidebar && now.timeIntervalSince(r.at) < Self.readReuseSeconds
+                && Self.looksSame(r.fingerprint, print) ? r : nil
+        }
+        let read = if let reused { reused.result } else {
+            await Task.detached(priority: .utility) {
+                Self.recognize(shot.image, skipTop: skip, includeSidebar: includeSidebar)
+            }.value
+        }
+        if reused == nil {
+            lastRead = lastRead.filter { now.timeIntervalSince($0.value.at) < Self.readReuseSeconds }
+            lastRead[shot.windowID] = Read(fingerprint: print, width: shot.image.width, height: shot.image.height,
+                                           skipTop: skip, includeSidebar: includeSidebar, result: read, at: now)
+        }
         let text = read.text
         guard canRecordSample(generation: generation, bundle: bundle) else { return }
         var title = shot.title
@@ -431,7 +463,13 @@ final class ScreenWatcher: ObservableObject {
            !Self.isGeneric(title: h, app: appName) {
             title = canonicalChatTitle(h, bundle: bundle)
         }
-        let imageID = await ScreenEvidenceStore.shared.record(image: shot.image, at: now, bundle: bundle, title: title)
+        let imageID: UUID?
+        if let id = reused?.imageID, ScreenEvidenceStore.shared.enabled, !ScreenEvidenceStore.shared.deleting {
+            imageID = id
+        } else {
+            imageID = await ScreenEvidenceStore.shared.record(image: shot.image, at: now, bundle: bundle, title: title)
+            if let imageID, lastRead[shot.windowID]?.at == (reused?.at ?? now) { lastRead[shot.windowID]?.imageID = imageID }
+        }
         guard canRecordSample(generation: generation, bundle: bundle) else { return }
         // The Chrome extension knows the tab's address; the picture doesn't.
         var url: String?
@@ -529,6 +567,7 @@ final class ScreenWatcher: ObservableObject {
         samples.removeAll()
         taskContext.clear()
         cache.removeAll()
+        lastRead.removeAll()
     }
 
     func save() {
@@ -815,6 +854,31 @@ final class ScreenWatcher: ObservableObject {
             contentFilter: SCContentFilter(desktopIndependentWindow: window), configuration: config
         ) else { return nil }
         return Shot(image: image, title: window.title ?? fallbackTitle, heightPoints: window.frame.height, windowID: id)
+    }
+
+    /// 96×96 grayscale thumbnail, enough to tell whether a window changed.
+    nonisolated private static func fingerprint(_ image: CGImage) -> [UInt8] {
+        let side = 96
+        var px = [UInt8](repeating: 0, count: side * side)
+        px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side,
+                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return }
+            ctx.interpolationQuality = .high
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
+        }
+        return px
+    }
+
+    /// A blinking caret or one typed character moves a cell or two; new
+    /// text, scrolling or a page change moves many.
+    nonisolated static func looksSame(_ a: [UInt8], _ b: [UInt8]) -> Bool {
+        guard a.count == b.count else { return false }
+        var changed = 0
+        for i in a.indices where abs(Int(a[i]) - Int(b[i])) > 12 {
+            changed += 1
+            if changed > 2 { return false }
+        }
+        return true
     }
 
     nonisolated private static func recognizeText(_ image: CGImage, skipTop: CGFloat = 0) -> String {
@@ -1324,6 +1388,10 @@ final class ScreenCoach {
         if let until = snoozed[run.category], until > Date() {
             return say("\(run.category) snoozed until \(until.formatted(date: .omitted, time: .shortened)) (you said Still)")
         }
+        let declineKey = declineKey(run.category, running: running)
+        if stopAsking.contains(declineKey) {
+            return say("Not asking about \(run.category) again during this \(running ?? "stretch"): you said no twice")
+        }
         if run.projectAdmin {
             say("Switched to Admin: your Focus project rule")
             if let from = running { return autoSwitch(from: from, to: run) }
@@ -1383,13 +1451,13 @@ final class ScreenCoach {
                 let keys = run.keys.filter { k in !ScreenWatcher.chatApps.contains { k.hasPrefix($0 + "|") } }
                 ScreenWatcher.learn(keys, as: running)
             }
-            self.decline(run.category)
+            self.decline(run.category, key: declineKey)
         }
         panel.show(m)
         let close = m.onClose
         m.onClose = { [weak self] in
             PromptLog.answer(logID, "closed")
-            self?.decline(run.category)
+            self?.decline(run.category, key: declineKey)
             close?()
         }
     }
@@ -1550,8 +1618,26 @@ final class ScreenCoach {
         }
     }
 
-    private func decline(_ category: String) {
+    /// Two noes to the same suggestion in one tracked block and it stops
+    /// asking until you switch (10/22: "Looks like Math" nine times in an hour
+    /// over CPSC 7770 slides, every one answered Still AI). Persisted, so a
+    /// relaunch mid-block doesn't start over.
+    private var declinedOnce = loadClassKeys("screenDeclinedOnce") {
+        didSet { Self.saveClassKeys(declinedOnce, "screenDeclinedOnce") }
+    }
+    private var stopAsking = loadClassKeys("screenStopAsking") {
+        didSet { Self.saveClassKeys(stopAsking, "screenStopAsking") }
+    }
+
+    private func declineKey(_ category: String, running: String?) -> String {
+        let blockStart = timer.isActive ? timer.sessionStartTime : nil
+        let start = blockStart ?? Calendar.current.startOfDay(for: Date())
+        return "\(running ?? "")|\(category)@\(Int(start.timeIntervalSince1970))"
+    }
+
+    private func decline(_ category: String, key: String) {
         snoozed[category] = Date().addingTimeInterval(settings.screenEverySwitch ? 120 : 20 * 60)
+        if declinedOnce.contains(key) { stopAsking.insert(key) } else { declinedOnce.insert(key) }
         Self.bump(Self.declinedKey)
         panel.dismiss()
     }
