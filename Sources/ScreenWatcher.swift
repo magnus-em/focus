@@ -1284,6 +1284,7 @@ final class ScreenCoach {
         /// Every snapshot's label came from your own answers.
         let trusted: Bool
         let projectAdmin: Bool
+        let inChat: Bool
     }
 
     /// The model labeled the window, or you did earlier: your own label needs
@@ -1301,6 +1302,7 @@ final class ScreenCoach {
         var keyCounts: [String: Int] = [:]
         var allLearned = true
         var allProjectAdmin = c == "Admin"
+        var allChat = true
         var newer = last.date
         for s in samples.reversed() {
             if newer.timeIntervalSince(s.date) > 60 { break }
@@ -1313,6 +1315,7 @@ final class ScreenCoach {
                 if !ScreenWatcher.isGeneric(title: s.title, app: s.app) { keyCounts[s.memoryKey, default: 0] += 1 }
                 allLearned = allLearned && s.learned
                 allProjectAdmin = allProjectAdmin && s.source == "rule"
+                allChat = allChat && ScreenWatcher.chatApps.contains(s.bundleID)
             } else {
                 missStreak += 1
                 if missStreak >= 2 { total -= 2; break }
@@ -1331,7 +1334,7 @@ final class ScreenCoach {
         // (10/13: accepting Math taught this Claude chat "Math").
         let keys = Set(keyCounts.filter { $0.value >= 2 && Double($0.value) >= Double(hits) * 0.25 }.keys)
         return Run(category: c, start: start, keys: keys, summary: last.summary,
-                   trusted: allLearned, projectAdmin: allProjectAdmin)
+                   trusted: allLearned, projectAdmin: allProjectAdmin, inChat: allChat)
     }
 
     /// Plain-language reason no card fired, from the recent snapshots.
@@ -1402,6 +1405,10 @@ final class ScreenCoach {
         // Reading/Admin cards after midnight, none taken). Work still asks.
         if let running, ScreenWatcher.offScreenCategories.contains(running), FocusCategories.isLife(run.category) {
             return say("During \(running), only focus work gets a card")
+        }
+        // 10/23: a ChatGPT chat on C++ syntax ("Find a faster approach") was SWE mid-LeetCode.
+        if running == FocusCategories.leetCode, run.category == "SWE", run.inChat {
+            return say("Coding help in a chat is part of LeetCode practice")
         }
         // Focus → focus on windows you've labeled yourself: just switch, with
         // Undo. Anything involving a life category stays a question.

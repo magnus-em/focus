@@ -56,6 +56,11 @@ public enum ScreenClassificationPolicy {
             if isSocialFeed(title: title), category != nil, category != "Leisure" {
                 return Decision(category: "Leisure", reason: "A social media feed", uncertain: false)
             }
+            // 10/23: OpenAI's "Dreaming: Better memory for a more helpful ChatGPT" post was Admin mid-LeetCode.
+            if category == "Admin", browsers.contains(normalized(app)), assistantBrands.contains(where: normalized(title).contains),
+               !["billing", "account", "settings", "invoice", "api key", "usage"].contains(where: normalized(title).contains) {
+                return Decision(category: nil, reason: "A page about an AI assistant is not an errand or Focus-project work", uncertain: true)
+            }
             // 10/14: YouTube clips (SNL, tech interviews) were called Admin.
             if category == "Admin", isVideo(title: title) {
                 return Decision(category: "Leisure", reason: "A video is not an errand", uncertain: false)
@@ -127,6 +132,11 @@ public enum ScreenClassificationPolicy {
         let generic = ["", app, "chatgpt", "claude", "codex", "new chat", "new conversation", "untitled", "chat"].contains(title)
         guard assistant && generic else { return false }
         var content = normalized(String(text.prefix(2400)))
+        // 10/23: ChatGPT's home ("What should we work on?") lists its own suggestions
+        // ("Your 3231 PSET 6 deadlines…"); the model called that Admin mid-LeetCode.
+        let home = ["what should we work on", "what's on your mind", "where should we begin", "ready when you are",
+                    "how can i help you today"]
+        if home.contains(where: content.contains) { return true }
         let boilerplate = ["what should we work on", "how can i help you", "how can i help", "ask anything",
                            "type a message", "send a message", "new chat", "start a new conversation", "new conversation", "start a conversation",
                            "search chats", "temporary chat", "chatgpt", "claude", "codex"]
@@ -142,15 +152,17 @@ public enum ScreenClassificationPolicy {
         let markers = ["focus app", "focus project", "focuscore", "screenwatcher.swift", "dashboardview.swift", "code/focus",
                        "focus logo", "focus icon", "focus-logo", "logo ideas for focus", "logo for focus", "icon for focus"]
         if title == "focus" || markers.contains(where: { title.contains($0) }) { return true }
-        let project = markers.contains {
-            title.contains($0) || body.contains($0)
-        }
-        guard project else { return false }
         let development = ["improve", "build", "implement", "redesign", "refactor", "debug", "develop", "review the codebase",
                            "install", "settings", "configure", "roadmap", "category", "work on", "working on",
                            "logo", "icon", "menu bar"]
-        return development.contains { body.contains($0) || title.contains($0) }
+        // Marker and development word on one line: 10/23 a chat named "find focus app vision"
+        // in ChatGPT's recents plus "What should we work on?" made three unrelated chats Admin.
+        return body.components(separatedBy: "\n").contains { line in
+            markers.contains(where: line.contains) && development.contains(where: line.contains)
+        }
     }
+
+    private static let assistantBrands = ["chatgpt", "openai", "claude", "anthropic", "codex"]
 
     public static func isLeetCodePractice(title: String, url: String? = nil) -> Bool {
         if let host = url.flatMap({ URL(string: $0)?.host?.lowercased() }),

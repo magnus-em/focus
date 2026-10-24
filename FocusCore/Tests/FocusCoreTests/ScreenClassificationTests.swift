@@ -419,4 +419,24 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertEqual(LearnedTitlePolicy.subject("MATH 244 problem set 6"), "math 244 problem set 6")
         XCTAssertEqual(LearnedTitlePolicy.subject("X - Home"), "x - home")
     }
+
+    func testChatGPTHomeWithItsOwnSuggestionsIsEmpty() {
+        let text = "Work\nChat\nWhat should we work on?\nWork with ChatGPT\nYour probabilistic-programming quiz is Oct 29. Drill retrieval now\nYour 3231 PSET 6 deadlines are Oct 27 and Oct 29. Finish the linker work"
+        let result = ScreenClassificationPolicy.evaluate(category: "Admin", app: "ChatGPT", title: "ChatGPT", text: text)
+        XCTAssertNil(result.category)
+        XCTAssertTrue(result.uncertain)
+    }
+
+    func testFocusChatNameInRecentsIsNotFocusProjectWork() {
+        let text = "Find a faster approach\nfind focus app vision\nexplain row-matrix-column\nWhat should we work on?\nFor vectors, recognize these three signatures"
+        XCTAssertFalse(ScreenClassificationPolicy.isFocusProjectWork(title: "Find a faster approach", text: text))
+        XCTAssertTrue(ScreenClassificationPolicy.isFocusProjectWork(title: "App planning", text: "Notes\nImprove the Focus app dashboard"))
+    }
+
+    func testArticleAboutAnAssistantIsNotAdmin() {
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome",
+            title: "Dreaming: Better memory for a more helpful ChatGPT | OpenAI", text: "Memory in ChatGPT").category)
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome",
+            title: "Billing - OpenAI Platform", text: "Invoices").category, "Admin")
+    }
 }
