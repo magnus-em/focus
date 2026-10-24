@@ -56,7 +56,8 @@ $('saveLater').onclick = async () => {
   } else {
     $('saveLater').disabled = false;
     $('saveLater').textContent = 'Try again';
-    note.textContent = (res && res.error) || 'Couldn\'t save it.';
+    note.textContent = res ? res.error || 'Couldn\'t save it.'
+      : 'Chrome is still running the old Focus extension. Reload it at chrome://extensions, then try again.';
   }
 };
 
