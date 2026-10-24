@@ -297,8 +297,26 @@ final class LeetCodeStore: ObservableObject {
         return true
     }
 
-    func hasPractice(slug: String, on date: Date) -> Bool {
-        practice.sessions.contains { $0.slug == slug && ($0.id == practice.activeID || Calendar.current.isDate($0.finishedAt ?? $0.startedAt, inSameDayAs: date)) }
+    func practiceDraft(slug: String) -> LeetCodePracticeState.Session? {
+        practice.sessions.last { $0.slug == slug && $0.outcome == .draft }
+    }
+
+    func practiceLogged(slug: String, on date: Date) -> Bool {
+        practice.sessions.contains { $0.slug == slug && $0.outcome != .draft && Calendar.current.isDate($0.finishedAt ?? $0.startedAt, inSameDayAs: date) }
+    }
+
+    /// An Accepted submission confirmed from the corner card closes the timed draft for that problem.
+    /// The LeetCode timer keeps running: the next problem page starts its own draft.
+    func confirmPracticeSolve(id: UUID, confidence: Confidence, usedHelp: Bool, minutes: Int?, notes: String) -> Bool {
+        guard finishingPractice?.id != id else { return false }
+        refreshPractice()
+        guard let session = practice.prepareLog(id: id, at: Date()) else { return false }
+        let p = problem(for: session)
+        let details = LeetCodeLogDetails(title: session.title, difficulty: p.difficulty, categories: p.categories, solved: true,
+                                         confidence: confidence, minutes: minutes ?? session.minutes, usedHelp: usedHelp, notes: notes)
+        guard completePractice(session, details: details) else { savePractice(); return false }
+        refreshPractice(forceSave: true)
+        return true
     }
 
     // MARK: - Logging

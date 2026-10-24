@@ -9,6 +9,7 @@ final class LeetCodeSolveDraftStore: ObservableObject {
         let candidate: LeetCodeSolveEvidence.Candidate
         let problem: LCProblem
         let minutes: Int?
+        let practiceID: UUID?
     }
     private static weak var visible: LeetCodeSolveDraftStore?
     nonisolated static var isShowing: Bool { MainActor.assumeIsolated { visible?.panel != nil } }
@@ -37,10 +38,11 @@ final class LeetCodeSolveDraftStore: ObservableObject {
               seen[candidate.dailyKey] == nil, !pending.contains(where:{$0.candidate.dailyKey == candidate.dailyKey}),
               current?.candidate.dailyKey != candidate.dailyKey,
               !store.today.contains(where:{$0.problem.slug == candidate.slug}),
-              !store.hasPractice(slug: candidate.slug, on: candidate.observedAt),
+              !store.practiceLogged(slug: candidate.slug, on: candidate.observedAt),
               let problem = store.catalog.problem(slug:candidate.slug), pending.count < 5 else { return }
-        let minutes = store.elapsedMinutes(for: problem)
-        pending.append(Draft(candidate:candidate,problem:problem,minutes:minutes))
+        let draft = store.practiceDraft(slug: candidate.slug)
+        let minutes = draft?.minutes ?? store.elapsedMinutes(for: problem)
+        pending.append(Draft(candidate:candidate,problem:problem,minutes:minutes,practiceID:draft?.id))
         showNext()
     }
     private func showNext() {
@@ -68,8 +70,13 @@ final class LeetCodeSolveDraftStore: ObservableObject {
     func confirm(confidence: Confidence, usedHelp: Bool) {
         guard let store, let current, Calendar.current.isDateInToday(current.candidate.observedAt) else { dismiss(); return }
         guard !store.today.contains(where:{$0.problem.slug == current.problem.slug}) else { dismiss(); return }
-        guard store.log(current.problem,confidence:confidence,minutes:current.minutes,usedHelp:usedHelp,
-            notes:"Confirmed from Accepted submission \(current.candidate.submissionID).",at:current.candidate.observedAt) else {
+        let notes = "Confirmed from Accepted submission \(current.candidate.submissionID)."
+        let saved = if let id = current.practiceID, store.practiceDraft(slug: current.problem.slug)?.id == id {
+            store.confirmPracticeSolve(id:id,confidence:confidence,usedHelp:usedHelp,minutes:current.minutes,notes:notes)
+        } else {
+            store.log(current.problem,confidence:confidence,minutes:current.minutes,usedHelp:usedHelp,notes:notes,at:current.candidate.observedAt)
+        }
+        guard saved else {
             error = "Couldn't save the solve. Try again."
             DispatchQueue.main.async { [weak self] in
                 guard let self, let panel = self.panel, let view = panel.contentView else { return }
@@ -127,7 +134,7 @@ struct LeetCodeSolveDraftCard: View {
             Text(title).font(.system(size:14,weight:.semibold)).lineLimit(2)
             Text("Accepted submission spotted. Confirm only if you solved this today.")
                 .font(.system(size:12)).foregroundStyle(Color.secondaryText)
-            Text(minutes.map { "\($0) min from your LeetCode stopwatch" } ?? "Solve time: unknown")
+            Text(minutes.map { "\($0) min working on it" } ?? "Solve time: unknown")
                 .font(.system(size:12)).foregroundStyle(Color.secondaryText)
             Text("How did it feel?").font(.system(size:12)).foregroundStyle(Color.secondaryText)
             HStack(spacing:8) {
