@@ -394,6 +394,49 @@ function flush() {
   });
 }
 
+// MARK: - Read later
+
+// The app holds the Readwise token and the local record; if it's down the save
+// waits here and goes on the next tick.
+async function postReadLater(item) {
+  const r = await fetch(API + '/reader', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item),
+    signal: AbortSignal.timeout(25000),
+  });
+  if (!r.ok) throw new Error('reader ' + r.status);
+  return r.json();
+}
+
+async function readLater(url) {
+  const item = { url, title: '', source: 'blocked' };
+  try {
+    return await postReadLater(item);
+  } catch {
+    await serial(async () => {
+      const { readerQueue = [] } = await local.get('readerQueue');
+      if (!readerQueue.some((q) => q.url === url)) readerQueue.push(item);
+      await local.set({ readerQueue: readerQueue.slice(-500) });
+    });
+    return { status: 'queued', reason: 'Focus isn\'t running; it goes to Reader when Focus is back.' };
+  }
+}
+
+async function flushReadLater() {
+  const { readerQueue = [] } = await local.get('readerQueue');
+  if (!readerQueue.length) return;
+  const sent = new Set();
+  for (const item of readerQueue) {
+    try { await postReadLater(item); sent.add(item.url); } catch { break; }
+  }
+  if (!sent.size) return;
+  await serial(async () => {
+    const { readerQueue: latest = [] } = await local.get('readerQueue');
+    await local.set({ readerQueue: latest.filter((q) => !sent.has(q.url)) });
+  });
+}
+
 // MARK: - Time on sites
 
 async function currentDomain() {
@@ -507,6 +550,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         await applyRules(state);
         return { ok: true };
       }
+      case 'readLater':
+        return readLater(msg.url);
       case 'leave': {
         const tab = sender.tab;
         if (!tab) return { ok: false };
@@ -577,6 +622,7 @@ chrome.alarms.onAlarm.addListener(async (a) => {
   await track();
   postTab();
   await flush();
+  await flushReadLater();
 });
 ensureAlarm();
 

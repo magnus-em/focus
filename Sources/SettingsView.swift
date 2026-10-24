@@ -7,6 +7,8 @@ struct SettingsView: View {
     @ObservedObject var timer: TimerManager
     @ObservedObject var store: SessionStore
     @ObservedObject private var bridge = BrowserBridge.shared
+    @ObservedObject private var reader = ReaderStore.shared
+    @State private var readerToken = ""
     var openOnboarding: (() -> Void)? = nil
     @Environment(\.modelContext) private var modelContext
     @State private var showResetConfirm = false
@@ -286,6 +288,41 @@ struct SettingsView: View {
                         ToggleRow(label: "Block during breaks too", isOn: $settings.blockDuringBreaks)
                         BlockedSitesView(settings: settings)
                             .padding(.top, 2)
+                    }
+                }
+
+                SettingsCard("Read later") {
+                    HStack(spacing: 6) {
+                        SecureField(reader.hasToken ? "Readwise token saved" : "Readwise access token", text: $readerToken)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11))
+                        Button(readerToken.isEmpty && reader.hasToken ? "Remove" : "Save") {
+                            reader.setToken(readerToken.isEmpty ? nil : readerToken)
+                            readerToken = ""
+                        }
+                        .controlSize(.small)
+                        .disabled(readerToken.isEmpty && !reader.hasToken)
+                    }
+                    Text("The block page offers \u{201C}Save for later\u{201D}: the article goes to Readwise Reader's Later list, tagged focus-blocked. Get a token at readwise.io/access_token; it's kept in the Keychain.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    let failed = reader.saves.filter { $0.status == .failed }
+                    let waiting = reader.saves.filter { $0.status == .pending }.count
+                    if !reader.saves.isEmpty {
+                        HStack {
+                            Text("\(reader.saves.count - reader.pendingCount) saved"
+                                 + (waiting > 0 ? " · \(waiting) waiting\(reader.hasToken ? "" : " for a token")" : "")
+                                 + (failed.isEmpty ? "" : " · \(failed.count) failed"))
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.secondaryText)
+                            Spacer()
+                            if !failed.isEmpty {
+                                Button("Retry") { reader.retryFailed() }
+                                    .controlSize(.small)
+                                    .help(failed.last?.error ?? "")
+                            }
+                        }
                     }
                 }
 

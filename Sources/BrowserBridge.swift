@@ -9,6 +9,7 @@ import Combine
 ///   POST /events  → `{ "events": [...] }` block hits, reasons, bypasses, browsing spans
 ///   POST /tab     → `{ "url", "title" }` the focused tab, for the screen watcher
 ///   POST /dark    → `DarkPages` changed from the extension's popup
+///   POST /reader  → `{ "url", "title", "source" }` save a page to Readwise Reader for later
 ///
 /// Only browsers attach an `Origin`, and a web page can't forge one, so any
 /// request whose Origin isn't the extension is refused. Local processes are
@@ -64,6 +65,7 @@ final class BrowserBridge: ObservableObject {
     var stateProvider: (() -> State)?
     var onEvents: (([BrowserStore.Event]) -> Void)?
     var onDarkPages: ((DarkPages) -> Void)?
+    var onReaderSave: (@MainActor (_ url: String, _ title: String, _ source: String) async -> (status: String, error: String?))?
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.magnus.focus.browser-bridge")
@@ -245,6 +247,20 @@ final class BrowserBridge: ObservableObject {
                     self.publishDark(dark)
                     self.respond(conn, status: "200 OK", json: try? JSONEncoder().encode(DarkUpdate(dark)))
                 }
+            }
+        case ("POST", "/reader"):
+            let obj = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any]
+            guard let url = obj?["url"] as? String, !url.isEmpty else {
+                return respond(conn, status: "400 Bad Request", json: Data(#"{"error":"url"}"#.utf8))
+            }
+            Task { @MainActor in
+                self.lastContact = Date()
+                let result = await self.onReaderSave?(url, obj?["title"] as? String ?? "", obj?["source"] as? String ?? "extension")
+                    ?? ("error", "Focus isn't ready")
+                var out: [String: Any] = ["status": result.status]
+                if let e = result.error { out["error"] = e }
+                let body = try? JSONSerialization.data(withJSONObject: out)
+                self.queue.async { self.respond(conn, status: "200 OK", json: body) }
             }
         case ("POST", "/events"):
             let events = Self.decodeEvents(req.body)

@@ -19,6 +19,7 @@ function render(state, blocked) {
   $('context').textContent = parts.join(' · ');
   $('unblocked').hidden = blocked;
   $('leave').hidden = !blocked;
+  $('later').hidden = !blocked || !/^https?:/.test(target);
   $('reasons').hidden = !blocked || !eventId;
   $('bypass').hidden = !blocked || !state.bypassAllowed;
   $('locked').hidden = !blocked || state.bypassAllowed;
@@ -37,6 +38,27 @@ async function init() {
 }
 
 $('leave').onclick = () => chrome.runtime.sendMessage({ type: 'leave' });
+
+$('saveLater').onclick = async () => {
+  $('saveLater').disabled = true;
+  $('saveLater').textContent = 'Saving…';
+  const res = await chrome.runtime.sendMessage({ type: 'readLater', url: target });
+  const note = $('savedNote');
+  note.hidden = false;
+  if (res && res.status === 'saved') {
+    $('saveLater').textContent = 'Saved to Reader';
+    note.textContent = 'It\'s in your Later list. Back to work in a moment.';
+    setTimeout(() => chrome.runtime.sendMessage({ type: 'leave' }), 1500);
+  } else if (res && res.status === 'queued') {
+    $('saveLater').textContent = 'Saved for later';
+    note.textContent = res.reason || 'Focus will send it to Reader once it can.';
+    setTimeout(() => chrome.runtime.sendMessage({ type: 'leave' }), 2500);
+  } else {
+    $('saveLater').disabled = false;
+    $('saveLater').textContent = 'Try again';
+    note.textContent = (res && res.error) || 'Couldn\'t save it.';
+  }
+};
 
 for (const b of document.querySelectorAll('[data-r]')) {
   b.onclick = () => {

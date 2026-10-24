@@ -27,6 +27,9 @@ h1 { font-size: 28px; margin: 16px 0 6px; letter-spacing: -.01em; }
 .link { background: none; border: 0; color: var(--muted); text-decoration: underline; margin-top: 36px; font-size: 13px; }
 #bypassForm { margin-top: 36px; display: flex; gap: 8px; }
 #bypassForm input { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; }
+.later { margin-top: 14px; }
+.later .secondary { font-size: 13px; }
+.saved { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 .locked { margin-top: 36px; font-size: 12px; color: var(--muted); }
 #unblocked p { color: var(--muted); }
 

@@ -182,6 +182,11 @@ struct FocusApp: App {
             appSettings.darkPagesBrightness = dark.brightness
             appSettings.darkPagesContrast = dark.contrast
         }
+        BrowserBridge.shared.onReaderSave = { url, title, source in
+            await ReaderStore.shared.save(url: url, title: title, label: timer.isOnBreak ? "Break" : timer.currentLabel,
+                                          wasFocus: timer.isFocusRunning, source: source)
+        }
+        Task { @MainActor in await ReaderStore.shared.uploadPending() }
         BrowserBridge.shared.observeDarkPages(appSettings)
         BrowserBridge.shared.start()
 
