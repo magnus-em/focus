@@ -1,7 +1,16 @@
 import Foundation
 import Security
 
-/// Read-later saves into Readwise Reader, starting with pages the site blocker
+struct ReaderPage {
+    var url: String
+    var title: String
+    var author: String
+    /// The page as the user's browser sees it (signed in past paywalls). Memory only.
+    var html: String
+    var source: String
+}
+
+/// Read-later saves into Readwise Reader's Inbox, starting with pages the site blocker
 /// stopped. Every save is also kept locally in `Focus/reader-saves.json`, so
 /// pages saved before a token was set (or while offline) go up later and Focus
 /// can tell when articles were collected during focus.
@@ -14,6 +23,7 @@ final class ReaderStore: ObservableObject {
         var id: UUID
         var url: String
         var title: String
+        var author: String?
         var savedAt: Date
         var label: String
         var wasFocus: Bool
@@ -29,6 +39,7 @@ final class ReaderStore: ObservableObject {
     private let fileURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Focus/reader-saves.json")
     private var uploading = false
+    private var pageHTML: [UUID: String] = [:]
 
     init() {
         if let data = try? Data(contentsOf: fileURL),
@@ -46,15 +57,17 @@ final class ReaderStore: ObservableObject {
     }
 
     /// Returns "saved", "queued" (no token or Reader unreachable) or an error.
-    func save(url: String, title: String, label: String, wasFocus: Bool, source: String) async -> (status: String, error: String?) {
+    func save(_ page: ReaderPage, label: String, wasFocus: Bool) async -> (status: String, error: String?) {
+        let url = page.url
         guard let parsed = URL(string: url), ["http", "https"].contains(parsed.scheme?.lowercased() ?? "") else {
             return ("error", "Not a web page")
         }
         if let i = saves.firstIndex(where: { $0.url == url }), saves[i].status == .saved {
             return ("saved", nil)
         }
-        let item = Save(id: UUID(), url: url, title: title, savedAt: Date(), label: label, wasFocus: wasFocus,
-                        source: source, status: .pending)
+        let item = Save(id: UUID(), url: url, title: page.title, author: page.author.isEmpty ? nil : page.author,
+                        savedAt: Date(), label: label, wasFocus: wasFocus, source: page.source, status: .pending)
+        if !page.html.isEmpty { pageHTML[item.id] = page.html }
         saves.removeAll { $0.url == url }
         saves.append(item)
         persist()
@@ -90,9 +103,11 @@ final class ReaderStore: ObservableObject {
         req.timeoutInterval = 20
         req.setValue("Token \(token)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        var body: [String: Any] = ["url": item.url, "location": "later", "saved_using": "Focus",
+        var body: [String: Any] = ["url": item.url, "location": "new", "saved_using": "Focus",
                                    "tags": item.source == "blocked" ? ["focus-blocked"] : ["focus"]]
         if !item.title.isEmpty { body["title"] = item.title }
+        if let author = item.author { body["author"] = author }
+        if let html = pageHTML[id] { body["html"] = html; body["should_clean_html"] = true }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         let result: (Save.Status, String?, String?)
@@ -109,6 +124,7 @@ final class ReaderStore: ObservableObject {
         } catch {
             result = (.pending, nil, nil)
         }
+        if result.0 != .pending { pageHTML[id] = nil }
         guard let i = saves.firstIndex(where: { $0.id == id }) else { return }
         saves[i].status = result.0
         saves[i].error = result.1

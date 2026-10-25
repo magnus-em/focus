@@ -409,14 +409,50 @@ async function postReadLater(item) {
   return r.json();
 }
 
+function metaContent(html, names) {
+  for (const n of names) {
+    const tag = html.match(new RegExp(`<meta[^>]+(?:name|property)=["']${n}["'][^>]*>`, 'i'));
+    const c = tag && tag[0].match(/content=["']([^"']+)["']/i);
+    if (c) return c[1].trim();
+  }
+  return '';
+}
+
+function decodeEntities(s) {
+  return s.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
+
+// The blocked page never loaded, so fetch it here with the user's cookies (the
+// block rule only covers main_frame). Reader's own scrape of a paywalled site
+// misses the author and often the text.
+async function pageForReader(url) {
+  try {
+    const r = await fetch(url, { credentials: 'include', signal: AbortSignal.timeout(10000) });
+    if (!r.ok || !/html/.test(r.headers.get('content-type') || '')) return {};
+    const html = await r.text();
+    if (html.length > 2_000_000) return {};
+    let author = metaContent(html, ['author', 'article:author', 'parsely-author', 'sailthru.author', 'dc.creator']);
+    if (!author || /^https?:/.test(author)) {
+      const ld = html.match(/"author"\s*:\s*(?:\[\s*)?\{[^}]*?"name"\s*:\s*"([^"]+)"/);
+      author = ld ? ld[1] : '';
+    }
+    const title = metaContent(html, ['og:title', 'twitter:title']) || (html.match(/<title[^>]*>([^<]*)/i) || [])[1] || '';
+    return { html, author: decodeEntities(author), title: decodeEntities(title.trim()) };
+  } catch {
+    return {};
+  }
+}
+
 async function readLater(url) {
-  const item = { url, title: '', source: 'blocked' };
+  const page = await pageForReader(url);
+  const item = { url, title: page.title || '', author: page.author || '', html: page.html || '', source: 'blocked' };
   try {
     return await postReadLater(item);
   } catch {
     await serial(async () => {
       const { readerQueue = [] } = await local.get('readerQueue');
-      if (!readerQueue.some((q) => q.url === url)) readerQueue.push(item);
+      if (!readerQueue.some((q) => q.url === url)) readerQueue.push({ ...item, html: '' });
       await local.set({ readerQueue: readerQueue.slice(-500) });
     });
     return { status: 'queued', reason: 'Focus isn\'t running; it goes to Reader when Focus is back.' };
