@@ -439,4 +439,17 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome",
             title: "Billing - OpenAI Platform", text: "Invoices").category, "Admin")
     }
+
+    func testOctober26ShoppingAndInflightPortal() {
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome",
+            title: "Amazon.com : jbl boombox 4", text: "Results").category, "Leisure")
+        let chat = "do you think it'd be better to have the big one or two smaller ones like the charge 6. also look into the best competitors\nA pair costs about $360-400, cheaper than one Boombox"
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "ChatGPT",
+            title: "Find outdoor covers for Klipsch The", text: chat).category, "Leisure")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome",
+            title: "Your Orders - Amazon.com", text: "Track package\nReturn or replace items").category, "Admin")
+        XCTAssertTrue(ScreenClassificationPolicy.isPlaceholderPage(app: "Google Chrome", title: "Rewarded ad"))
+        XCTAssertTrue(ScreenClassificationPolicy.isPlaceholderPage(app: "Google Chrome",
+            title: "Citi® / AAdvantage® Platinum Sel…rcard® Inflight Offer | Citi.com"))
+    }
 }

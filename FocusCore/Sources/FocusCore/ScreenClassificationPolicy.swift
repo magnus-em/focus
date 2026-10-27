@@ -65,6 +65,11 @@ public enum ScreenClassificationPolicy {
             if category == "Admin", isVideo(title: title) {
                 return Decision(category: "Leisure", reason: "A video is not an errand", uncertain: false)
             }
+            // 10/26: Amazon speaker searches and a ChatGPT chat comparing JBL speakers were
+            // Admin and drew two cards over Leisure; both kept. Shopping is Leisure, orders and returns stay errands.
+            if category == "Admin", isShopping(title: title, text: text) {
+                return Decision(category: "Leisure", reason: "Shopping is Leisure, not an errand", uncertain: false)
+            }
             // 10/17: Amazon.jobs sign-up, a résumé upload in a job-application agent and a chat
             // about which internships to apply to were called Admin while Recruiting ran.
             if category == "Admin" || category == "SWE", showsJobApplication(title: title, text: category == "Admin" ? text : "") {
@@ -263,8 +268,28 @@ public enum ScreenClassificationPolicy {
         let title = normalized(title).trimmingCharacters(in: .whitespaces)
         if ["", "new tab", "new incognito tab", "new private tab", "start page", "untitled", "blocked · focus"].contains(title) { return true }
         // 10/18: Canvas and Yale CAS sign-in pages were Admin and drew a card on the way to coursework.
+        // 10/26: an inflight Wi-Fi portal's "Rewarded ad" and card offer were Leisure mid-LeetCode.
+        if title == "rewarded ad" || ["inflight", "in-flight", "captive portal", "wi-fi login", "wifi login"].contains(where: title.contains) {
+            return true
+        }
         return title.range(of: #"^(?:log ?in|sign ?in|central authentication service)(?:$|\s*[-|:·])"#, options: .regularExpression) != nil
             || title.hasSuffix("- sign in") || title.hasSuffix("| sign in")
+    }
+
+    public static func isShopping(title: String, text: String) -> Bool {
+        let title = normalized(String(title.prefix(240)))
+        let body = normalized(String(text.prefix(2400)))
+        let errands = ["your orders", "order details", "order number", "your order", "return", "refund", "track package",
+                       "invoice", "billing", "your account", "subscription"]
+        if errands.contains(where: title.contains) { return false }
+        let sites = ["amazon.com", "ebay.com", "walmart.com", "target.com", "bestbuy.com", "best buy", "etsy", "shopping cart", "shop online"]
+        if sites.contains(where: title.contains) { return true }
+        let bodyErrands = ["your orders", "order details", "order number", "return label", "start a return", "return or replace",
+                           "refund", "track package", "invoice", "billing"]
+        guard !bodyErrands.contains(where: body.contains) else { return false }
+        let marks = ["add to cart", "buy now", "customer reviews", "customers liked", "in stock", "free delivery", "free shipping",
+                     "before buying", "worth buying", "should i buy", "which one to buy", "best competitors", "cheaper", "costs about"]
+        return marks.filter(body.contains).count >= 2
     }
 
     public static func readingAlternative(title: String) -> String? {

@@ -62,7 +62,7 @@ final class ClassCalendar: ObservableObject {
         let start = cal.startOfDay(for: Date())
         let events = store.events(matching: store.predicateForEvents(
             withStart: start, end: cal.date(byAdding: .day, value: 1, to: start)!, calendars: nil))
-        today = events.filter(Self.isClass).sorted { $0.startDate < $1.startDate }
+        today = events.filter { Self.isClass($0) && Self.isLocal($0) }.sorted { $0.startDate < $1.startDate }
         let ahead = store.events(matching: store.predicateForEvents(
             withStart: Date(), end: cal.date(byAdding: .day, value: 30, to: start)!, calendars: nil))
         // "3231 Exam 1" names only the number; the class events say "CPSC 3231".
@@ -137,6 +137,14 @@ final class ClassCalendar: ObservableObject {
         if t.range(of: #"\b(CPSC|CS) ?\d|\bSYSTEMS\b|\bALGORITHMS\b"#, options: .regularExpression) != nil { return "SWE" }
         if t.range(of: #"\bAI\b|\bMACHINE LEARNING\b|\bML\b"#, options: .regularExpression) != nil { return "AI" }
         return nil
+    }
+
+    /// 10/26: travelling on Pacific time, the Eastern-time CPSC 3231 and an audit class
+    /// drew "In class" cards over Social and LeetCode; both kept. A class set in another
+    /// time zone than the Mac's is somewhere you aren't. Floating events have no zone.
+    nonisolated static func isLocal(_ e: EKEvent) -> Bool {
+        guard let zone = e.timeZone, let start = e.startDate else { return true }
+        return zone.secondsFromGMT(for: start) == TimeZone.current.secondsFromGMT(for: start)
     }
 
     nonisolated static func isClass(_ e: EKEvent) -> Bool {
