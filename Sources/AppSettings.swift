@@ -70,6 +70,10 @@ class AppSettings: ObservableObject {
     @Published var leetCodeNudge: Bool {
         didSet { sd.set(leetCodeNudge, forKey: "leetCodeNudge") }
     }
+    /// Public LeetCode profile whose accepted submissions are logged here.
+    @Published var leetCodeUsername: String {
+        didSet { sd.set(leetCodeUsername, forKey: "leetCodeUsername") }
+    }
     @Published var leetCodeNudgeMinutes: Int {
         didSet { sd.set(leetCodeNudgeMinutes, forKey: "leetCodeNudgeMinutes") }
     }
@@ -248,6 +252,7 @@ class AppSettings: ObservableObject {
             "morningRecall": true,
             "recallDailyCap": 12,
             "journalShortcut": "",
+            "leetCodeUsername": "",
             "awayPrompts": true,
             "screenWatch": true,
             "screenSuggest": true,
@@ -302,6 +307,7 @@ class AppSettings: ObservableObject {
         morningRecall = d.bool(forKey: "morningRecall")
         recallDailyCap = d.integer(forKey: "recallDailyCap")
         journalShortcut = d.string(forKey: "journalShortcut") ?? ""
+        leetCodeUsername = d.string(forKey: "leetCodeUsername") ?? ""
         awayPrompts = d.bool(forKey: "awayPrompts")
         screenWatch = d.bool(forKey: "screenWatch")
         screenSuggest = d.bool(forKey: "screenSuggest")
@@ -407,6 +413,7 @@ class AppSettings: ObservableObject {
         morningRecall = d.bool(forKey: "morningRecall")
         recallDailyCap = d.integer(forKey: "recallDailyCap")
         journalShortcut = d.string(forKey: "journalShortcut") ?? ""
+        leetCodeUsername = d.string(forKey: "leetCodeUsername") ?? ""
         awayPrompts = d.bool(forKey: "awayPrompts")
         screenWatch = d.bool(forKey: "screenWatch")
         screenSuggest = d.bool(forKey: "screenSuggest")

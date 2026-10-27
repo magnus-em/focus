@@ -720,7 +720,7 @@ struct PopoverContent: View {
                     case 2: ProblemsView(store: problemStore, homeworkStore: homeworkStore, settings: settings)
                     case 3: ScratchpadView(store: scratchStore)
                     case 5: HealthView(store: healthStore, sessionStore: sessionStore)
-                    default: SettingsView(settings: settings, timer: timerManager, store: sessionStore, openOnboarding: openOnboarding)
+                    default: SettingsView(settings: settings, timer: timerManager, store: sessionStore, leetCode: leetCodeStore, openOnboarding: openOnboarding)
                     }
                 }
                 .frame(height: 540)

@@ -6,6 +6,7 @@ struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var timer: TimerManager
     @ObservedObject var store: SessionStore
+    @ObservedObject var leetCode: LeetCodeStore
     @ObservedObject private var bridge = BrowserBridge.shared
     @ObservedObject private var reader = ReaderStore.shared
     @State private var readerToken = ""
@@ -192,6 +193,22 @@ struct SettingsView: View {
                 SettingsCard("LeetCode") {
                     Stepper("Problems per day: \(settings.leetCodeDailyGoal)", value: $settings.leetCodeDailyGoal, in: 1...30)
                     Stepper("Focused minutes per day: \(settings.leetCodeMinutesGoal)", value: $settings.leetCodeMinutesGoal, in: 30...360, step: 15)
+                    HStack {
+                        Text("LeetCode username")
+                            .font(.system(size: 12, weight: .medium))
+                        Spacer()
+                        TextField("username", text: $settings.leetCodeUsername)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 130)
+                            .onSubmit { Task { await leetCode.syncFromLeetCode() } }
+                        Button(leetCode.syncing ? "Syncing…" : "Sync now") { Task { await leetCode.syncFromLeetCode() } }
+                            .controlSize(.small)
+                            .disabled(leetCode.syncing || settings.leetCodeUsername.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    Text(leetCodeSyncText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text("Interview prep starting target: 2 focused hours, 3 new problems and 1 redo from memory. Prioritize Mediums and review mistakes.")
                         .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1250,6 +1267,18 @@ private struct FocusModeSettings: View {
 }
 
 /// One grouped card per topic, title above (DESIGN.md: content cards, sentence case).
+extension SettingsView {
+    var leetCodeSyncText: String {
+        let note = "Every hour, problems LeetCode accepted that aren't logged here are added, dated when you submitted. LeetCode's public profile shows only your last 20 accepted submissions."
+        guard let status = leetCode.syncStatus else { return note }
+        let time = status.at.formatted(date: .omitted, time: .shortened)
+        if let error = status.error { return "\(error) (\(time)). " + note }
+        guard let p = status.profile else { return note }
+        let logged = status.logged > 0 ? ", logged \(status.logged)" : ""
+        return "LeetCode: \(p.solved) solved (\(p.easy) Easy, \(p.medium) Medium, \(p.hard) Hard). Here: \(leetCode.uniqueSolved). Synced \(time)\(logged). " + note
+    }
+}
+
 private struct SettingsCard<Content: View>: View {
     let title: String
     let content: Content

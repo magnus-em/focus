@@ -136,6 +136,7 @@ final class LeetCodeStore: ObservableObject {
             }
             .store(in: &cancellables)
         solveDrafts = LeetCodeSolveDraftStore(store: self)
+        scheduleSync()
     }
 
     private func recompute(from problems: [ProblemEntry]) {
@@ -351,6 +352,89 @@ final class LeetCodeStore: ObservableObject {
     }
 
     func delete(_ a: LCAttempt) { problemStore.delete(id: a.entry.id) }
+
+    // MARK: - LeetCode sync
+
+    struct SyncStatus {
+        let at: Date
+        let profile: LeetCodeSync.Profile?
+        let logged: Int
+        let error: String?
+    }
+    @Published private(set) var syncStatus: SyncStatus?
+    @Published private(set) var syncing = false
+    private var syncTimer: Timer?
+
+    private func scheduleSync() {
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.syncFromLeetCode() }
+        }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(20))
+            await self?.syncFromLeetCode()
+        }
+    }
+
+    /// Logs accepted submissions from the public profile that Focus is missing, dated when LeetCode accepted them.
+    func syncFromLeetCode() async {
+        let username = settings.leetCodeUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !username.isEmpty, !syncing else { return }
+        syncing = true
+        defer { syncing = false }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: LeetCodeSync.request(username: username))
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw LeetCodeSync.SyncError.unreadable }
+            let profile = try LeetCodeSync.decode(data)
+            let logged = loggedProblems.filter { $0.domain == .swe }.map {
+                LeetCodeSync.Logged(id: $0.id, slug: catalog.problem(matching: $0)?.slug ?? LeetCodeCatalog.slug(fromURL: $0.url),
+                                    date: $0.date, fromLeetCode: $0.source.localizedCaseInsensitiveContains("leetcode"))
+            }
+            let count = apply(LeetCodeSync.plan(accepted: profile.accepted, logged: logged, now: Date()))
+            syncStatus = SyncStatus(at: Date(), profile: profile, logged: count, error: nil)
+            SyncLog.event("leetCodeSync", ["solved": "\(profile.solved)", "logged": "\(count)"])
+        } catch {
+            let message = (error as? LeetCodeSync.SyncError) == .noSuchUser ? "No LeetCode user named \(username)"
+                : "Couldn't reach LeetCode"
+            syncStatus = SyncStatus(at: Date(), profile: syncStatus?.profile, logged: 0, error: message)
+        }
+    }
+
+    private func apply(_ actions: [LeetCodeSync.Action]) -> Int {
+        let source = settings.problemSources.first { $0.localizedCaseInsensitiveContains("leetcode") } ?? "LeetCode"
+        var count = 0
+        for action in actions {
+            switch action {
+            case .add(let a):
+                let p = catalog.problem(slug: a.slug)
+                // Time Focus tracked on this problem that day becomes the solve time, and the draft is closed.
+                let draft = practice.sessions.last {
+                    $0.slug == a.slug && $0.outcome == .draft && $0.startedAt <= a.date && Calendar.current.isDate($0.startedAt, inSameDayAs: a.date)
+                }
+                let entry = ProblemEntry(id: draft?.id ?? UUID(), date: a.date, title: p?.title ?? a.title, domain: .swe,
+                                         categories: p?.categories ?? [], difficulty: p?.difficulty ?? .medium, source: source,
+                                         notes: "Logged from LeetCode (accepted submission)", url: Self.problemURL(a.slug),
+                                         solveMinutes: draft?.minutes)
+                guard problemStore.add(entry) else { continue }
+                if let draft, practice.prepareLog(id: draft.id, at: Date()) != nil {
+                    practice.complete(id: draft.id, solved: true, confidence: entry.confidence, usedHelp: false, notes: "",
+                                      title: entry.title, difficulty: entry.difficulty, categories: entry.categories, minutes: entry.solveMinutes)
+                    refreshPractice(forceSave: true)
+                }
+                count += 1
+            case .repair(let id, let a):
+                guard let old = loggedProblems.first(where: { $0.id == id }) else { continue }
+                let p = catalog.problem(slug: a.slug)
+                problemStore.update(ProblemEntry(id: old.id, date: old.date, title: p?.title ?? a.title, domain: old.domain,
+                    categories: old.categories.isEmpty ? (p?.categories ?? []) : old.categories,
+                    difficulty: p?.difficulty ?? old.difficulty, source: old.source, needsReview: old.needsReview,
+                    confidence: old.confidence, notes: old.notes, url: Self.problemURL(a.slug), solveMinutes: old.solveMinutes))
+                count += 1
+            }
+        }
+        return count
+    }
+
+    private static func problemURL(_ slug: String) -> String { "https://leetcode.com/problems/\(slug)/" }
 
     // MARK: - Today / streak
 
