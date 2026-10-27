@@ -1,7 +1,8 @@
 import Foundation
 
-/// What LeetCode's public profile says was accepted, and which of it Focus hasn't logged yet.
-/// The public API needs no login but only returns the 20 most recent accepted submissions.
+/// What LeetCode says was accepted, and which of it Focus hasn't logged yet.
+/// The public API needs no login but only returns the 20 most recent accepted submissions;
+/// the full history comes from the Chrome extension, which asks LeetCode with the user's login.
 public enum LeetCodeSync {
     public struct Accepted: Equatable, Sendable {
         public let slug: String
@@ -76,6 +77,43 @@ public enum LeetCodeSync {
         }
         return Profile(username: user.username, solved: counts["All"] ?? 0, easy: counts["Easy"] ?? 0,
                        medium: counts["Medium"] ?? 0, hard: counts["Hard"] ?? 0, accepted: accepted)
+    }
+
+    /// What the extension posts to `/leetcode`: every solved problem and each accepted submission.
+    public struct History: Equatable, Sendable {
+        public let signedIn: Bool
+        public let username: String
+        public let solved: [String: String]
+        public let accepted: [Accepted]
+        /// false when paging stopped early (rate limit, network), so some older accepts may be missing.
+        public let complete: Bool
+        public let error: String?
+
+        /// Solved problems with no accepted submission in the history, so no date to log them at.
+        public var undated: [String] { solved.keys.filter { slug in !accepted.contains { $0.slug == slug } }.sorted() }
+    }
+
+    public static func decodeHistory(_ data: Data) throws -> History {
+        struct Body: Decodable {
+            struct Problem: Decodable { let slug: String; let title: String }
+            struct Sub: Decodable { let slug: String?; let title: String?; let timestamp: Double }
+            let signedIn: Bool?
+            let username: String?
+            let solved: [Problem]?
+            let accepted: [Sub]?
+            let complete: Bool?
+            let error: String?
+        }
+        guard let body = try? JSONDecoder().decode(Body.self, from: data) else { throw SyncError.unreadable }
+        let solved = Dictionary((body.solved ?? []).map { ($0.slug, $0.title) }, uniquingKeysWith: { a, _ in a })
+        let slugByTitle = Dictionary(solved.map { ($0.value.lowercased(), $0.key) }, uniquingKeysWith: { a, _ in a })
+        let accepted = (body.accepted ?? []).compactMap { s -> Accepted? in
+            let title = s.title ?? ""
+            guard let slug = s.slug.flatMap({ $0.isEmpty ? nil : $0 }) ?? slugByTitle[title.lowercased()], s.timestamp > 0 else { return nil }
+            return Accepted(slug: slug, title: title.isEmpty ? solved[slug] ?? slug : title, date: Date(timeIntervalSince1970: s.timestamp))
+        }
+        return History(signedIn: body.signedIn ?? false, username: body.username ?? "", solved: solved,
+                       accepted: accepted, complete: body.complete ?? false, error: body.error)
     }
 
     /// One entry per problem per day, at that day's first accept, skipping problem-days already logged.

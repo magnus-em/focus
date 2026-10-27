@@ -31,6 +31,8 @@ final class BrowserBridge: ObservableObject {
         let sessionStart: Double?
         let todayBlocked: Int
         let darkPages: DarkPages
+        /// Set by Sync now: the extension fetches the signed-in LeetCode history when this is newer than its last run.
+        let leetCodeAsk: Double
     }
 
     /// The extension runs the schedule itself, so it keeps working while Focus is quit.
@@ -66,6 +68,7 @@ final class BrowserBridge: ObservableObject {
     var onEvents: (([BrowserStore.Event]) -> Void)?
     var onDarkPages: ((DarkPages) -> Void)?
     var onReaderSave: (@MainActor (ReaderPage) async -> (status: String, error: String?))?
+    var onLeetCodeHistory: (@MainActor (Data) -> Void)?
 
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.magnus.focus.browser-bridge")
@@ -263,6 +266,13 @@ final class BrowserBridge: ObservableObject {
                 if let e = result.error { out["error"] = e }
                 let body = try? JSONSerialization.data(withJSONObject: out)
                 self.queue.async { self.respond(conn, status: "200 OK", json: body) }
+            }
+        case ("POST", "/leetcode"):
+            let body = req.body
+            Task { @MainActor in
+                self.lastContact = Date()
+                self.onLeetCodeHistory?(body)
+                self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
             }
         case ("POST", "/events"):
             let events = Self.decodeEvents(req.body)

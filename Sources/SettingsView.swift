@@ -200,8 +200,8 @@ struct SettingsView: View {
                         TextField("username", text: $settings.leetCodeUsername)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 130)
-                            .onSubmit { Task { await leetCode.syncFromLeetCode() } }
-                        Button(leetCode.syncing ? "Syncing…" : "Sync now") { Task { await leetCode.syncFromLeetCode() } }
+                            .onSubmit { Task { await leetCode.syncNow() } }
+                        Button(leetCode.syncing ? "Syncing…" : "Sync now") { Task { await leetCode.syncNow() } }
                             .controlSize(.small)
                             .disabled(leetCode.syncing || settings.leetCodeUsername.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
@@ -1269,13 +1269,26 @@ private struct FocusModeSettings: View {
 /// One grouped card per topic, title above (DESIGN.md: content cards, sentence case).
 extension SettingsView {
     var leetCodeSyncText: String {
-        let note = "Every hour, problems LeetCode accepted that aren't logged here are added, dated when you submitted. LeetCode's public profile shows only your last 20 accepted submissions."
-        guard let status = leetCode.syncStatus else { return note }
-        let time = status.at.formatted(date: .omitted, time: .shortened)
-        if let error = status.error { return "\(error) (\(time)). " + note }
-        guard let p = status.profile else { return note }
-        let logged = status.logged > 0 ? ", logged \(status.logged)" : ""
-        return "LeetCode: \(p.solved) solved (\(p.easy) Easy, \(p.medium) Medium, \(p.hard) Hard). Here: \(leetCode.uniqueSolved). Synced \(time)\(logged). " + note
+        let note = "Problems LeetCode accepted that aren't logged here are added, dated when you submitted: every hour from your public profile (last 20 accepts), and daily from the Focus Chrome extension using your LeetCode login (all of them)."
+        var lines: [String] = []
+        if let status = leetCode.syncStatus {
+            let time = status.at.formatted(date: .omitted, time: .shortened)
+            if let error = status.error { lines.append("\(error) (\(time)).") }
+            else if let p = status.profile {
+                let logged = status.logged > 0 ? ", logged \(status.logged)" : ""
+                lines.append("LeetCode: \(p.solved) solved (\(p.easy) Easy, \(p.medium) Medium, \(p.hard) Hard). Here: \(leetCode.uniqueSolved). Synced \(time)\(logged).")
+            }
+        }
+        if let h = leetCode.historyStatus {
+            let time = h.at.formatted(date: .omitted, time: .shortened)
+            if let history = h.history, history.signedIn {
+                var line = "Full history via Chrome at \(time): \(history.solved.count) solved, logged \(h.logged)."
+                if !history.undated.isEmpty { line += " \(history.undated.count) solved with no accepted submission to date them." }
+                if let error = h.error { line += " Stopped early: \(error)." }
+                lines.append(line)
+            } else if let error = h.error { lines.append("\(error) (\(time)).") }
+        }
+        return (lines + [note]).joined(separator: " ")
     }
 }
 

@@ -475,6 +475,76 @@ async function flushReadLater() {
 
 // MARK: - Time on sites
 
+// MARK: - LeetCode history
+
+// The public profile only lists the last 20 accepts, so once a day (and on Sync now
+// in Focus) ask LeetCode with the user's login for everything. Only slugs, titles
+// and times go to the app, never the submitted code.
+const LEETCODE_EVERY_MS = 24 * 3600_000;
+const wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+
+async function leetCodeJSON(path) {
+  for (let tries = 0; ; tries++) {
+    const r = await fetch('https://leetcode.com' + path, { credentials: 'include', cache: 'no-store', signal: AbortSignal.timeout(20000) });
+    if (r.status === 429 && tries < 2) { await wait(5000 * (tries + 1)); continue; }
+    if (!r.ok) throw new Error('LeetCode answered ' + r.status);
+    return r.json();
+  }
+}
+
+async function leetCodeHistory() {
+  const all = await leetCodeJSON('/api/problems/all/');
+  if (!all.user_name) return { signedIn: false };
+  const solved = (all.stat_status_pairs || []).filter((p) => p.status === 'ac')
+    .map((p) => ({ slug: p.stat.question__title_slug, title: p.stat.question__title }));
+  const accepted = [];
+  let complete = false;
+  let error = null;
+  let lastkey = '';
+  try {
+    for (let offset = 0; offset < 4000; offset += 20) {
+      const page = await leetCodeJSON(`/api/submissions/?offset=${offset}&limit=20&lastkey=${encodeURIComponent(lastkey)}`);
+      for (const s of page.submissions_dump || []) {
+        if (s.status_display === 'Accepted') accepted.push({ slug: s.title_slug || '', title: s.title || '', timestamp: Number(s.timestamp) || 0 });
+      }
+      if (!page.has_next) { complete = true; break; }
+      lastkey = page.last_key || '';
+      await session.set({ leetCodeRunning: Date.now() });
+      await wait(1000);
+    }
+  } catch (e) {
+    error = String(e.message || e);
+  }
+  return { signedIn: true, username: all.user_name, solved, accepted, complete, error };
+}
+
+async function syncLeetCode(state) {
+  if (!state.connected) return;
+  const ask = state.leetCodeAsk || 0;
+  const { leetCodeAt = 0, leetCodeAsk = 0 } = await local.get(['leetCodeAt', 'leetCodeAsk']);
+  if (ask <= leetCodeAsk && Date.now() - leetCodeAt < LEETCODE_EVERY_MS) return;
+  const { leetCodeRunning = 0 } = await session.get('leetCodeRunning');
+  if (Date.now() - leetCodeRunning < 5 * 60_000) return;
+  await session.set({ leetCodeRunning: Date.now() });
+  try {
+    let history;
+    try { history = await leetCodeHistory(); } catch (e) { history = { signedIn: true, solved: [], accepted: [], complete: false, error: String(e.message || e) }; }
+    const r = await fetch(API + '/leetcode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(history),
+      signal: AbortSignal.timeout(10000),
+    });
+    // A partial or failed read tries again in an hour rather than a day.
+    const at = history.complete ? Date.now() : Date.now() - LEETCODE_EVERY_MS + 3600_000;
+    if (r.ok) await local.set({ leetCodeAt: at, leetCodeAsk: ask });
+  } catch {
+    // Focus is down; the next tick asks again.
+  } finally {
+    await session.set({ leetCodeRunning: 0 });
+  }
+}
+
 async function currentDomain() {
   const win = await chrome.windows.getLastFocused().catch(() => null);
   if (!win || !win.focused) return null;
@@ -654,11 +724,12 @@ chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name === 'darkBoundary') { await syncDark(); return; }
   if (a.name !== 'tick') return;
   watchDark();
-  await refreshState(true);
+  const state = await refreshState(true);
   await track();
   postTab();
   await flush();
   await flushReadLater();
+  await syncLeetCode(state);
 });
 ensureAlarm();
 

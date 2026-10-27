@@ -61,4 +61,23 @@ final class LeetCodeSyncTests: XCTestCase {
         let notLeetCode = [LeetCodeSync.Logged(id: typed, slug: nil, date: at(27, 19), fromLeetCode: false)]
         XCTAssertEqual(LeetCodeSync.plan(accepted: [a], logged: notLeetCode, now: at(28, 9), calendar: cal), [.add(a)])
     }
+
+    func testDecodesExtensionHistory() throws {
+        let json = """
+        {"signedIn":true,"username":"8bCgAq0gGX","complete":true,
+         "solved":[{"slug":"add-binary","title":"Add Binary"},{"slug":"two-sum","title":"Two Sum"},{"slug":"lru-cache","title":"LRU Cache"}],
+         "accepted":[{"slug":"","title":"Add Binary","timestamp":1789000000},{"slug":"two-sum","title":"Two Sum","timestamp":1789499543},
+                     {"slug":"","title":"Deleted Problem","timestamp":1789000000},{"slug":"two-sum","title":"Two Sum","timestamp":0}]}
+        """
+        let h = try LeetCodeSync.decodeHistory(Data(json.utf8))
+        XCTAssertTrue(h.signedIn && h.complete)
+        XCTAssertEqual(h.accepted.map(\.slug), ["add-binary", "two-sum"])
+        XCTAssertEqual(h.undated, ["lru-cache"])
+    }
+
+    func testSignedOutHistory() throws {
+        let h = try LeetCodeSync.decodeHistory(Data(#"{"signedIn":false}"#.utf8))
+        XCTAssertFalse(h.signedIn)
+        XCTAssertTrue(h.accepted.isEmpty)
+    }
 }

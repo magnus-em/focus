@@ -171,7 +171,8 @@ struct FocusApp: App {
                 sessionStart: timer.sessionStartTime.map { $0.timeIntervalSince1970 * 1000 },
                 todayBlocked: browser.blockCount(since: Calendar.current.startOfDay(for: Date())),
                 darkPages: .init(mode: appSettings.darkPagesMode, from: appSettings.darkPagesFrom, to: appSettings.darkPagesTo,
-                                 brightness: appSettings.darkPagesBrightness, contrast: appSettings.darkPagesContrast)
+                                 brightness: appSettings.darkPagesBrightness, contrast: appSettings.darkPagesContrast),
+                leetCodeAsk: leetCode.historyAsk
             )
         }
         BrowserBridge.shared.onEvents = { browser.ingest($0) }
@@ -185,6 +186,7 @@ struct FocusApp: App {
         BrowserBridge.shared.onReaderSave = { page in
             await ReaderStore.shared.save(page, label: timer.isOnBreak ? "Break" : timer.currentLabel, wasFocus: timer.isFocusRunning)
         }
+        BrowserBridge.shared.onLeetCodeHistory = { leetCode.importHistory($0) }
         Task { @MainActor in await ReaderStore.shared.uploadPending() }
         BrowserBridge.shared.observeDarkPages(appSettings)
         BrowserBridge.shared.start()

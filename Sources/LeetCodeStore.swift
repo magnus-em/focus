@@ -385,11 +385,7 @@ final class LeetCodeStore: ObservableObject {
             let (data, response) = try await URLSession.shared.data(for: LeetCodeSync.request(username: username))
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw LeetCodeSync.SyncError.unreadable }
             let profile = try LeetCodeSync.decode(data)
-            let logged = loggedProblems.filter { $0.domain == .swe }.map {
-                LeetCodeSync.Logged(id: $0.id, slug: catalog.problem(matching: $0)?.slug ?? LeetCodeCatalog.slug(fromURL: $0.url),
-                                    date: $0.date, fromLeetCode: $0.source.localizedCaseInsensitiveContains("leetcode"))
-            }
-            let count = apply(LeetCodeSync.plan(accepted: profile.accepted, logged: logged, now: Date()))
+            let count = apply(LeetCodeSync.plan(accepted: profile.accepted, logged: loggedForSync(), now: Date()))
             syncStatus = SyncStatus(at: Date(), profile: profile, logged: count, error: nil)
             SyncLog.event("leetCodeSync", ["solved": "\(profile.solved)", "logged": "\(count)"])
         } catch {
@@ -432,6 +428,45 @@ final class LeetCodeStore: ObservableObject {
             }
         }
         return count
+    }
+
+    struct HistoryStatus {
+        let at: Date
+        let history: LeetCodeSync.History?
+        let logged: Int
+        let error: String?
+    }
+    @Published private(set) var historyStatus: HistoryStatus?
+    /// When Sync now last asked the extension for the signed-in history (ms, sent in `/state`).
+    private(set) var historyAsk: Double = 0
+
+    func syncNow() async {
+        historyAsk = Date().timeIntervalSince1970 * 1000
+        await syncFromLeetCode()
+    }
+
+    /// The Chrome extension's signed-in history: every accepted submission, so solves older than the public 20.
+    func importHistory(_ data: Data) {
+        guard let history = try? LeetCodeSync.decodeHistory(data) else {
+            historyStatus = HistoryStatus(at: Date(), history: nil, logged: 0, error: "Couldn't read what Chrome sent")
+            return
+        }
+        guard history.signedIn else {
+            historyStatus = HistoryStatus(at: Date(), history: history, logged: 0, error: "Chrome isn't signed in to LeetCode")
+            return
+        }
+        if settings.leetCodeUsername.isEmpty, !history.username.isEmpty { settings.leetCodeUsername = history.username }
+        let count = apply(LeetCodeSync.plan(accepted: history.accepted, logged: loggedForSync(), now: Date()))
+        historyStatus = HistoryStatus(at: Date(), history: history, logged: count, error: history.error)
+        SyncLog.event("leetCodeHistory", ["solved": history.solved.count, "accepted": history.accepted.count, "logged": count,
+                                          "complete": history.complete, "undated": history.undated.count, "error": history.error ?? ""])
+    }
+
+    private func loggedForSync() -> [LeetCodeSync.Logged] {
+        loggedProblems.filter { $0.domain == .swe }.map {
+            LeetCodeSync.Logged(id: $0.id, slug: catalog.problem(matching: $0)?.slug ?? LeetCodeCatalog.slug(fromURL: $0.url),
+                                date: $0.date, fromLeetCode: $0.source.localizedCaseInsensitiveContains("leetcode"))
+        }
     }
 
     private static func problemURL(_ slug: String) -> String { "https://leetcode.com/problems/\(slug)/" }
