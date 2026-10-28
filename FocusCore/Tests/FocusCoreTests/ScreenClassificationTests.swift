@@ -452,4 +452,18 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertTrue(ScreenClassificationPolicy.isPlaceholderPage(app: "Google Chrome",
             title: "Citi® / AAdvantage® Platinum Sel…rcard® Inflight Offer | Citi.com"))
     }
+
+    func testOctober27PaperSlidesSlideEditorsAndScreenSharing() {
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Claude", title: "on Oswald I - The Mechanism",
+            text: "In-context linear regression, a fresh task in every prompt\nOuter loss: squared error on the query only\nvon Oswald et al., ICML 2023 • Part I: the mechanism").category, "AI")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Preview", title: "notes.pdf",
+            text: "Theorem 2 (Garg et al. 2022, NeurIPS). The estimator converges.").category, "AI")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Preview", title: "pset5.pdf",
+            text: "Problem 3. Prove the estimator converges (see Rudin et al.).").category, "Math")
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Google Chrome", title: "Slide - Google Slides",
+            text: "Regression task\nyi = W xi").category)
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Screen Sharing", title: "Viewing Kelland’s Screen", text: "").category)
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Activity Monitor", title: "Activity Monitor", text: "CPU").category)
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Code", title: "main.swift — focus", text: "func").category, "SWE")
+    }
 }

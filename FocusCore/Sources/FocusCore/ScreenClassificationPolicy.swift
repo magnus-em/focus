@@ -90,6 +90,15 @@ public enum ScreenClassificationPolicy {
             if isVideoCall(app: app) {
                 return Decision(category: nil, reason: "A call window does not show what the call is about", uncertain: true)
             }
+            // 10/27: viewing a friend's screen over Screen Sharing, and glances at Activity Monitor and
+            // System Settings → Displays, were Admin and drew five cards mid-AI and with nothing running; none taken.
+            if ["screen sharing", "activity monitor", "system settings", "system preferences"].contains(normalized(app)) {
+                return Decision(category: nil, reason: "Someone else's screen or a system utility does not show your task", uncertain: true)
+            }
+            // 10/27: Google Slides for an ML paper presentation was SWE ("editing a presentation") in three cards, all kept.
+            if category == "SWE", isSlideEditor(app: app, title: title) {
+                return Decision(category: nil, reason: "Editing slides is not coding", uncertain: true)
+            }
             // 10/22: VS Code with no folder open, then a review of in-context-learning papers
             // (von_oswald_review.md beside paper PDFs), was SWE: "Code editor interface visible."
             if category == "SWE", isCodeEditor(app: app), !editsSourceFile(title: title) {
@@ -246,6 +255,11 @@ public enum ScreenClassificationPolicy {
         ["zoom", "zoom.us", "zoom workplace", "facetime", "microsoft teams", "webex"].contains(normalized(app))
     }
 
+    public static func isSlideEditor(app: String, title: String) -> Bool {
+        ["keynote", "microsoft powerpoint"].contains(normalized(app))
+            || browsers.contains(normalized(app)) && normalized(title).hasSuffix("- google slides")
+    }
+
     public static func isCodeEditor(app: String) -> Bool {
         ["code", "visual studio code", "cursor", "zed", "sublime text", "windsurf", "nova", "bbedit"].contains(normalized(app))
     }
@@ -377,6 +391,11 @@ public enum ScreenClassificationPolicy {
         // even when the discussion quotes the definition of the AI category.
         guard !meta.contains(where: { title.contains($0) || body.contains($0) }) else { return false }
         guard !showsCareerTalk(title + " " + body) else { return false }
+        // 10/27: slides walking through von Oswald et al. (ICML 2023) were Math for 31 min and drew five
+        // AI → Math cards, all kept: the derivation slides cite the paper but name no ML term the rules knew.
+        let citesMLVenue = (title + " " + body).range(of: #"\bet al\.?,? (?:\(?\d{4}\)?,? )?(?:icml|neurips|nips|iclr)\b|\b(?:icml|neurips|iclr) ?20\d\d\b"#,
+                                                     options: .regularExpression) != nil
+        if citesMLVenue { return true }
         let hasStudyEvidence = study.contains { containsWordBeginning($0, in: title + " " + body) }
         let strongBodyDomain = ["softmax attention", "linear attention", "linear-attention", "self attention", "self-attention",
                                 "multi-head attention", "multihead attention", "attention mechanism", "transformer architecture"]
