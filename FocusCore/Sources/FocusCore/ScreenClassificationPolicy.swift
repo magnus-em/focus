@@ -387,6 +387,10 @@ public enum ScreenClassificationPolicy {
         if title == "attention is all you need" || title.hasPrefix("attention is all you need (") {
             return true
         }
+        // 10/28: a ChatGPT chat titled "Attention Simulates Gradient Descent" (von Oswald) was unlabeled
+        // for 11 min whenever the visible reply named no ML term the body rules knew.
+        let titleTermCount = domains.filter { title.contains($0) }.count + (titleWords.contains("attention") ? 1 : 0)
+        if titleTermCount >= 2 && !titleIsMeta { return true }
         // A tracker discussing its model is evidence about building the tracker,
         // even when the discussion quotes the definition of the AI category.
         guard !meta.contains(where: { title.contains($0) || body.contains($0) }) else { return false }

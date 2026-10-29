@@ -40,6 +40,8 @@ final class ScreenClassificationPolicyTests: XCTestCase {
         }
         XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "Attention Is All You Need", text: ""))
         XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "Deep learning", text: ""))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "Attention Simulates Gradient Descent", text: ""))
+        XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "Attention span tips", text: ""))
         XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "What is a neural network?", text: ""))
         XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "Learn diffusion models", text: ""))
         XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "Support vector machine research", text: ""))
