@@ -468,4 +468,17 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Activity Monitor", title: "Activity Monitor", text: "CPU").category)
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Code", title: "main.swift — focus", text: "func").category, "SWE")
     }
+
+    func testOctober29SignInFormsAndMagazineFrontPages() {
+        let login = "Log In\nLog in with your Gradescope account\nEmail\nRemember me\nForgot your password?\nOr log in with\nSchool Credentials"
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome", title: "Gradescope", text: login).category)
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome", title: "Gradescope",
+            text: "by Turnitin\nSelect your school below\nsingle sign-on enabled at your school").category)
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome", title: "pset6.pdf",
+            text: "Problem 2. Remember me as the vertex you forgot.").category, "Math")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome",
+            title: "Science and Math News | Quanta Magazine", text: "How Spiders Spin 'Silk Dope'\n› Read article").category, "Leisure")
+        XCTAssertEqual(ScreenClassificationPolicy.readingAlternative(title: "Tech News - The Verge"), "Leisure")
+        XCTAssertNil(ScreenClassificationPolicy.readingAlternative(title: "Good News About Expander Graphs | Quanta Magazine"))
+    }
 }

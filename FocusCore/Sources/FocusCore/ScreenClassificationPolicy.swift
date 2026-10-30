@@ -31,7 +31,7 @@ public enum ScreenClassificationPolicy {
             return Decision(category: "Journaling", reason: "A journal app", uncertain: false)
         }
         // 10/14: New Tab and Focus's own block page were labeled Admin and drew cards.
-        if isPlaceholderPage(app: app, title: title) {
+        if isPlaceholderPage(app: app, title: title) || isSignInForm(app: app, title: title, text: text) {
             return Decision(category: nil, reason: "An empty tab or block page does not show the task", uncertain: true)
         }
         // 10/21: the YouTube home feed was AI because its recommendations listed deep-learning videos.
@@ -290,6 +290,15 @@ public enum ScreenClassificationPolicy {
             || title.hasSuffix("- sign in") || title.hasSuffix("| sign in")
     }
 
+    /// 10/29: Gradescope's login and school picker, titled just "Gradescope", was Admin mid-Math.
+    public static func isSignInForm(app: String, title: String, text: String) -> Bool {
+        guard browsers.contains(normalized(app)), normalized(title).count <= 30 else { return false }
+        let body = normalized(String(text.prefix(2400)))
+        let marks = ["forgot your password", "forgot password", "remember me", "log in with", "sign in with",
+                     "select your school", "school credentials", "single sign-on", "don't have an account", "keep me signed in"]
+        return marks.filter(body.contains).count >= 2
+    }
+
     public static func isShopping(title: String, text: String) -> Bool {
         let title = normalized(String(title.prefix(240)))
         let body = normalized(String(text.prefix(2400)))
@@ -314,6 +323,8 @@ public enum ScreenClassificationPolicy {
         if isSocialFeed(title: title)
             || ["breaking news", "latest news", "top stories", "hacker news", "shopping cart", "shop online", "amazon.com", "ebay.com"].contains(where: title.contains)
             || title.hasSuffix(" - reddit") || title.hasSuffix(" | reddit") || title.hasPrefix("r/")
+            // 10/29: Quanta's front page, "Science and Math News | Quanta Magazine", was Reading.
+            || title.range(of: #"^[^|–—:]{0,40}\bnews\s*[|–—:-]"#, options: .regularExpression) != nil
             || title.range(of: #"^(?:news|home feed|for you|shopping|forums?)(?:$|\s*[-|:])"#, options: .regularExpression) != nil {
             return "Leisure"
         }
