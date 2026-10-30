@@ -248,6 +248,23 @@ final class HandoverTests: XCTestCase {
         XCTAssertEqual(logged.first!.durationMinutes, 30, accuracy: 0.001)
     }
 
+    // 10/30: a zero-length Chores row from an edit shared the running
+    // Chores block's start, and the real 82 minutes were dropped as its copy.
+    func testARowUnderAMinuteIsNotACopyOfTheBlock() {
+        let junk = WorkSession(startTime: at(0), durationMinutes: 0, type: .work, label: "Chores")
+        let real = WorkSession(startTime: at(0), durationMinutes: 82, type: .work, label: "Chores")
+        XCTAssertNil(TimeIntegrity.sameBlock(as: real, in: [junk]))
+        let copy = WorkSession(startTime: at(0.02), durationMinutes: 80, type: .work, label: "Chores")
+        XCTAssertEqual(TimeIntegrity.sameBlock(as: real, in: [junk, copy])?.id, copy.id)
+    }
+
+    // Repainting up to a few seconds before a row's end left a 0.0-minute tail.
+    func testRepaintLeavesNoSlivers() {
+        let row = WorkSession(startTime: at(0), durationMinutes: 14.54, type: .work, label: "Chores")
+        let edits = LogEdit.plan([row], start: at(-5), end: at(14.53), label: "Reading", now: at(30))
+        XCTAssertFalse(edits.contains { if case .insert(let s) = $0 { return s.label == "Chores" } else { return false } })
+    }
+
     // An old build's stop names the block by its start only.
     func testOldBuildStopOfOurBlockLogsNothing() {
         var core = holding("Math", from: 0)

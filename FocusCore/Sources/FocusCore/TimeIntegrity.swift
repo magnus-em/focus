@@ -69,10 +69,12 @@ public enum TimeIntegrity {
     }
 
     /// The row in `rows` that is `s` logged again: same start (within 3 s),
-    /// kind and category. Two devices logging one block.
+    /// kind and category. Two devices logging one block. A row under a minute
+    /// is never a block (they aren't logged): 10/30 a zero-length Chores row
+    /// left by an edit at 11:06:39 swallowed the real 11:06–12:28 Chores.
     public static func sameBlock(as s: WorkSession, in rows: [WorkSession]) -> WorkSession? {
         rows.first { r in
-            r.id != s.id && abs(r.startTime.timeIntervalSince(s.startTime)) <= 3
+            r.id != s.id && r.durationMinutes >= 1 && abs(r.startTime.timeIntervalSince(s.startTime)) <= 3
                 && r.type.isBreak == s.type.isBreak && r.label == s.label
         }
     }

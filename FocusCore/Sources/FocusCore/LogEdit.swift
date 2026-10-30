@@ -53,7 +53,7 @@ public enum LogEdit {
             let a = row.startTime
             let b = min(a.addingTimeInterval(row.durationMinutes * 60), max(now, end))
             guard a < end, b > start else { continue }
-            if b > end {
+            if b.timeIntervalSince(end) >= 60 {
                 edits.append(.insert(WorkSession(startTime: end, durationMinutes: b.timeIntervalSince(end) / 60,
                                                  type: row.type, label: row.label, breakKinds: row.breakKinds)))
             }

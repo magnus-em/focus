@@ -8,7 +8,7 @@ Last touched: 2026-10-30 (Claude: cross-device timer rewrite).
 
 - `7252af9` (see CLAUDE.md → Cross-device timer) is installed on the Mac and the iPhone. **The iPad still runs the old build** (it was locked); install with `./install_ios.sh` from a clean checkout of main (the main checkout carries Codex's untracked `AIUsage.swift`, which doesn't compile). Until then the old iPad can still re-announce a stale block on relaunch; new builds ignore old-build states that began before their own block, and never log a block on an old build's say-so.
 - Not yet verified on real devices: read the iPhone's and Mac's sync.log (`statePublish`, `liveAdopt`, `liveAdoptMp`, `liveSave`) after a day of normal use.
-- Bad history from the old sync, not repaired (ask the user first): Class 10/28 9:25 AM → 10/29 2:44 AM (the iPhone's log shows it stopped at 3:49 PM on 10/28); LeetCode 10/24 4:25 PM → 10/25 3:02 PM (22.6 h; true end unknown, the iPad's log would say).
+- Repaired 10/30 at the user's word through `focus://log`: Class 10/28 now 9:25–11:30 AM then Leisure to the existing Sleep; LeetCode 10/24 now 4:25–6:25 PM, then Leisure, Sleep 8:38 AM–2:36 PM (Mac asleep per presence.json), Leisure; today Chores 10:50–12:28 (the stop at 12:28 had been dropped as a "copy" of a zero-length row; fixed in TimeIntegrity.sameBlock).
 
 ## Deep-learning course labels — 10/21 (Codex)
 
