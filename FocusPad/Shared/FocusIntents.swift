@@ -38,22 +38,31 @@ struct FocusCategoryQuery: EntityStringQuery {
 #if FOCUS_APP
 @MainActor
 enum FocusCommandSender {
+    /// Acts on this phone's timer, which tells the other devices. Intents run
+    /// in the app process (`LiveActivityIntent`) and the engine exists from
+    /// launch, background ones included. Commands for every device to apply
+    /// were the old way: the Mac applied them too, and a phone in the
+    /// background didn't until it next ran.
     static func send(_ action: TimerCommand.Action, label: String = "", minutes: Double = 0) async {
-        TimerCommand.send(action, label: label, minutes: minutes,
-                          deviceID: TimerStateSync.persistedDeviceID(),
-                          container: FocusPadApp.sharedContainer)
-        // Show the change on the Lock Screen now rather than after the round trip.
+        if let engine = FocusPadApp.liveEngine {
+            switch action {
+            case .switchTo: engine.switchTo(label)
+            case .startBreak: engine.startBreak(minutes: minutes)
+            case .stop: engine.stop()
+            }
+        } else {
+            TimerCommand.send(action, label: label, minutes: minutes,
+                              deviceID: TimerStateSync.persistedDeviceID(),
+                              container: FocusPadApp.sharedContainer)
+        }
         switch action {
         case .switchTo: await FocusLiveActivity.show(label: label, isBreak: false, since: Date())
         case .startBreak: await FocusLiveActivity.show(label: "Break", isBreak: true, since: Date())
         case .stop: await FocusLiveActivity.end()
         }
-        if let engine = FocusPadApp.liveEngine, UIApplication.shared.applicationState == .active {
-            engine.stateSync.pokeForRemote()
-            return
-        }
+        guard UIApplication.shared.applicationState != .active else { return }
         // Launched in the background just for this intent: stay alive long
-        // enough for the CloudKit mirror to export the command.
+        // enough for the CloudKit mirror to export the new state.
         let task = UIApplication.shared.beginBackgroundTask(withName: "focusCommandExport")
         try? await Task.sleep(for: .seconds(12))
         if task != .invalid { UIApplication.shared.endBackgroundTask(task) }

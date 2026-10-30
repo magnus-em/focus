@@ -26,29 +26,15 @@ public enum LogEdit {
         do {
             let models = try rows(start, end, in: context)
             let before = models.map(\.asValue)
-            for model in models {
-                let a = model.startTime
-                let b = min(a.addingTimeInterval(model.durationMinutes * 60), max(now, end))
-                guard a < end, b > start else { continue }
-                if b > end {
-                    context.insert(StoredWorkSession(value: WorkSession(
-                        startTime: end, durationMinutes: b.timeIntervalSince(end) / 60,
-                        type: model.type, label: model.label, breakKinds: model.breakKinds)))
+            for edit in plan(before, start: start, end: end, label: label, fill: fill, now: now) {
+                switch edit {
+                case .setDuration(let id, let minutes):
+                    models.first { $0.id == id }?.durationMinutes = minutes
+                case .delete(let id):
+                    if let m = models.first(where: { $0.id == id }) { context.delete(m) }
+                case .insert(let s):
+                    context.insert(StoredWorkSession(value: s))
                 }
-                if a < start {
-                    model.durationMinutes = start.timeIntervalSince(a) / 60
-                } else {
-                    context.delete(model)
-                }
-            }
-            var cursor = start
-            while fill, cursor < end {
-                let midnight = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: cursor))!
-                let until = min(end, midnight)
-                context.insert(StoredWorkSession(value: WorkSession(
-                    startTime: cursor, durationMinutes: until.timeIntervalSince(cursor) / 60,
-                    type: label == nil ? .shortBreak : .work, label: label)))
-                cursor = until
             }
             let after = try rows(start, end, in: context).map(\.asValue)
             try context.save()
@@ -57,6 +43,31 @@ public enum LogEdit {
             context.rollback()
             return nil
         }
+    }
+
+    /// The edits `paint` makes, without a store.
+    public static func plan(_ rows: [WorkSession], start: Date, end: Date, label: String?, fill: Bool = true,
+                            now: Date = Date()) -> [OverlapEdit] {
+        var edits: [OverlapEdit] = []
+        for row in rows {
+            let a = row.startTime
+            let b = min(a.addingTimeInterval(row.durationMinutes * 60), max(now, end))
+            guard a < end, b > start else { continue }
+            if b > end {
+                edits.append(.insert(WorkSession(startTime: end, durationMinutes: b.timeIntervalSince(end) / 60,
+                                                 type: row.type, label: row.label, breakKinds: row.breakKinds)))
+            }
+            edits.append(a < start ? .setDuration(row.id, minutes: start.timeIntervalSince(a) / 60) : .delete(row.id))
+        }
+        var cursor = start
+        while fill, cursor < end {
+            let midnight = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: cursor))!
+            let until = min(end, midnight)
+            edits.append(.insert(WorkSession(startTime: cursor, durationMinutes: until.timeIntervalSince(cursor) / 60,
+                                             type: label == nil ? .shortBreak : .work, label: label)))
+            cursor = until
+        }
+        return edits
     }
 
     /// Removes one saved block, leaving a gap.

@@ -463,10 +463,15 @@ struct SwitchAtSheet: View {
         let running = engine.isActive ? (engine.isOnBreak ? "Break" : engine.currentLabel) : nil
         guard !label.isEmpty else { return "" }
         if let running, let start = engine.sessionStartTime {
+            let began = start.formatted(date: .omitted, time: .shortened)
+            if running == label {
+                if abs(at.timeIntervalSince(start)) < 30 { return "\(label) is already running since \(began)." }
+                return at < start
+                    ? "\(label) since \(when) instead of \(began). Anything logged in between becomes \(label)."
+                    : "\(label) since \(when) instead of \(began). The time before is left untracked."
+            }
             if at >= start {
-                return running == label
-                    ? "\(label) is already running since \(start.formatted(date: .omitted, time: .shortened))."
-                    : "\(running) is saved up to \(when), and \(label) runs from then."
+                return "\(running) is saved up to \(when), and \(label) runs from then."
             }
             return "\(label) from \(when). Everything logged since then, including the running \(running), becomes \(label)."
         }

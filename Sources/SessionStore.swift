@@ -101,37 +101,40 @@ class SessionStore: ObservableObject {
         }
     }
 
+    /// One block logged twice (here and on a peer) keeps the earlier end:
+    /// the device that ended it first knew, and a longer copy is one that
+    /// missed the switch (10/14: Math 5:22 → 6:24 grew to 10:44 PM when the
+    /// longer copy won). SwiftData/CloudKit has no unique constraints, so
+    /// this is the only race-safe place.
     func addSession(_ session: WorkSession) {
-        // De-dup: when a timer finishes on this device AND on a peer mirror
-        // (e.g. iPad-Mac live sync), both insertSession paths fire. Guard
-        // by looking up any existing session within ±3s of this startTime
-        // with matching type + label. Reason: SwiftData/CloudKit doesn't
-        // support unique constraints, so this is the only race-safe place.
         let start = session.startTime
         let lower = start.addingTimeInterval(-3)
         let upper = start.addingTimeInterval(3)
-        let typeRaw = session.type.rawValue
         let descriptor = FetchDescriptor<StoredWorkSession>(
-            predicate: #Predicate { existing in
-                existing.startTime >= lower &&
-                existing.startTime <= upper &&
-                existing.typeRaw == typeRaw
-            }
+            predicate: #Predicate { $0.startTime >= lower && $0.startTime <= upper }
         )
-        if let dupe = (try? context.fetch(descriptor))?.first(where: { $0.label == session.label }) {
-            // Same block saved twice (peer + here, or a re-adopted state):
-            // keep the longer one rather than whichever landed first.
-            if session.durationMinutes > dupe.durationMinutes {
-                dupe.durationMinutes = session.durationMinutes
+        let nearby = (try? context.fetch(descriptor)) ?? []
+        let minutes = min(session.durationMinutes, max(0, Date().timeIntervalSince(start)) / 60)
+        if let dupe = TimeIntegrity.sameBlock(as: session, in: nearby.map(\.asValue)),
+           let row = nearby.first(where: { $0.id == dupe.id }) {
+            if minutes < row.durationMinutes {
+                row.durationMinutes = minutes
                 save()
                 refresh()
             }
             return
         }
         let row = StoredWorkSession(value: session)
-        row.durationMinutes = min(session.durationMinutes, max(0, Date().timeIntervalSince(start)) / 60)
+        row.durationMinutes = minutes
         context.insert(row)
         save()
+        refresh()
+    }
+
+    /// Leave [start, end) untracked: rows there are trimmed or split around it.
+    func clear(start: Date, end: Date) {
+        save()
+        _ = LogEdit.paint(start: start, end: end, label: nil, fill: false, in: context)
         refresh()
     }
 
@@ -173,10 +176,11 @@ class SessionStore: ObservableObject {
             let now = Date()
             guard let o = TimeIntegrity.overlaps(in: sessions, from: now.addingTimeInterval(-7 * 86400), to: now).first
             else { break }
-            let keep = TimeIntegrity.autoKeep(o)
-            guard LogEdit.fixOverlap(o, keep: keep, now: now, in: context) != nil else { break }
+            let fix = TimeIntegrity.autoFix(o)
+            guard LogEdit.fixOverlap(o, keep: fix.keep, removing: fix.removing, now: now, in: context) != nil else { break }
             SyncLog.event("overlapAutoResolved", ["first": o.first.id.uuidString, "second": o.second.id.uuidString,
-                                                  "kept": keep?.uuidString ?? "merged"])
+                                                  "kept": fix.keep?.uuidString ?? "merged",
+                                                  "removed": fix.removing?.id.uuidString ?? "-"])
             let descriptor = FetchDescriptor<StoredWorkSession>(sortBy: [SortDescriptor(\.startTime)])
             sessions = ((try? context.fetch(descriptor)) ?? []).map { $0.asValue }
         }

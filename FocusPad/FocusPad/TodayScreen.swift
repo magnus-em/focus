@@ -465,9 +465,7 @@ struct TodayScreen: View {
     private func edit(_ row: LogRow, start: Date, end: Date, label: String?, delete: Bool) {
         if row.running {
             if delete { return }
-            let out = start < row.start ? actions.start(label ?? row.name, at: start)
-                : actions.set(row.start, Date(), to: label)
-            record(out, "\(label ?? "Break") since \(clock(min(start, row.start))).")
+            record(actions.setRunning(from: start, to: label), "\(label ?? "Break") since \(clock(start)).")
             return
         }
         if delete {
@@ -576,7 +574,7 @@ private struct BlockEditSheet: View {
                 }
                 if row.running {
                     Section {
-                        Text("This block is running. A new category applies from its start; an earlier start relabels the time in between.")
+                        Text("This block is running. A new category applies from its start. An earlier start takes over the time in between; a later one leaves it untracked.")
                             .font(.footnote).foregroundStyle(Color.secondaryText)
                     }
                 } else {

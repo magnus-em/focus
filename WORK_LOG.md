@@ -1,5 +1,11 @@
 # Focus implementation work log
 
+## Cross-device timer rewrite — 2026-10-30 (Claude)
+
+- User: phone start/stop/edit "works like 15% of the time" and the phone often shows something different from the Mac. Mac sync.log (10/25–10/30) and the store showed: the single shared `StoredTimerState` row spliced by iCloud (10/29 23 h Class after a Mac relaunch; 10/26 a fresh LeetCode block killed 7 s after starting), stale devices re-announcing old blocks with fresh versions (10/24 iPad LeetCode → 22.6 h row; 10/30 iPhone re-sent last evening's Math), keep-longer dedup, missing phone edit paths (running start later, saved end into the running block) and a running-Break edit that created a "Break" category. iPhone/iPad logs couldn't be read (devices locked).
+- New `FocusCore/LiveTimerCore.swift`: pure timer logic shared by Mac `TimerManager` and iOS `FocusTimerEngine` (both now shells). Immutable stamped state rows, total order (`LiveState.precedes`), ordered catch-up, explicit "who logs a block" rule, keep-earlier-end dedup, uncertain restored blocks. Widgets/Siri act on the phone engine directly. Phone `LogActions` moves/relabels/carves the running block.
+- `LiveSyncSimulationTests`: Mac + iPhone + iPad through a simulated iCloud and local network. 300 synced seeds match a single-device reference minute by minute; chaos (stale actors, sleep, offline, relaunch, ±5 s skew) converged on 3,000 seeds with one log and no overlaps; regression cases from the real logs and an upgrade-from-old-checkpoints case. Mutations (keep longer; never log unclaimed blocks) are caught. 249 core tests pass. Not covered by tests: real CloudKit/Multipeer behaviour and the SwiftUI screens.
+
 ## Siri daily totals and Health check status — 2026-10-14
 
 - Siri totals reuse shared day clipping for saved and live work; live duration comes from Claude's fresh activeElapsedSeconds accessor. Break phase is excluded even with a sticky focus label; paused time stays frozen, and the dialog calls it paused. App initialization sets liveEngine for background intents. Invalid/future live time is ignored; saved fetch errors now fail the intent instead of reporting an empty day.

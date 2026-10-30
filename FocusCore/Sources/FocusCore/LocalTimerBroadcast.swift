@@ -25,21 +25,34 @@ public final class LocalTimerBroadcast: NSObject, ObservableObject {
         public let endTime: Date?
         public let remainingSeconds: Double
         public let timestamp: Date
+        /// The stamped state; the fields above are for builds before it.
+        public let live: LiveState?
 
-        public init(deviceID: String, phase: String, isRunning: Bool,
-                    totalSeconds: Double, label: String, breakKindsRaw: [String],
-                    startTime: Date?, endTime: Date?,
-                    remainingSeconds: Double, timestamp: Date) {
+        public init(deviceID: String, live s: LiveState) {
             self.deviceID = deviceID
-            self.phase = phase
-            self.isRunning = isRunning
-            self.totalSeconds = totalSeconds
-            self.label = label
-            self.breakKindsRaw = breakKindsRaw
-            self.startTime = startTime
-            self.endTime = endTime
-            self.remainingSeconds = remainingSeconds
-            self.timestamp = timestamp
+            phase = s.phase.rawValue
+            isRunning = s.isRunning
+            totalSeconds = s.totalSeconds
+            label = s.label
+            breakKindsRaw = s.breakKinds.map(\.rawValue)
+            startTime = s.phase == .idle ? s.ended?.start : s.start
+            endTime = s.phase == .idle ? s.ended?.end : s.endTime
+            remainingSeconds = s.remainingSeconds
+            timestamp = s.sentAt
+            live = s
+        }
+
+        public var state: LiveState? {
+            if let live { return live }
+            guard let p = LiveState.Phase(rawValue: phase) else { return nil }
+            let stamp = LiveStamp(at: timestamp, device: deviceID)
+            let remaining = isRunning ? (endTime?.timeIntervalSince(timestamp) ?? remainingSeconds) : remainingSeconds
+            return LiveState(phase: p, blockID: nil, start: startTime, label: label,
+                             breakKinds: breakKindsRaw.compactMap(BreakKind.init(rawValue:)),
+                             totalSeconds: totalSeconds, remainingSeconds: remaining, isRunning: isRunning,
+                             sentAt: timestamp, created: stamp, updated: stamp,
+                             ended: p == .idle ? startTime.map { LiveEnded(id: nil, start: $0, end: endTime ?? timestamp) } : nil,
+                             legacy: true)
         }
     }
 
@@ -54,8 +67,8 @@ public final class LocalTimerBroadcast: NSObject, ObservableObject {
 
     /// Called on the main thread the moment a new peer transitions to
     /// `.connected`. The engine should respond by re-broadcasting its
-    /// current state so the new peer learns about an already-running
-    /// session that started BEFORE Multipeer was reachable.
+    /// current state, idle included, so the new peer learns about a session
+    /// that started (or stopped) before Multipeer was reachable.
     ///
     /// Without this, the canonical bug is: device A starts a timer (no
     /// peers connected → `mpSendSkipNoPeers`), then device B launches and

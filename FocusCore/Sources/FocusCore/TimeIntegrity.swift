@@ -68,6 +68,26 @@ public enum TimeIntegrity {
         return edits
     }
 
+    /// The row in `rows` that is `s` logged again: same start (within 3 s),
+    /// kind and category. Two devices logging one block.
+    public static func sameBlock(as s: WorkSession, in rows: [WorkSession]) -> WorkSession? {
+        rows.first { r in
+            r.id != s.id && abs(r.startTime.timeIntervalSince(s.startTime)) <= 3
+                && r.type.isBreak == s.type.isBreak && r.label == s.label
+        }
+    }
+
+    /// How the Mac fixes an overlap on its own. One block logged twice with
+    /// different ends keeps the earlier end: the device that ended it first
+    /// knew, and the longer copy is a device that missed the switch (10/14
+    /// Math 5:22 → 6:24 grew to 10:44 PM when the longer copy won).
+    public static func autoFix(_ o: SessionOverlap) -> (keep: UUID?, removing: WorkSession?) {
+        if o.sameLabel, abs(o.first.startTime.timeIntervalSince(o.second.startTime)) <= 3 {
+            return (nil, o.first.durationMinutes <= o.second.durationMinutes ? o.second : o.first)
+        }
+        return (autoKeep(o), nil)
+    }
+
     /// Which block keeps the shared stretch, decided without asking (user,
     /// 10/16: "just make it automatically decide"). nil = same category, merge.
     /// Otherwise the block that started later: it's the switch made last, and

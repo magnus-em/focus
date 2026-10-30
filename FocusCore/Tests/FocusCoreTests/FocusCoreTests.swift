@@ -141,23 +141,6 @@ final class RemoteStopTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     private func at(_ min: Double) -> Date { t0.addingTimeInterval(min * 60) }
 
-    // The iPad held Class from 12:17; the Mac stopped the iPhone's Class from 12:42.
-    func testOursEndsWhereTheStoppedSessionBegan() {
-        XCTAssertEqual(RemoteStop.end(mine: at(0), stoppedStart: at(25), stoppedAt: at(173), now: at(174)), at(25))
-    }
-
-    func testSameSessionEndsAtTheStopNotWhenWeHeard() {
-        XCTAssertEqual(RemoteStop.end(mine: at(0), stoppedStart: at(0), stoppedAt: at(60), now: at(240)), at(60))
-    }
-
-    func testOlderPeersWithoutAStartStillCapAtTheStop() {
-        XCTAssertEqual(RemoteStop.end(mine: at(0), stoppedStart: nil, stoppedAt: at(60), now: at(61)), at(60))
-    }
-
-    func testAPeerStoppingAnOlderSessionDoesntCutOurs() {
-        XCTAssertEqual(RemoteStop.end(mine: at(30), stoppedStart: at(0), stoppedAt: at(60), now: at(61)), at(60))
-    }
-
     // 10/13: after a relaunch, cutting at 00:19:45 saved 30 min (to the relaunch) instead of 9.
     func testDurationNeverExceedsTheWallClockSpan() {
         XCTAssertEqual(RemoteStop.duration(elapsed: 30 * 60, start: at(0), end: at(8.9)), 8.9 * 60, accuracy: 0.001)
@@ -202,37 +185,74 @@ final class OverlapFixTests: XCTestCase {
     }
 }
 
-final class RemoteStopSaveTests: XCTestCase {
+/// What a device logs when another device's state takes over from its block.
+final class HandoverTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     private func at(_ min: Double) -> Date { t0.addingTimeInterval(min * 60) }
 
-    // Codex: mine 12:42, a peer stops 12:17 while we slept: ours is newer, keep it.
-    func testStaleDeviceKeepsANewerSessionWhenAnOlderOneStops() {
-        XCTAssertEqual(RemoteStop.savedEnd(mine: at(25), stoppedStart: at(0), stoppedAt: at(173), now: at(200),
-                                           stale: true, shared: true), at(173))
+    private func holding(_ label: String, from: Double) -> LiveTimerCore {
+        var core = LiveTimerCore(deviceID: "ipad")
+        _ = core.switchTo(label, at: at(from), workSeconds: 1500, now: at(from))
+        return core
     }
 
-    func testStaleSharedSessionSkipsWhenALaterOneStopped() {
-        XCTAssertNil(RemoteStop.savedEnd(mine: at(0), stoppedStart: at(25), stoppedAt: at(173), now: at(200),
-                                         stale: true, shared: true))
+    private func idle(ending id: UUID?, start: Double, end: Double, pressed: Double, legacy: Bool = false) -> LiveState {
+        let stamp = LiveStamp(at: at(pressed), device: "mac")
+        return LiveState(phase: .idle, blockID: nil, start: at(start), label: "", breakKinds: [], totalSeconds: 0,
+                         remainingSeconds: 0, isRunning: false, sentAt: at(pressed), created: stamp, updated: stamp,
+                         ended: LiveEnded(id: id, start: at(start), end: at(end)), legacy: legacy)
     }
 
-    // 10/14 night: saving "up to the later start" stretched Math 5:22 → 6:24 to 10:44 PM via dedup.
-    func testAwakeDeviceAlsoSkipsWhenALaterSessionStopped() {
-        XCTAssertNil(RemoteStop.savedEnd(mine: at(0), stoppedStart: at(25), stoppedAt: at(173), now: at(174),
-                                         stale: false, shared: true))
+    private func saves(_ fx: [LiveEffect]?) -> [WorkSession] {
+        (fx ?? []).compactMap { if case .save(let s) = $0 { return s } else { return nil } }
     }
-}
 
-final class BackdatedStopTests: XCTestCase {
-    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
-    private func at(_ min: Double) -> Date { t0.addingTimeInterval(min * 60) }
+    // Codex: Class from 13:00, "End Class at 13:40" clicked at 15:10 on the
+    // Mac. The Mac logged it to 13:40; a peer holding the same Class logs nothing.
+    func testPeerStoppingOurBlockLogsNothingHere() {
+        var core = holding("Class", from: 0)
+        let fx = core.reconcile(idle(ending: core.block!.id, start: 0, end: 40, pressed: 130), now: at(131))
+        XCTAssertEqual(saves(fx).count, 0)
+        XCTAssertNil(core.block)
+    }
 
-    // Codex: Class from 13:00, "End Class at 13:40" clicked at 15:10. The idle
-    // carries 13:40 as its end; a peer holding the same Class saves to 13:40.
-    func testPeerSavesToTheBackdatedEndNotWhenItHeard() {
-        XCTAssertEqual(RemoteStop.savedEnd(mine: at(0), stoppedStart: at(0), stoppedAt: at(40), now: at(130),
-                                           stale: false, shared: true), at(40))
+    // 10/14: the iPad held Class from 12:17; the iPhone, never having seen
+    // it, started Class at 12:42, which the Mac stopped at 3:10. The iPad's
+    // Class ends where the iPhone's began, logged once.
+    func testOursEndsWhereTheBlockThatReplacedItBegan() {
+        var core = holding("Class", from: 0)
+        let s1 = LiveStamp(at: at(25), device: "iphone")
+        let theirs = LiveState(phase: .work, blockID: UUID(), start: at(25), label: "Class", breakKinds: [],
+                               totalSeconds: 90000, remainingSeconds: 90000, isRunning: true, sentAt: at(25),
+                               created: s1, updated: s1, ended: nil)
+        let stop = idle(ending: theirs.blockID, start: 25, end: 173, pressed: 173)
+        let logged = saves(core.catchUp([stop, theirs], now: at(174)))
+        XCTAssertEqual(logged.map(\.startTime), [at(0)])
+        XCTAssertEqual(logged.first!.durationMinutes, 25, accuracy: 0.001)
+        XCTAssertNil(core.block)
+    }
+
+    // 10/14 night: saving "up to the later start" stretched Math 5:22 → 6:24
+    // to 10:44 PM via dedup. A stop of a block newer than ours means ours
+    // was replaced by something we missed, and whoever did that logged it.
+    func testAStopOfALaterBlockLogsNothing() {
+        var core = holding("Math", from: 0)
+        XCTAssertEqual(saves(core.reconcile(idle(ending: UUID(), start: 25, end: 173, pressed: 173), now: at(174))).count, 0)
+    }
+
+    // A stale peer stopping the block it still showed stops ours when it was pressed.
+    func testAStopOfAnOlderBlockStopsOursWhenPressed() {
+        var core = holding("Math", from: 30)
+        let logged = saves(core.reconcile(idle(ending: UUID(), start: 0, end: 60, pressed: 60), now: at(61)))
+        XCTAssertEqual(logged.first?.startTime, at(30))
+        XCTAssertEqual(logged.first!.durationMinutes, 30, accuracy: 0.001)
+    }
+
+    // An old build's stop names the block by its start only.
+    func testOldBuildStopOfOurBlockLogsNothing() {
+        var core = holding("Math", from: 0)
+        XCTAssertEqual(saves(core.reconcile(idle(ending: nil, start: 0, end: 60, pressed: 61, legacy: true), now: at(62))).count, 0)
+        XCTAssertNil(core.block)
     }
 }
 

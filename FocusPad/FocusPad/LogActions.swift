@@ -16,54 +16,68 @@ struct LogActions {
         var problem: String?
     }
 
-    /// [start, end] becomes `label` (nil = Break).
+    /// What's running, nil for Break; only meaningful while active.
+    private var running: String? { engine.isOnBreak ? nil : engine.currentLabel }
+
+    /// [start, end] becomes `label` (nil = Break). Reaching into the running
+    /// block moves it: up to now, it becomes `label` from `start`; short of
+    /// now, it starts at `end` instead ("Reading until 11:00" while Chores
+    /// runs from 10:52). Inside it, that stretch is cut out of it.
     func set(_ start: Date, _ end: Date, to label: String?) -> Outcome {
-        var out = Outcome()
         let now = Date()
         let end = min(end, now)
-        let runStart = engine.isActive ? engine.sessionStartTime : nil
-        let savedEnd = min(end, runStart ?? end)
-        if savedEnd.timeIntervalSince(start) >= 60 {
-            try? context.save()
-            guard let undo = LogEdit.paint(start: start, end: savedEnd, label: label, in: context) else {
-                out.problem = "Couldn't save that. Try again."
-                return out
+        guard end.timeIntervalSince(start) >= 60 else { return Outcome() }
+        guard engine.isActive, let r = engine.sessionStartTime, end > r.addingTimeInterval(30) else {
+            return paint(start, end, label)
+        }
+        if end >= now.addingTimeInterval(-90) {
+            if start <= r.addingTimeInterval(60) {
+                return setRunning(from: start, to: label)
             }
-            out.undos.append(undo)
+            if let label { engine.switchTo(label, at: start) } else { engine.startBreak(minutes: 0, at: start) }
+            return Outcome(movedTimer: true)
         }
-        guard let runStart, end.timeIntervalSince(max(start, runStart)) >= 60 else { return out }
-        let from = max(start, runStart)
-        // "Reading until 20 min ago, then chores": the running part already is Reading.
-        if let label, !engine.isOnBreak, label == engine.currentLabel, from.timeIntervalSince(runStart) <= 60 { return out }
-        guard end >= now.addingTimeInterval(-90) else {
-            out.problem = "Part of that is inside what's running now. Stop it first, or fix it on the Mac."
-            return out
+        if start >= r {
+            guard label != running else { return Outcome() }
+            engine.carveOut(from: start, to: end, as: label)
+            return Outcome(movedTimer: true)
         }
-        if let label {
-            engine.switchTo(label, at: from)
-        } else if now.timeIntervalSince(from) < 120 {
-            engine.startManualBreak(minutes: 0)
-        } else {
-            out.problem = "A break can only start now from the phone."
-            return out
-        }
+        engine.moveStart(to: end)
+        var out = paint(start, end, label)
         out.movedTimer = true
         return out
     }
 
+    /// The running block is `label` (nil = Break) from `start`, earlier or
+    /// later than it began. Earlier takes over what's logged in between;
+    /// later leaves the time before it untracked.
+    func setRunning(from start: Date, to label: String?) -> Outcome {
+        guard engine.isActive, let r = engine.sessionStartTime else { return Outcome(problem: "Nothing is running.") }
+        if abs(start.timeIntervalSince(r)) >= 30 { engine.moveStart(to: start) }
+        if label != running {
+            if let label { engine.relabel(label) } else { engine.startBreak(minutes: 0, at: engine.sessionStartTime ?? start) }
+        }
+        return Outcome(movedTimer: true)
+    }
+
     /// `label` from `at` on, and running. Saved time after `at` becomes
-    /// `label` too, so nothing is counted twice.
+    /// `label` too, so nothing is counted twice. The same category as what's
+    /// running just moves its start, either way.
     func start(_ label: String, at: Date) -> Outcome {
-        let runStart = engine.isActive ? engine.sessionStartTime : nil
-        if let runStart, at >= runStart {
+        guard engine.isActive else {
             engine.switchTo(label, at: at)
             return Outcome(movedTimer: true)
         }
-        var out = set(at, runStart ?? Date(), to: label)
-        guard out.problem == nil else { return out }
-        if let runStart { engine.switchTo(label, at: runStart) } else { engine.switchTo(label) }
-        out.movedTimer = true
-        return out
+        if label == running { return setRunning(from: at, to: label) }
+        return set(at, Date(), to: label)
+    }
+
+    private func paint(_ start: Date, _ end: Date, _ label: String?) -> Outcome {
+        try? context.save()
+        guard let undo = LogEdit.paint(start: start, end: end, label: label, in: context) else {
+            return Outcome(problem: "Couldn't save that. Try again.")
+        }
+        return Outcome(undos: [undo])
     }
 
     func fixOverlap(_ o: SessionOverlap, keep: UUID?) -> Outcome {

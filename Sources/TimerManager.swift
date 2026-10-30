@@ -8,6 +8,9 @@ import AppKit
 /// it, so the rest of the popover doesn't re-render twice a second.
 final class TimerClock: ObservableObject {}
 
+/// The Mac's timer: `LiveTimerCore` (the logic, shared with the phone) plus
+/// the clock, site blocking, the completion panel, pause grace and the two
+/// ways of reaching the other devices.
 class TimerManager: ObservableObject {
     let clock = TimerClock()
     private var remaining: TimeInterval
@@ -26,7 +29,7 @@ class TimerManager: ObservableObject {
     @Published var isBlockingActive = false
 
     @Published var currentLabel: String = "" {
-        didSet { if !isActive && currentPhase == .work && currentLabel != oldValue { setTimeForCurrentPhase() } }
+        didSet { if !isActive && currentLabel != oldValue { setIdleTime() } }
     }
     @Published var lastCompletedLabel: String? = nil
     @Published var currentBreakKinds: [BreakKind] = []
@@ -41,18 +44,12 @@ class TimerManager: ObservableObject {
     }
 
     private var timer: AnyCancellable?
-    private(set) var sessionStartTime: Date? {
-        didSet { if let s = sessionStartTime { lastSessionStart = s } }
-    }
-    /// The most recent session's start, still known after it ends: sent with
-    /// the idle state so peers know which session was stopped.
-    private var lastSessionStart: Date?
-    private var elapsedBeforePause: TimeInterval = 0
-    private var lastResumeTime: Date?
+    @Published private(set) var sessionStartTime: Date?
+    private var core = LiveTimerCore(deviceID: TimerStateSync.persistedDeviceID())
     private var settingsSubscriptions = Set<AnyCancellable>()
     private let completionPanel = CompletionPanel()
     private var tickCount = 0
-    private static let checkpointKey = "timerCheckpoint"
+    private static let legacyCheckpointKey = "timerCheckpoint"
 
     var sessionStore: SessionStore?
     /// Fired after a command from another device (phone Shortcut, etc.) is applied.
@@ -60,74 +57,41 @@ class TimerManager: ObservableObject {
     /// Fired when a focus segment is saved because the user switched, stopped
     /// or took a break (not on auto-finalize or crash recovery).
     var onFocusSegmentSaved: ((WorkSession) -> Void)?
-    var settings: AppSettings? { didSet { observeSettingsChanges() } }
+    var settings: AppSettings? {
+        didSet {
+            observeSettingsChanges()
+            updateBlocking()
+        }
+    }
 
     /// Cross-device live-timer sync. Set externally after init.
     var stateSync: TimerStateSync? {
         didSet {
-            stateSync?.onRemoteChange = { [weak self] state in
-                self?.applyRemoteState(state)
-            }
-            stateSync?.onCommands = { [weak self] cmds in
+            guard let stateSync else { return }
+            core.deviceID = stateSync.deviceID
+            stateSync.onStatesChanged = { [weak self] states in self?.catchUp(states) }
+            stateSync.onCommands = { [weak self] cmds in
                 guard let self else { return }
                 for c in cmds { self.apply(c) }
                 if let last = cmds.last { self.onCommandApplied?(last) }
             }
-            // On launch, adopt the shared state if (a) we're idle locally
-            // and (b) the stored state is meaningful (version > 0, not idle).
-            //
-            // We DON'T filter by `deviceID != self` here — that filter is for
-            // *steady-state* echoes, where we want to ignore our own writes
-            // bouncing back via CloudKit. At startup we have no in-memory
-            // state to clobber, and adopting our own previously-written
-            // state is exactly the recovery we want: e.g., user starts a
-            // break on Mac, app gets killed, Mac re-launches → we should
-            // pick up where we left off rather than show idle while the
-            // CK record says "break running".
-            if !isActive,
-               let s = stateSync?.currentState(),
-               s.version > 0,
-               s.phase != StoredTimerState.Phase.idle {
-                // Stale running snapshot (would have completed before now)?
-                // Don't adopt as paused-with-leftover — that just shows a
-                // ghost timer the user can't get rid of. Push idle so all
-                // devices converge on "session over, fresh start."
-                if s.isRunning, let end = s.endTime, end.timeIntervalSinceNow < -5 {
-                    stateSync?.pushIdle()
-                } else {
-                    applyRemoteState(s)
-                }
-            }
+            // Whatever happened elsewhere while Focus was closed. Nothing is
+            // announced on resume: the restored state keeps its old stamp, so
+            // it can't beat anything newer (10/29: reopened after a day, the
+            // Mac re-sent Class from 9:25 the morning before as new).
+            catchUp(stateSync.allStates())
+            if let s = core.currentState(at: Date()), !stateSync.contains(s) { stateSync.publish(s) }
         }
     }
     var localBroadcast: LocalTimerBroadcast? {
         didSet {
-            localBroadcast?.onMessage = { [weak self] msg in
-                self?.applyRemoteMessage(msg)
-            }
-            // When a peer reconnects, rebroadcast our current state so they
-            // see any session that started before the link was up.
-            localBroadcast?.onPeerConnected = { [weak self] in
-                guard let self else { return }
-                guard self.isActive else {
-                    SyncLog.event("mpPeerConnectSkip", ["reason": "localIdle"])
-                    return
-                }
-                SyncLog.event("mpPeerConnectRebroadcast", [
-                    "phase": self.phaseKey(self.currentPhase),
-                    "isRunning": self.isRunning,
-                ])
-                self.pushSharedState()
-            }
+            localBroadcast?.onMessage = { [weak self] msg in self?.receive(msg) }
+            // A peer that just connected may have missed a start or a stop.
+            localBroadcast?.onPeerConnected = { [weak self] in self?.sendCurrent() }
         }
     }
-    /// No time-based echo gate anymore — TimerStateSync's version field +
-    /// deviceID stamp give us a definitive "is this our echo / is this newer"
-    /// answer. The old 3s window would suppress legitimate newer peer pushes
-    /// that arrived while CloudKit was still processing our own.
 
     private var workDuration: TimeInterval { (settings?.workMinutes ?? 25) * 60 }
-    private var breakDuration: TimeInterval { (settings?.shortBreakMinutes ?? 10) * 60 }
 
     init() {
         self.totalTime = 25 * 60
@@ -136,8 +100,8 @@ class TimerManager: ObservableObject {
     }
 
     func applySettings() {
-        guard !isRunning && elapsedBeforePause == 0 else { return }
-        setTimeForCurrentPhase()
+        guard !isActive else { return }
+        setIdleTime()
     }
 
     // MARK: - Display
@@ -146,18 +110,14 @@ class TimerManager: ObservableObject {
 
     var timeString: String { FocusCategories.timeString(total: totalTime, remaining: timeRemaining) }
 
-    var isActive: Bool { isRunning || timeRemaining < totalTime }
+    var isActive: Bool { core.isActive }
     var isOnBreak: Bool { currentPhase != .work }
 
     var menuBarTimeText: String {
         isRunning ? timeString : "⏸ \(timeString)"
     }
 
-    var currentElapsedSeconds: TimeInterval {
-        var elapsed = elapsedBeforePause
-        if let resume = lastResumeTime { elapsed += Date().timeIntervalSince(resume) }
-        return elapsed
-    }
+    var currentElapsedSeconds: TimeInterval { core.block?.elapsed(at: Date()) ?? 0 }
 
     var currentInProgressSession: WorkSession? {
         guard isActive, currentPhase == .work, let start = sessionStartTime else { return nil }
@@ -183,418 +143,65 @@ class TimerManager: ObservableObject {
     // MARK: - Controls
 
     func start() {
-        SyncLog.event("localStart", [
-            "phase": phaseKey(currentPhase),
-            "totalTime": totalTime,
-            "timeRemaining": timeRemaining,
-            "label": currentLabel,
-        ])
         cancelPauseGrace()
-        if sessionStartTime == nil { sessionStartTime = Date() }
-        lastResumeTime = Date()
-        isRunning = true
-        tickCount = 0
-        timer = Timer.publish(every: 0.5, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in self?.tick() }
-        updateBlocking()
-        saveCheckpoint()
-        pushSharedState()
+        perform("start") { core, now in
+            if core.block != nil { return core.resume(now: now) }
+            return core.begin(isBreak: false, label: currentLabel, kinds: [], plannedSeconds: totalTime, at: now, now: now)
+        }
     }
 
     func pause() {
-        SyncLog.event("localPause", [
-            "phase": phaseKey(currentPhase),
-            "timeRemaining": timeRemaining,
-        ])
-        if let resumeTime = lastResumeTime {
-            elapsedBeforePause += Date().timeIntervalSince(resumeTime)
-        }
-        lastResumeTime = nil
-        isRunning = false
-        timer?.cancel()
-        timer = nil
-        saveCheckpoint()
-        if currentPhase == .work && sessionStartTime != nil {
-            startPauseGrace()
-        }
-        pushSharedState()
+        perform("pause") { core, now in core.pause(now: now) }
+        if currentPhase == .work && sessionStartTime != nil && !isRunning { startPauseGrace() }
     }
 
-    // MARK: - Cross-device state sync
-
-    private func pushSharedState() {
-        SharedSessionMemory.mark(sessionStartTime)
-        guard let stateSync else { return }
-        let sharedPhase: StoredTimerState.Phase
-        switch currentPhase {
-        case .work:       sharedPhase = isActive ? .work : .idle
-        case .shortBreak, .longBreak:
-            sharedPhase = isActive ? .breakPhase : .idle
-        }
-        let label = currentLabel
-        let kinds = currentBreakKinds
-        let start = sessionStartTime
-        let total = totalTime
-        let isRun = isRunning
-        let remaining = timeRemaining
-        let endTime = isRun ? Date().addingTimeInterval(remaining) : nil
-
-        // Instant: local broadcast (same-wifi peers)
-        if let lb = localBroadcast {
-            let msg = LocalTimerBroadcast.Message(
-                deviceID: stateSync.deviceID,
-                phase: sharedPhase.rawValue,
-                isRunning: isRun,
-                totalSeconds: total,
-                label: label,
-                breakKindsRaw: kinds.map(\.rawValue),
-                startTime: start,
-                endTime: endTime,
-                remainingSeconds: remaining,
-                timestamp: Date()
-            )
-            lb.send(msg)
-        }
-
-        // Durable: SwiftData → CloudKit
-        stateSync.push { state in
-            state.phase = sharedPhase
-            state.isRunning = isRun
-            state.totalSeconds = total
-            state.label = label
-            state.breakKindsRaw = kinds.map(\.rawValue)
-            state.startTime = start
-            state.endTime = endTime
-            state.remainingSeconds = remaining
-        }
-    }
-
-    private func pushIdleEverywhere(endedAt: Date = Date()) {
-        guard let stateSync else { return }
-        if let lb = localBroadcast {
-            let msg = LocalTimerBroadcast.Message(
-                deviceID: stateSync.deviceID,
-                phase: "idle",
-                isRunning: false,
-                totalSeconds: 0,
-                label: "",
-                breakKindsRaw: [],
-                startTime: lastSessionStart,
-                endTime: lastSessionStart == nil ? nil : endedAt,
-                remainingSeconds: 0,
-                timestamp: Date()
-            )
-            lb.send(msg)
-        }
-        stateSync.pushIdle(ended: lastSessionStart, endedAt: endedAt)
-    }
-
-    private func applyRemoteMessage(_ msg: LocalTimerBroadcast.Message) {
-        guard let phaseEnum = StoredTimerState.Phase(rawValue: msg.phase) else { return }
-        SyncLog.event("applyMp", [
-            "phase": msg.phase,
-            "isRunning": msg.isRunning,
-            "totalSeconds": msg.totalSeconds,
-            "endTime": SyncLog.opt(msg.endTime),
-            "remaining": msg.remainingSeconds,
-            "msgTs": msg.timestamp,
-            "localBefore": [
-                "phase": phaseKey(currentPhase),
-                "isRunning": isRunning,
-                "totalTime": totalTime,
-                "timeRemaining": timeRemaining,
-            ],
-        ])
-        if phaseEnum == .idle {
-            // Save the in-progress local session before remote idle wipes
-            // it. Without this guard, a peer launching and broadcasting
-            // its own idle state destroys minutes/hours of our progress.
-            savePartialIfActive(reason: "remoteIdleMp", stoppedStart: msg.startTime, stoppedAt: msg.endTime ?? msg.timestamp)
-            timer?.cancel(); timer = nil
-            isRunning = false
-            elapsedBeforePause = 0
-            lastResumeTime = nil
-            sessionStartTime = nil
-            currentPhase = .work
-            currentBreakKinds = []
-            setTimeForCurrentPhase()
-            unblockIfNeeded()
-            return
-        }
-        if rejectOlder(msg.startTime, source: "mp") { return }
-        closeSegmentIfReplaced(by: msg.startTime)
-        currentPhase = (phaseEnum == .work) ? .work : .shortBreak
-        totalTime = msg.totalSeconds
-        currentLabel = msg.label
-        currentBreakKinds = msg.breakKindsRaw.compactMap { BreakKind(rawValue: $0) }
-        sessionStartTime = msg.startTime
-        SharedSessionMemory.mark(msg.startTime)
-        knowledgeStale = false
-        if msg.isRunning, let end = msg.endTime, end.timeIntervalSinceNow > -5 {
-            // Stale "running" snapshot (endTime in the past): don't auto-
-            // complete and save a phantom session — show frozen instead.
-            let remaining = max(0, end.timeIntervalSinceNow)
-            timeRemaining = remaining
-            elapsedBeforePause = totalTime - remaining
-            lastResumeTime = Date()
-            isRunning = true
-            timer?.cancel()
-            tickCount = 0
-            timer = Timer.publish(every: 0.5, on: .main, in: .common)
-                .autoconnect()
-                .sink { [weak self] _ in self?.tick() }
-            updateBlocking()
-        } else {
-            timeRemaining = msg.remainingSeconds
-            elapsedBeforePause = totalTime - msg.remainingSeconds
-            lastResumeTime = nil
-            isRunning = false
-            timer?.cancel(); timer = nil
-        }
-    }
-
-    private func applyRemoteState(_ state: StoredTimerState) {
-        let remotePhase = state.phase
-        SyncLog.event("applyCk", [
-            "version": state.version,
-            "phase": remotePhase.rawValue,
-            "isRunning": state.isRunning,
-            "totalSeconds": state.totalSeconds,
-            "endTime": SyncLog.opt(state.endTime),
-            "fromDevice": String(state.deviceID.prefix(8)),
-            "updatedAt": state.updatedAt,
-            "localBefore": [
-                "phase": phaseKey(currentPhase),
-                "isRunning": isRunning,
-                "totalTime": totalTime,
-                "timeRemaining": timeRemaining,
-            ],
-        ])
-        if remotePhase == .idle {
-            // Save partial local session before remote idle wipes it.
-            // (Same rationale as applyRemoteMessage's idle branch — a
-            // peer that just launched can broadcast an idle that
-            // doesn't reflect our actually-running local session.)
-            savePartialIfActive(reason: "remoteIdleCk", stoppedStart: state.startTime, stoppedAt: state.endTime ?? state.updatedAt)
-            timer?.cancel(); timer = nil
-            isRunning = false
-            elapsedBeforePause = 0
-            lastResumeTime = nil
-            sessionStartTime = nil
-            currentPhase = .work
-            currentBreakKinds = []
-            setTimeForCurrentPhase()
-            unblockIfNeeded()
-            return
-        }
-        if rejectOlder(state.startTime, source: "ck") { return }
-        closeSegmentIfReplaced(by: state.startTime)
-        currentPhase = (remotePhase == .work) ? .work : .shortBreak
-        totalTime = state.totalSeconds
-        currentLabel = state.label
-        currentBreakKinds = state.breakKinds
-        sessionStartTime = state.startTime
-        SharedSessionMemory.mark(state.startTime)
-        knowledgeStale = false
-        if state.isRunning, let end = state.endTime, end.timeIntervalSinceNow > -5 {
-            // Stale "running" snapshot (endTime in the past): treat as paused.
-            let remaining = max(0, end.timeIntervalSinceNow)
-            timeRemaining = remaining
-            elapsedBeforePause = totalTime - remaining
-            lastResumeTime = Date()
-            isRunning = true
-            timer?.cancel()
-            tickCount = 0
-            timer = Timer.publish(every: 0.5, on: .main, in: .common)
-                .autoconnect()
-                .sink { [weak self] _ in self?.tick() }
-            updateBlocking()
-        } else {
-            timeRemaining = state.remainingSeconds
-            elapsedBeforePause = totalTime - state.remainingSeconds
-            lastResumeTime = nil
-            isRunning = false
-            timer?.cancel(); timer = nil
-        }
-    }
-
-    // MARK: - Switching
-
-    /// Seconds of the current session that fall before `date`.
-    private func elapsed(until date: Date) -> TimeInterval {
-        var e = elapsedBeforePause
-        if let resume = lastResumeTime { e += max(0, date.timeIntervalSince(resume)) }
-        return e
-    }
-
-    /// Save the current session as ending at `date` (if ≥ 1 min). Leaves
-    /// timer state alone — callers reset it.
-    private func closeSegment(at date: Date, notify: Bool = true) {
-        guard let start = sessionStartTime else { return }
-        let e = RemoteStop.duration(elapsed: elapsed(until: date), start: start, end: date)
-        guard e >= 60 else { return }
-        if currentPhase == .work {
-            let session = WorkSession(
-                startTime: start, durationMinutes: e / 60.0,
-                type: .work, label: currentLabel.isEmpty ? nil : currentLabel
-            )
-            sessionStore?.addSession(session)
-            if notify { onFocusSegmentSaved?(session) }
-        } else {
-            sessionStore?.addSession(WorkSession(
-                startTime: start, durationMinutes: e / 60.0,
-                type: .shortBreak, label: nil,
-                breakKinds: currentBreakKinds.isEmpty ? nil : currentBreakKinds
-            ))
-        }
-    }
-
-    /// A peer announcing a session that began before ours is behind (e.g. an
-    /// app relaunched with its old checkpoint): keep ours and re-announce it.
-    private func rejectOlder(_ theirStart: Date?, source: String) -> Bool {
-        guard let theirStart else { return false }
-        if isActive, let mine = sessionStartTime {
-            guard theirStart < mine.addingTimeInterval(-3) else { return false }
-            SyncLog.event("rejectOlderPeer", ["source": source, "theirs": "\(theirStart)", "mine": "\(mine)"])
-            pushSharedState()
-            return true
-        }
-        // Stopped: a peer announcing a session that began before the last one
-        // we saw has been asleep since (10/14: an iPad re-sent Math from 5:22
-        // PM at 10:43, and the stopped Mac took it). Ignore it; it will catch
-        // up from the shared state.
-        guard let last = lastSessionStart ?? SharedSessionMemory.lastStart,
-              theirStart < last.addingTimeInterval(-3) else { return false }
-        SyncLog.event("rejectOlderPeer", ["source": source, "theirs": "\(theirStart)", "lastSeen": "\(last)", "idle": true])
-        return true
-    }
-
-    /// A peer's state describing a *different* session than ours means it
-    /// switched; the peer may not have known about ours, so save it here
-    /// (SessionStore dedups if the peer saved it too).
-    /// Set after sleep/suspension or a checkpoint restore; cleared once the
-    /// shared state is applied again or a session is begun here.
-    private var knowledgeStale = false
-    /// Asleep, or awake but with iCloud sync failing: either way this device
-    /// may have missed switches and stops (10/14: the iPhone, with iCloud
-    /// waiting on terms all afternoon, saved Class 12:42 → 5:54 PM when it
-    /// finally reached the Mac over the local network).
-    private var knowledgeUnreliable: Bool { knowledgeStale || syncFailing }
-    private var syncFailing: Bool { MainActor.assumeIsolated { CloudSyncMonitor.shared.health == .failing } }
-    private var lastAliveAt = Date()
-
-    private func closeSegmentIfReplaced(by newStart: Date?) {
-        guard isActive, let start = sessionStartTime, let newStart,
-              abs(newStart.timeIntervalSince(start)) > 3 else { return }
-        if knowledgeUnreliable && SharedSessionMemory.wasShared(start) {
-            SyncLog.event("skipStaleSegment", ["start": "\(start)", "replacedBy": "\(newStart)",
-                                               "syncFailing": syncFailing])
-            return
-        }
-        closeSegment(at: newStart > start ? newStart : Date())
-    }
-
-    /// Begin a session that logically started at `date`, already running.
-    private func beginSession(phase: Phase, label: String, kinds: [BreakKind], plannedSeconds: TimeInterval, at date: Date) {
-        knowledgeStale = false
-        let lead = max(0, Date().timeIntervalSince(date))
-        timer?.cancel(); timer = nil
-        isRunning = false
-        currentPhase = phase
-        currentLabel = label
-        currentBreakKinds = kinds
-        totalTime = max(plannedSeconds, lead + 60)
-        timeRemaining = totalTime - lead
-        sessionStartTime = date
-        elapsedBeforePause = lead
-        lastResumeTime = nil
-        start()
+    /// Rename the running block without splitting it (undo of a screen
+    /// auto-switch). Focus ↔ focus only, so the countdown stays as it is.
+    func relabelRunning(_ label: String) {
+        guard isActive, currentPhase == .work, label != currentLabel else { return }
+        perform("relabel \(label)") { core, now in core.relabel(label, workSeconds: workDuration, now: now) }
     }
 
     /// Split the timeline at `date`: whatever was running is saved up to
     /// then, and focus on `label` runs from then. A focus segment under a
     /// minute is relabeled rather than saved.
-    /// Rename the running block without splitting it (undo of a screen
-    /// auto-switch). Focus ↔ focus only, so the countdown stays as it is.
-    func relabelRunning(_ label: String) {
-        guard isActive, currentPhase == .work, label != currentLabel else { return }
-        currentLabel = label
-        saveCheckpoint()
-        pushSharedState()
-        updateBlocking()
-    }
-
     func switchTo(_ label: String, at requested: Date = Date()) {
         AwayPanel.dismissAll()
-        var date = min(requested, Date())
-        if let start = sessionStartTime { date = max(date, start) }
-        if currentPhase == .work, isActive {
-            if label == currentLabel {
-                if !isRunning { start() }
-                return
-            }
-            if elapsed(until: date) < 60 {
-                currentLabel = label
-                if FocusCategories.isLife(label) && !FocusCategories.isOpenEnded(total: totalTime) {
-                    totalTime += FocusCategories.openEndedSeconds
-                    timeRemaining += FocusCategories.openEndedSeconds
-                }
-                if isRunning { saveCheckpoint(); pushSharedState(); updateBlocking() } else { start() }
-                return
-            }
-        }
         cancelPauseGrace()
-        closeSegment(at: date)
-        beginSession(phase: .work, label: label, kinds: [],
-                     plannedSeconds: FocusCategories.isLife(label) ? FocusCategories.openEndedSeconds : workDuration,
-                     at: date)
+        perform("switch \(label)", notify: true) { core, now in
+            core.switchTo(label, at: requested, workSeconds: workDuration, now: now)
+        }
     }
 
     /// Hand [from, to) of the running block to `label` (nil = break): the
     /// block is saved up to `from`, the span is logged, and the same
     /// category carries on from `to`.
     func carveOut(from: Date, to: Date, as label: String?) {
-        guard isRunning, let start = sessionStartTime, from >= start else { return }
-        let end = min(to, Date())
-        guard end.timeIntervalSince(from) >= 60 else { return }
-        let phase = currentPhase, resume = currentLabel, kinds = currentBreakKinds
         cancelPauseGrace()
-        closeSegment(at: from, notify: false)
-        sessionStore?.fill(start: from, end: end, label: label)
-        let openEnded = phase != .work || FocusCategories.isLife(resume)
-        beginSession(phase: phase, label: resume, kinds: kinds,
-                     plannedSeconds: openEnded ? FocusCategories.openEndedSeconds : workDuration, at: end)
-        updateBlocking()
+        perform("carveOut") { core, now in
+            core.carveOut(from: from, to: to, as: label, workSeconds: workDuration, now: now)
+        }
     }
 
     func stop(at date: Date) {
         AwayPanel.dismissAll()
         cancelPauseGrace()
-        let end = max(min(date, Date()), sessionStartTime ?? date)
-        closeSegment(at: end)
-        timer?.cancel(); timer = nil
-        isRunning = false
-        currentBreakKinds = []
-        elapsedBeforePause = 0
-        lastResumeTime = nil
-        sessionStartTime = nil
-        clearCheckpoint()
-        currentPhase = .work
-        setTimeForCurrentPhase()
-        unblockIfNeeded()
-        pushIdleEverywhere(endedAt: end)
+        perform("stop", notify: true) { core, now in core.stop(at: date, now: now) }
     }
 
     func apply(_ command: TimerCommand) {
-        switch command.action {
-        case .switchTo:
-            guard !command.label.isEmpty else { return }
-            switchTo(command.label, at: command.createdAt)
-        case .stop:
-            stop(at: command.createdAt)
-        case .startBreak:
-            startManualBreak(minutes: command.minutes, at: command.createdAt)
+        perform("command \(command.action.rawValue)", notify: true) { core, now in
+            switch command.action {
+            case .switchTo:
+                guard !command.label.isEmpty else { return [] }
+                return core.switchTo(command.label, at: command.createdAt, workSeconds: workDuration,
+                                     now: now, id: command.id)
+            case .stop:
+                return core.stop(at: command.createdAt, now: now)
+            case .startBreak:
+                return core.startBreak(minutes: command.minutes, label: currentLabel, at: command.createdAt,
+                                       now: now, id: command.id)
+            }
         }
     }
 
@@ -626,58 +233,122 @@ class TimerManager: ObservableObject {
 
     func skip() {
         cancelPauseGrace()
-        var elapsed = elapsedBeforePause
-        if let resumeTime = lastResumeTime { elapsed += Date().timeIntervalSince(resumeTime) }
-        timer?.cancel()
-        timer = nil
-        isRunning = false
-
-        if currentPhase == .work, elapsed >= 60, let start = sessionStartTime {
-            sessionStore?.addSession(WorkSession(
-                startTime: start, durationMinutes: elapsed / 60.0,
-                type: .work, label: currentLabel.isEmpty ? nil : currentLabel
-            ))
-        } else if isOnBreak, elapsed >= 60, let start = sessionStartTime {
-            sessionStore?.addSession(WorkSession(
-                startTime: start, durationMinutes: elapsed / 60.0, type: .shortBreak, label: nil,
-                breakKinds: currentBreakKinds.isEmpty ? nil : currentBreakKinds
-            ))
-        }
-
-        currentBreakKinds = []
-        elapsedBeforePause = 0
-        lastResumeTime = nil
-        sessionStartTime = nil
-        clearCheckpoint()
-        currentPhase = .work
-        setTimeForCurrentPhase()
-        updateBlocking()
-        pushIdleEverywhere()
+        perform("skip") { core, now in core.stop(at: now, now: now) }
     }
 
     func startManualBreak(minutes: Double, kinds: [BreakKind] = [], at requested: Date = Date()) {
         AwayPanel.dismissAll()
-        var date = min(requested, Date())
-        if let start = sessionStartTime { date = max(date, start) }
         cancelPauseGrace()
-        if currentPhase == .work { closeSegment(at: date) }
-        clearCheckpoint()
-        beginSession(phase: .shortBreak, label: currentLabel, kinds: kinds,
-                     plannedSeconds: minutes > 0 ? minutes * 60 : FocusCategories.openEndedSeconds, at: date)
-        updateBlocking()
+        perform("break", notify: true) { core, now in
+            core.startBreak(minutes: minutes, kinds: kinds, label: currentLabel, at: requested, now: now)
+        }
     }
 
     func adjustDuration(by minutes: Double) {
-        let newRemaining = timeRemaining + minutes * 60
-        guard newRemaining > 5 else { completePhase(); return }
-        totalTime = max(60, totalTime + minutes * 60)
-        timeRemaining = newRemaining
+        perform("adjust") { core, now in core.adjustDuration(by: minutes * 60, now: now) }
     }
 
     func setSessionDuration(_ minutes: Double) {
         guard !isActive else { return }
         totalTime = minutes * 60
         timeRemaining = minutes * 60
+    }
+
+    // MARK: - Core
+
+    /// Catch up with what's stored first, so an action is never taken on a
+    /// block another device already replaced. `notify`: focus segments this
+    /// logs count as finished blocks (the recall prompt).
+    private func perform(_ what: String, notify: Bool = false,
+                         _ body: (inout LiveTimerCore, Date) -> [LiveEffect]) {
+        let now = Date()
+        let fx = core.catchUp(stateSync?.allStates() ?? [], now: now)
+        if core.extendIfNeeded(now: now) { countdownFinished() }
+        let local = body(&core, now)
+        SyncLog.event("liveAction", ["what": what])
+        run(fx, notify: false)
+        run(local, notify: notify)
+    }
+
+    private func catchUp(_ states: [LiveState]) {
+        let now = Date()
+        let before = core.currentState(at: now)
+        let fx = core.catchUp(states, now: now)
+        guard let after = core.currentState(at: now), before.map({ !Self.same($0, after) }) ?? true else { return }
+        SyncLog.event("liveAdopt", TimerStateSync.describe(after))
+        run(fx, notify: false)
+    }
+
+    private func receive(_ msg: LocalTimerBroadcast.Message) {
+        guard let s = msg.state else { return }
+        let now = Date()
+        if let fx = core.reconcile(s, now: now) {
+            SyncLog.event("liveAdoptMp", TimerStateSync.describe(s))
+            run(fx, notify: false)
+        } else if let mine = core.currentState(at: now), LiveState.precedes(s, mine), let id = stateSync?.deviceID {
+            // It's behind: send it ours.
+            localBroadcast?.send(.init(deviceID: id, live: mine))
+        }
+    }
+
+    private func sendCurrent() {
+        guard let s = core.currentState(at: Date()), let id = stateSync?.deviceID else { return }
+        localBroadcast?.send(.init(deviceID: id, live: s))
+    }
+
+    private static func same(_ a: LiveState, _ b: LiveState) -> Bool {
+        !LiveState.precedes(a, b) && !LiveState.precedes(b, a)
+    }
+
+    private func run(_ fx: [LiveEffect], notify: Bool) {
+        for e in fx {
+            switch e {
+            case .save(let s):
+                sessionStore?.addSession(s)
+                if notify, s.type == .work { onFocusSegmentSaved?(s) }
+            case .publish(let s):
+                if let id = stateSync?.deviceID { localBroadcast?.send(.init(deviceID: id, live: s)) }
+                stateSync?.publish(s)
+            case .clear(let start, let end):
+                sessionStore?.clear(start: start, end: end)
+            case .fill(let start, let end, let label):
+                sessionStore?.fill(start: start, end: end, label: label)
+            }
+        }
+        LiveCheckpoint.save(core)
+        mirror()
+    }
+
+    /// Copies the core's block into the published properties.
+    private func mirror() {
+        let now = Date()
+        if let b = core.block {
+            currentPhase = b.isBreak ? .shortBreak : .work
+            if currentLabel != b.label { currentLabel = b.label }
+            currentBreakKinds = b.breakKinds
+            totalTime = b.totalTime
+            timeRemaining = max(0, b.remaining(at: now))
+            if sessionStartTime != b.start { sessionStartTime = b.start }
+            isRunning = b.isRunning
+        } else {
+            let wasActive = sessionStartTime != nil
+            currentPhase = .work
+            currentBreakKinds = []
+            if sessionStartTime != nil { sessionStartTime = nil }
+            isRunning = false
+            if wasActive { setIdleTime() }
+        }
+        if pauseStartedAt != nil && (isRunning || core.block == nil || currentPhase != .work) { cancelPauseGrace() }
+        if isRunning, timer == nil {
+            tickCount = 0
+            timer = Timer.publish(every: 0.5, on: .main, in: .common)
+                .autoconnect()
+                .sink { [weak self] _ in self?.tick() }
+        } else if !isRunning {
+            timer?.cancel()
+            timer = nil
+        }
+        updateBlocking()
     }
 
     // MARK: - Pause grace
@@ -710,21 +381,8 @@ class TimerManager: ObservableObject {
 
     private func finalizeStalePause() {
         cancelPauseGrace()
-        let elapsed = elapsedBeforePause
-        if elapsed >= 60, currentPhase == .work, let start = sessionStartTime {
-            sessionStore?.addSession(WorkSession(
-                startTime: start, durationMinutes: elapsed / 60.0,
-                type: .work, label: currentLabel.isEmpty ? nil : currentLabel
-            ))
-        }
-        elapsedBeforePause = 0
-        lastResumeTime = nil
-        sessionStartTime = nil
-        clearCheckpoint()
-        currentPhase = .work
-        setTimeForCurrentPhase()
-        unblockIfNeeded()
-        pushIdleEverywhere()
+        guard let b = core.block, !b.isRunning, !b.isBreak else { return }
+        perform("pauseGrace") { core, now in core.stop(at: now, now: now) }
         sendStaleEndedNotification()
     }
 
@@ -741,34 +399,29 @@ class TimerManager: ObservableObject {
 
     private func tick() {
         let now = Date()
-        // Ticks stop while suspended/asleep: past that, others may have moved on.
-        if now.timeIntervalSince(lastAliveAt) > 120 { knowledgeStale = true }
-        lastAliveAt = now
-        guard let resumeTime = lastResumeTime else { return }
-        let elapsed = elapsedBeforePause + Date().timeIntervalSince(resumeTime)
+        if core.extendIfNeeded(now: now) {
+            LiveCheckpoint.save(core)
+            countdownFinished()
+        }
+        guard let b = core.block else { return }
         clock.objectWillChange.send()
-        remaining = max(0, totalTime - elapsed)
-        if remaining <= 0 { extendRunway(); return }
+        if totalTime != b.totalTime { totalTime = b.totalTime }
+        remaining = max(0, b.remaining(at: now))
         tickCount += 1
         // Live day totals elsewhere read the running block; refreshing them
         // every 30s is plenty.
-        if tickCount % 60 == 0 { saveCheckpoint(); objectWillChange.send() }
+        if tickCount % 60 == 0 { objectWillChange.send() }
     }
 
     /// Nothing ends on its own: a finished countdown rolls into overtime and
     /// keeps tracking until the user switches or stops.
-    private func extendRunway() {
-        let wasCountdown = !FocusCategories.isOpenEnded(total: totalTime)
-        totalTime += FocusCategories.openEndedSeconds
-        timeRemaining += FocusCategories.openEndedSeconds
-        saveCheckpoint()
-        pushSharedState()
-        guard wasCountdown else { return }
-
+    private func countdownFinished() {
+        guard let b = core.block else { return }
+        totalTime = b.totalTime
         if settings?.soundEnabled ?? true { NSSound(named: "Glass")?.play() }
-        if currentPhase == .work {
+        if !b.isBreak {
             workSessionsCompleted += 1
-            lastCompletedLabel = currentLabel.isEmpty ? nil : currentLabel
+            lastCompletedLabel = b.label.isEmpty ? nil : b.label
             completionPanel.show(label: lastCompletedLabel) { [weak self] action in
                 guard let self, action == .takeBreak else { return }
                 self.startManualBreak(minutes: 0)
@@ -783,95 +436,9 @@ class TimerManager: ObservableObject {
         }
     }
 
-    private func completePhase() {
-        timer?.cancel()
-        timer = nil
-        isRunning = false
-        // Tell peers we're done with this phase so their shared state
-        // doesn't remain in the stale "running with past endTime" form.
-        // Auto-break / Keep-Going will overwrite this with a fresh start
-        // a moment later if applicable.
-        pushIdleEverywhere()
-
-        if let start = sessionStartTime {
-            let type: WorkSession.SessionType = currentPhase == .work ? .work : .shortBreak
-            let kinds: [BreakKind]? = currentPhase == .work ? nil : (currentBreakKinds.isEmpty ? nil : currentBreakKinds)
-            sessionStore?.addSession(WorkSession(
-                startTime: start, durationMinutes: totalTime / 60.0,
-                type: type, label: currentPhase == .work ? (currentLabel.isEmpty ? nil : currentLabel) : nil,
-                breakKinds: kinds
-            ))
-        }
-
-        elapsedBeforePause = 0
-        lastResumeTime = nil
-        sessionStartTime = nil
-        clearCheckpoint()
-
-        if settings?.soundEnabled ?? true { NSSound(named: "Glass")?.play() }
-
-        if currentPhase == .work {
-            let capturedDuration = totalTime   // "Keep Going" reuses the same length
-            lastCompletedLabel = currentLabel.isEmpty ? nil : currentLabel
-            workSessionsCompleted += 1
-            sendNotification(breakStarting: false)
-
-            completionPanel.show(label: lastCompletedLabel) { [weak self] action in
-                guard let self else { return }
-                switch action {
-                case .keepGoing:
-                    self.currentPhase = .work
-                    self.totalTime = capturedDuration
-                    self.timeRemaining = capturedDuration
-                    self.updateBlocking()
-                    self.start()
-                case .takeBreak:
-                    self.currentPhase = .shortBreak
-                    self.totalTime = self.breakDuration
-                    self.timeRemaining = self.breakDuration
-                    self.updateBlocking()
-                    self.start()
-                case .timedOut:
-                    // Only auto-start break on timeout if the user has that setting on
-                    if self.settings?.autoBreakEnabled ?? false {
-                        self.currentPhase = .shortBreak
-                        self.totalTime = self.breakDuration
-                        self.timeRemaining = self.breakDuration
-                        self.updateBlocking()
-                        self.start()
-                    } else {
-                        self.currentPhase = .work
-                        self.setTimeForCurrentPhase()
-                        self.updateBlocking()
-                    }
-                }
-            }
-
-            // While panel is visible the timer sits idle in work state
-            currentPhase = .work
-            setTimeForCurrentPhase()
-            updateBlocking()
-        } else {
-            currentBreakKinds = []
-            currentPhase = .work
-            setTimeForCurrentPhase()
-            updateBlocking()
-            sendNotification(breakStarting: false)
-            handleAutoStart()
-        }
-    }
-
-    private func setTimeForCurrentPhase() {
-        switch currentPhase {
-        case .work: totalTime = FocusCategories.isLife(currentLabel) ? FocusCategories.openEndedSeconds : workDuration
-        case .shortBreak, .longBreak: totalTime = breakDuration
-        }
+    private func setIdleTime() {
+        totalTime = FocusCategories.isLife(currentLabel) ? FocusCategories.openEndedSeconds : workDuration
         timeRemaining = totalTime
-    }
-
-    private func handleAutoStart() {
-        guard let settings, settings.autoStartWork else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.start() }
     }
 
     private func unblockIfNeeded() {
@@ -932,153 +499,41 @@ class TimerManager: ObservableObject {
         }
     }
 
-    // MARK: - Crash-safe partial save
-
-    /// Persist the in-progress local session before any code path that
-    /// resets engine state in response to a *remote* idle signal (CK or
-    /// Multipeer). Without this guard, a peer launching and broadcasting
-    /// idle destroys our accumulated time silently.
-    private func savePartialIfActive(reason: String, stoppedStart: Date? = nil, stoppedAt: Date? = nil) {
-        guard let store = sessionStore, let start = sessionStartTime else { return }
-        guard let end = RemoteStop.savedEnd(mine: start, stoppedStart: stoppedStart, stoppedAt: stoppedAt ?? Date(),
-                                            stale: knowledgeUnreliable, shared: SharedSessionMemory.wasShared(start)) else {
-            SyncLog.event("skipStaleSegment", ["start": "\(start)", "stoppedStart": SyncLog.opt(stoppedStart), "reason": reason])
-            return
-        }
-        let elapsed = RemoteStop.duration(elapsed: elapsed(until: end), start: start, end: end)
-        guard elapsed >= 60 else {
-            SyncLog.event("savePartialSkip", [
-                "reason": reason,
-                "elapsed": elapsed,
-                "phase": phaseKey(currentPhase),
-            ])
-            return
-        }
-        SyncLog.event("savePartial", [
-            "reason": reason,
-            "elapsedMin": elapsed / 60.0,
-            "phase": phaseKey(currentPhase),
-            "label": currentLabel,
-            "startTime": start,
-            "end": end,
-            "stoppedStart": SyncLog.opt(stoppedStart),
-        ])
-        if currentPhase == .work {
-            store.addSession(WorkSession(
-                startTime: start, durationMinutes: elapsed / 60.0,
-                type: .work, label: currentLabel.isEmpty ? nil : currentLabel
-            ))
-        } else {
-            store.addSession(WorkSession(
-                startTime: start, durationMinutes: elapsed / 60.0,
-                type: .shortBreak, label: nil,
-                breakKinds: currentBreakKinds.isEmpty ? nil : currentBreakKinds
-            ))
-        }
-    }
-
     // MARK: - Checkpoint
 
-    private func saveCheckpoint() {
-        // Persist both work AND break in-progress so a kill-and-relaunch
-        // recovers the timer regardless of phase. Previously only work
-        // was checkpointed, which meant if Mac was killed during a break,
-        // it'd boot showing idle (and the user had no way to resume).
-        guard let start = sessionStartTime else { clearCheckpoint(); return }
-        var data: [String: Any] = [
-            "sessionStartTime": start.timeIntervalSince1970,
-            "elapsedBeforePause": elapsedBeforePause,
-            "totalTime": totalTime,
-            "currentLabel": currentLabel,
-            "currentPhase": phaseKey(currentPhase),
-            "currentBreakKinds": currentBreakKinds.map(\.rawValue),
-        ]
-        if let resume = lastResumeTime { data["lastResumeTime"] = resume.timeIntervalSince1970 }
-        UserDefaults.standard.set(data, forKey: Self.checkpointKey)
-    }
-
-    private func phaseKey(_ p: Phase) -> String {
-        switch p {
-        case .work: return "work"
-        case .shortBreak: return "shortBreak"
-        case .longBreak: return "longBreak"
-        }
-    }
-
-    private func clearCheckpoint() {
-        UserDefaults.standard.removeObject(forKey: Self.checkpointKey)
-    }
-
     func saveOnQuit() {
-        // Flush checkpoint to disk immediately before the process exits.
-        saveCheckpoint()
+        LiveCheckpoint.save(core)
         UserDefaults.standard.synchronize()
     }
 
+    /// Brings back what was running when Focus last quit or crashed. Elapsed
+    /// time includes the time it was closed, as if it had kept running.
     func recoverPartialSession(into store: SessionStore) {
-        guard let data = UserDefaults.standard.dictionary(forKey: Self.checkpointKey) else { return }
-        clearCheckpoint()
-
-        guard let startEpoch  = data["sessionStartTime"]    as? Double,
-              let elapsed0    = data["elapsedBeforePause"]  as? Double,
-              let total       = data["totalTime"]            as? Double else { return }
-
-        // Compute how much time had elapsed, including any dead time while the app was quit.
-        var elapsed = elapsed0
-        let wasRunning = data["lastResumeTime"] != nil
-        if let resumeEpoch = data["lastResumeTime"] as? Double {
-            elapsed += Date().timeIntervalSince(Date(timeIntervalSince1970: resumeEpoch))
+        if let saved = LiveCheckpoint.load() {
+            core = saved
+        } else if let data = UserDefaults.standard.dictionary(forKey: Self.legacyCheckpointKey),
+                  let startEpoch = data["sessionStartTime"] as? Double,
+                  let elapsed0 = data["elapsedBeforePause"] as? Double,
+                  let total = data["totalTime"] as? Double {
+            let now = Date()
+            let resume = (data["lastResumeTime"] as? Double).map { Date(timeIntervalSince1970: $0) }
+            let isBreak = (data["currentPhase"] as? String ?? "work") != "work"
+            core.restoreLegacy(start: Date(timeIntervalSince1970: startEpoch),
+                               elapsedBeforePause: elapsed0 + (resume.map { now.timeIntervalSince($0) } ?? 0),
+                               totalTime: total, label: data["currentLabel"] as? String ?? "", isBreak: isBreak,
+                               kinds: ((data["currentBreakKinds"] as? [String]) ?? []).compactMap(BreakKind.init(rawValue:)),
+                               wasRunning: resume != nil, now: now)
+            LiveCheckpoint.save(core)
         }
-
-        let label = (data["currentLabel"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        let phaseRaw = data["currentPhase"] as? String ?? "work"
-        let restoredPhase: Phase = {
-            switch phaseRaw {
-            case "shortBreak": return .shortBreak
-            case "longBreak":  return .longBreak
-            default:           return .work
-            }
-        }()
-        let kindsRaw = (data["currentBreakKinds"] as? [String]) ?? []
-        let restoredKinds = kindsRaw.compactMap { BreakKind(rawValue: $0) }
-        guard let runway = FocusCategories.recoveryRunway(total: total, elapsed: elapsed) else { return }
-
-        currentPhase       = restoredPhase
-        currentBreakKinds  = restoredKinds
-        totalTime          = runway
-        timeRemaining      = runway - elapsed
-        elapsedBeforePause = elapsed
-        sessionStartTime   = Date(timeIntervalSince1970: startEpoch)
-        knowledgeStale = true
-        currentLabel       = label ?? ""
-
-        if wasRunning {
-            // Auto-resume after a short delay so the UI and settings are fully initialised.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                guard let self, self.knowledgeStale,
-                      self.sessionStartTime == Date(timeIntervalSince1970: startEpoch) else { return }
-                self.start()
-            }
-        }
-        // If it was paused before the kill, leave it in the paused state.
+        UserDefaults.standard.removeObject(forKey: Self.legacyCheckpointKey)
+        core.deviceID = TimerStateSync.persistedDeviceID()
+        _ = core.extendIfNeeded(now: Date())
+        mirror()
     }
 
     // MARK: - Notifications
 
     private func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
-    }
-
-    private func sendNotification(breakStarting: Bool) {
-        let content = UNMutableNotificationContent()
-        content.title = "Focus"
-        content.body = breakStarting
-            ? "Session complete — \(Int((settings?.shortBreakMinutes ?? 10)))m break starting."
-            : currentPhase == .work
-                ? "Break over — ready to focus?"
-                : "Session complete."
-        UNUserNotificationCenter.current().add(
-            UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        )
     }
 }

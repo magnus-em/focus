@@ -2,42 +2,24 @@ import Foundation
 import SwiftData
 import Combine
 
-/// Bidirectional live-timer state sync.
+/// The timer states every device has published, through the CloudKit-backed
+/// store. Each publish inserts a new `StoredTimerState` row and none is ever
+/// edited: a single shared row edited by two devices came back from iCloud
+/// as a mix of both (10/29: the Mac's running Class plus the phone's older
+/// stop read as "stopped", and the Mac logged 23 hours of Class). Which
+/// state wins is `LiveState.precedes`; applying them is `LiveTimerCore.catchUp`.
 ///
-/// Each device (Mac, iPad) constructs one of these. It polls the
-/// SwiftData store every 2 seconds for changes to the single
-/// `StoredTimerState` record. If the latest record was authored by
-/// a *different* device and is newer than what we last saw, we fire
-/// `onRemoteChange` so the local timer engine can mirror it.
-///
-/// On local actions (start/pause/stop/adjust), call `push(_:)`. It
-/// writes a new state and stamps it with our deviceID so we ignore
-/// it when it bounces back via CloudKit.
-///
-/// Latency: typically 5-30 seconds for changes to propagate via
-/// CloudKit. Not designed for tight back-and-forth — designed so
-/// you can start a timer on one device and pick it up on the other.
+/// Latency: typically 5-30 seconds through iCloud; `LocalTimerBroadcast`
+/// covers devices on the same network instantly.
 /// Caller must invoke methods from the main thread (mainContext requires it).
 public final class TimerStateSync: ObservableObject, @unchecked Sendable {
     private let container: ModelContainer
     public let deviceID: String
     private var poller: AnyCancellable?
-    /// High-water mark for what we've already applied. Persisted across launches
-    /// so we don't re-apply stale CloudKit pulls of a state we previously saw.
-    private var lastSeenVersion: Int
-    private static let lastSeenVersionKey = "focusCore.timerSync.lastSeenVersion"
-    /// Rest of the last-seen stamp, so two devices pushing the same version
-    /// (neither had seen the other's) still order by (updatedAt, deviceID).
-    private static let lastSeenStampKey = "focusCore.timerSync.lastSeenStamp"
-    private var lastSeenStamp: (updatedAt: Double, device: String) {
-        get {
-            let a = UserDefaults.standard.array(forKey: Self.lastSeenStampKey)
-            return ((a?.first as? Double) ?? 0, (a?.last as? String) ?? "")
-        }
-        set { UserDefaults.standard.set([newValue.updatedAt, newValue.device], forKey: Self.lastSeenStampKey) }
-    }
 
-    public var onRemoteChange: ((StoredTimerState) -> Void)?
+    /// The stored states changed (another device published, or an import
+    /// landed). Hand them to `LiveTimerCore.catchUp`.
+    public var onStatesChanged: (([LiveState]) -> Void)?
 
     /// New `TimerCommand`s from any device (including this one), oldest first.
     /// Unset → commands are left unconsumed.
@@ -49,44 +31,25 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
 
     private var remoteChangeObserver: NSObjectProtocol?
     private var dedupWorkItem: DispatchWorkItem?
-    /// checkForRemote polls every couple of seconds; log "empty" only on transition.
-    private var lastCheckWasEmpty = false
+    private var fingerprint: (count: Int, latest: Date?) = (0, nil)
+
+    /// Rows older than this go, but the newest few always stay.
+    static let keep: TimeInterval = 48 * 3600
+    static let keepAtLeast = 12
 
     public init(container: ModelContainer) {
         self.container = container
         self.deviceID = Self.persistedDeviceID()
-        self.lastSeenVersion = UserDefaults.standard.integer(forKey: Self.lastSeenVersionKey)
         SyncLog.truncateIfLarge()
         TimerCommand.markSeenIfFirstRun()
-        SyncLog.event("syncInit", [
-            "deviceID": String(deviceID.prefix(8)),
-            "lastSeenVersionFromDefaults": lastSeenVersion,
-        ])
+        SyncLog.event("syncInit", ["deviceID": String(deviceID.prefix(8)), "states": allStates().count])
 
-        // Initialize lastSeen from whatever's already in the store
-        // so we don't fire onRemoteChange for our own prior writes.
-        if let existing = currentState() {
-            lastSeenVersion = max(lastSeenVersion, existing.version)
-            SyncLog.event("syncInitAdoptExisting", [
-                "existingVersion": existing.version,
-                "existingPhase": existing.phase.rawValue,
-                "existingIsRunning": existing.isRunning,
-                "existingDevice": String(existing.deviceID.prefix(8)),
-                "newLastSeen": lastSeenVersion,
-            ])
-        }
-
-        // React the *moment* CloudKit's import lands rather than waiting for
-        // the 2s poll. This is what makes background → foreground transitions
-        // feel instant: pause-from-other-device shows up right after iOS
-        // delivers the silent push that woke us.
         remoteChangeObserver = NotificationCenter.default.addObserver(
             forName: .NSPersistentStoreRemoteChange,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            SyncLog.event("ckRemoteChangeNotif")
-            self?.checkForRemote()
+            self?.check(force: true)
             self?.checkForCommands()
             self?.scheduleDedupAfterImport()
         }
@@ -105,7 +68,7 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
         poller = Timer.publish(every: 2.0, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
-                self?.checkForRemote()
+                self?.check(force: false)
                 self?.checkForCommands()
             }
     }
@@ -115,17 +78,56 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
         poller = nil
     }
 
-    /// Force a remote-state check right now. Useful from `didBecomeActive`
-    /// after a delay, when CloudKit's silent-push driven import may have
-    /// landed between when the app foregrounded and now.
+    /// Check now, e.g. a moment after coming to the foreground, when a
+    /// push-driven import may have just landed.
     public func pokeForRemote() {
-        checkForRemote()
+        check(force: true)
         checkForCommands()
+    }
+
+    /// Every stored state, as `LiveState`s.
+    public func allStates() -> [LiveState] {
+        let ctx = ModelContext(container)
+        return ((try? ctx.fetch(FetchDescriptor<StoredTimerState>())) ?? []).map(Self.state)
+    }
+
+    /// Store a state for the other devices. Never edits an existing row.
+    public func publish(_ s: LiveState) {
+        let ctx = ModelContext(container)
+        let rows = (try? ctx.fetch(FetchDescriptor<StoredTimerState>())) ?? []
+        let row = StoredTimerState()
+        row.id = UUID()
+        Self.fill(row, from: s, version: (rows.map(\.version).max() ?? 0) + 1, sender: deviceID)
+        ctx.insert(row)
+        let cutoff = s.sentAt.addingTimeInterval(-Self.keep)
+        let old = rows.sorted { $0.updatedAt > $1.updatedAt }.dropFirst(Self.keepAtLeast).filter { $0.updatedAt < cutoff }
+        for r in old { ctx.delete(r) }
+        try? ctx.save()
+        fingerprint = (rows.count + 1 - old.count, max(fingerprint.latest ?? .distantPast, row.updatedAt))
+        var event = Self.describe(s)
+        event["pruned"] = old.count
+        SyncLog.event("statePublish", event)
+    }
+
+    /// True when a stored state matches `s` (same block, same actions).
+    public func contains(_ s: LiveState) -> Bool {
+        allStates().contains { !LiveState.precedes($0, s) && !LiveState.precedes(s, $0) }
+    }
+
+    private func check(force: Bool) {
+        let ctx = ModelContext(container)
+        var latest = FetchDescriptor<StoredTimerState>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
+        latest.fetchLimit = 1
+        let count = (try? ctx.fetchCount(FetchDescriptor<StoredTimerState>())) ?? 0
+        let newest = (try? ctx.fetch(latest))?.first?.updatedAt
+        guard force || count != fingerprint.count || newest != fingerprint.latest else { return }
+        fingerprint = (count, newest)
+        onStatesChanged?(allStates())
     }
 
     private func checkForCommands() {
         guard let onCommands else { return }
-        let cmds = TimerCommand.takePending(container: container, stateUpdatedAt: currentState()?.updatedAt)
+        let cmds = TimerCommand.takePending(container: container, stateUpdatedAt: fingerprint.latest)
         guard !cmds.isEmpty else { return }
         for c in cmds {
             SyncLog.event("cmdApply", ["action": c.action.rawValue, "label": c.label, "createdAt": c.createdAt])
@@ -133,125 +135,70 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
         onCommands(cmds)
     }
 
-    /// Returns the *most authoritative* state in the local store. If CloudKit
-    /// has somehow created duplicate rows of the singleton (it has no unique
-    /// constraint), we keep the one with the highest version (causal tip).
-    public func currentState() -> StoredTimerState? {
-        let ctx = ModelContext(container)
-        guard let rows = try? ctx.fetch(FetchDescriptor<StoredTimerState>()),
-              !rows.isEmpty else { return nil }
-        return rows.max(by: { stateLess($0, $1) })
+    // MARK: - Rows
+
+    static func state(_ r: StoredTimerState) -> LiveState {
+        let phase = LiveState.Phase(rawValue: r.phaseRaw) ?? .idle
+        if let stamped = r.stampedAt, abs(stamped.timeIntervalSince(r.updatedAt)) < 0.001,
+           let createdAt = r.createdAt, let intentAt = r.intentAt {
+            let ended = r.endedStart.map { LiveEnded(id: r.endedID, start: $0, end: r.endedAt ?? $0) }
+            return LiveState(phase: phase, blockID: r.blockID, start: phase == .idle ? ended?.start : r.startTime,
+                             label: r.label, breakKinds: r.breakKinds, totalSeconds: r.totalSeconds,
+                             remainingSeconds: r.remainingSeconds, isRunning: r.isRunning, sentAt: r.updatedAt,
+                             created: LiveStamp(at: createdAt, device: r.createdDevice ?? r.deviceID),
+                             updated: LiveStamp(at: intentAt, device: r.intentDevice ?? r.deviceID),
+                             ended: ended)
+        }
+        // Written (or last edited) by a build that didn't stamp its states.
+        let stamp = LiveStamp(at: r.updatedAt, device: r.deviceID)
+        let remaining = r.isRunning ? (r.endTime?.timeIntervalSince(r.updatedAt) ?? r.remainingSeconds) : r.remainingSeconds
+        let ended = phase == .idle ? r.startTime.map { LiveEnded(id: nil, start: $0, end: r.endTime ?? r.updatedAt) } : nil
+        return LiveState(phase: phase, blockID: nil, start: r.startTime, label: r.label, breakKinds: r.breakKinds,
+                         totalSeconds: r.totalSeconds, remainingSeconds: remaining, isRunning: r.isRunning,
+                         sentAt: r.updatedAt, created: stamp, updated: stamp, ended: ended, legacy: true)
     }
 
-    /// Strict ordering: `(version, updatedAt, deviceID)`. The deviceID tiebreak
-    /// is a total order — two devices that happen to push the same version+time
-    /// will agree on which one wins.
-    private func stateLess(_ a: StoredTimerState, _ b: StoredTimerState) -> Bool {
-        if a.version != b.version { return a.version < b.version }
-        if a.updatedAt != b.updatedAt { return a.updatedAt < b.updatedAt }
-        return a.deviceID < b.deviceID
+    /// Also fills the old fields, which builds before stamping read.
+    static func fill(_ r: StoredTimerState, from s: LiveState, version: Int, sender: String) {
+        r.phaseRaw = s.phase.rawValue
+        r.isRunning = s.isRunning
+        r.label = s.label
+        r.breakKindsRaw = s.breakKinds.map(\.rawValue)
+        r.totalSeconds = s.totalSeconds
+        r.remainingSeconds = s.remainingSeconds
+        if s.phase == .idle {
+            r.startTime = s.ended?.start
+            r.endTime = s.ended?.end
+        } else {
+            r.startTime = s.start
+            r.endTime = s.endTime
+        }
+        r.updatedAt = s.sentAt
+        r.stampedAt = s.sentAt
+        r.deviceID = sender
+        r.version = version
+        r.blockID = s.blockID
+        r.createdAt = s.created.at
+        r.createdDevice = s.created.device
+        r.intentAt = s.updated.at
+        r.intentDevice = s.updated.device
+        r.endedID = s.ended?.id
+        r.endedStart = s.ended?.start
+        r.endedAt = s.ended?.end
     }
 
-    /// Push a state update. Caller is given a mutable `StoredTimerState`
-    /// to set fields on; we handle the persistence + metadata stamping +
-    /// monotonic version bump.
-    public func push(_ apply: (StoredTimerState) -> Void) {
-        let ctx = ModelContext(container)
-        let rows = (try? ctx.fetch(FetchDescriptor<StoredTimerState>())) ?? []
-        // Keep the causally-newest row; delete any other duplicates so future
-        // reads are deterministic.
-        let existing = rows.max(by: { stateLess($0, $1) })
-        for r in rows where r !== existing { ctx.delete(r) }
-        let record = existing ?? StoredTimerState()
-        if existing == nil { ctx.insert(record) }
-        apply(record)
-        let priorVersion = max(record.version, lastSeenVersion)
-        record.version = priorVersion + 1
-        record.updatedAt = Date()
-        record.deviceID = deviceID
-        try? ctx.save()
-        lastSeenVersion = record.version
-        UserDefaults.standard.set(lastSeenVersion, forKey: Self.lastSeenVersionKey)
-        lastSeenStamp = (record.updatedAt.timeIntervalSince1970, deviceID)
-        SyncLog.event("ckPush", [
-            "version": record.version,
-            "phase": record.phase.rawValue,
-            "isRunning": record.isRunning,
-            "totalSeconds": record.totalSeconds,
-            "label": record.label,
-            "startTime": SyncLog.opt(record.startTime),
-            "endTime": SyncLog.opt(record.endTime),
-            "remaining": record.remainingSeconds,
-            "deviceID": String(deviceID.prefix(8)),
-            "duplicatesDeleted": rows.count - 1,
-        ])
-    }
-
-    /// Clear the state to idle. `ended` is the start of the session that just
-    /// ended and `endedAt` when it ended, which is earlier than now for a
-    /// backdated stop ("End Class at 1:40" clicked at 3:10). Both ride in
-    /// `startTime`/`endTime`, which idle readers ignore, so a peer still holding
-    /// that session saves it to the real end, not to when it heard.
-    public func pushIdle(ended: Date? = nil, endedAt: Date? = nil) {
-        push { state in
-            state.phase = .idle
-            state.isRunning = false
-            state.endTime = ended == nil ? nil : endedAt
-            state.remainingSeconds = 0
-            state.totalSeconds = 0
-            state.label = ""
-            state.breakKindsRaw = []
-            state.startTime = ended
-        }
-    }
-
-    private func checkForRemote() {
-        guard let state = currentState() else {
-            if !lastCheckWasEmpty { SyncLog.event("ckCheckEmpty") }
-            lastCheckWasEmpty = true
-            return
-        }
-        lastCheckWasEmpty = false
-        // Own-writes that come back via CloudKit echo: just update the
-        // high-water mark and skip — but DON'T skip on version equality
-        // alone, because a peer could have authored a state with the same
-        // version we did (concurrent push). Total order resolves that.
-        if state.deviceID == deviceID && state.version <= lastSeenVersion {
-            return
-        }
-        let stamp = (state.updatedAt.timeIntervalSince1970, state.deviceID)
-        guard state.version > lastSeenVersion
-              || (state.version == lastSeenVersion && stamp > lastSeenStamp) else {
-            return
-        }
-        let priorLastSeen = lastSeenVersion
-        lastSeenVersion = state.version
-        UserDefaults.standard.set(lastSeenVersion, forKey: Self.lastSeenVersionKey)
-        lastSeenStamp = stamp
-        // Don't fire onRemoteChange for our own state coming back — even if
-        // the version bumped (shouldn't, since we already set lastSeenVersion
-        // on push). Belt-and-suspenders.
-        guard state.deviceID != deviceID else {
-            SyncLog.event("ckCheckOwnEcho", [
-                "version": state.version,
-                "priorLastSeen": priorLastSeen,
-            ])
-            return
-        }
-        SyncLog.event("ckApplyRemote", [
-            "version": state.version,
-            "priorLastSeen": priorLastSeen,
-            "phase": state.phase.rawValue,
-            "isRunning": state.isRunning,
-            "totalSeconds": state.totalSeconds,
-            "label": state.label,
-            "startTime": SyncLog.opt(state.startTime),
-            "endTime": SyncLog.opt(state.endTime),
-            "remaining": state.remainingSeconds,
-            "fromDevice": String(state.deviceID.prefix(8)),
-            "updatedAt": state.updatedAt,
-        ])
-        onRemoteChange?(state)
+    public static func describe(_ s: LiveState) -> [String: Any] {
+        [
+            "phase": s.phase.rawValue,
+            "label": s.label,
+            "running": s.isRunning,
+            "block": s.blockID.map { String($0.uuidString.prefix(8)) } ?? "-",
+            "start": SyncLog.opt(s.start),
+            "created": "\(s.created.at.timeIntervalSince1970)@\(s.created.device.prefix(8))",
+            "updated": "\(s.updated.at.timeIntervalSince1970)@\(s.updated.device.prefix(8))",
+            "ended": s.ended.map { "\($0.id.map { String($0.uuidString.prefix(8)) } ?? "-") \($0.start)–\($0.end)" } ?? "-",
+            "legacy": s.legacy,
+        ]
     }
 
     /// Debounce a strict-dedup pass for ~3s after CloudKit reports new
@@ -282,38 +229,7 @@ public final class TimerStateSync: ObservableObject, @unchecked Sendable {
     }
 }
 
-/// Which session start this device last saw in (or pushed to) the shared
-/// timer state. A device that slept through changes and wakes with a session
-/// that was shared shouldn't save it again when it learns it was replaced:
-/// whoever replaced it knew it and already saved it. (Saving it anyway once
-/// logged a stale 2.5h "Productive Leisure" from an iPad asleep since morning.)
-/// Where a session this device holds ends when a peer says it stopped.
-/// Never past the stop, and never past the start of the session the peer
-/// ended if that began later: then ours had already been replaced by a switch
-/// we never heard about (10/14: the iPad saved Class 12:17 through 3:10 while
-/// the iPhone's Class from 12:42 was the one that ran). A gap stays visible
-/// and fillable; an overlap silently counts time twice.
 public enum RemoteStop {
-    public static func end(mine start: Date, stoppedStart: Date?, stoppedAt: Date, now: Date = Date()) -> Date {
-        var end = min(now, stoppedAt)
-        if let theirs = stoppedStart, theirs.timeIntervalSince(start) > 3 { end = min(end, theirs) }
-        return max(end, start)
-    }
-
-    /// `end`, or nil to not save ours at all: asleep while a peer replaced our
-    /// shared session and later stopped a newer one, we can't know where ours
-    /// really ended, and whoever replaced it saved it (as `skipStaleSegment`).
-    /// A peer stopping an *older* session says nothing about ours, so we keep it.
-    /// A peer that stopped a *later* session means ours was replaced at a
-    /// time we don't know, and saving it up to anything risks stretching the
-    /// real row through same-start dedup (10/14: Math 5:22 → 6:24 became
-    /// 5:22 → 10:44 PM). Skip it whether or not we slept; prefer the gap.
-    public static func savedEnd(mine start: Date, stoppedStart: Date?, stoppedAt: Date, now: Date = Date(),
-                                stale: Bool, shared: Bool) -> Date? {
-        if let theirs = stoppedStart, theirs.timeIntervalSince(start) > 3 { return nil }
-        return end(mine: start, stoppedStart: stoppedStart, stoppedAt: stoppedAt, now: now)
-    }
-
     /// Time on the clock between `start` and `end`, capped by the wall-clock
     /// span: after a relaunch the pause history before it is folded into one
     /// number, so a backdated cut once saved "start → last relaunch" (10/13:
@@ -323,22 +239,17 @@ public enum RemoteStop {
     }
 }
 
-public enum SharedSessionMemory {
-    static let key = "focusCore.timerSync.lastSharedStart"
+/// The timer's state on this device, kept across relaunches.
+public enum LiveCheckpoint {
+    static let key = "focusCore.liveTimer.v1"
 
-    public static func mark(_ start: Date?) {
-        guard let start else { return }
-        UserDefaults.standard.set(start.timeIntervalSince1970, forKey: key)
+    public static func save(_ core: LiveTimerCore) {
+        guard let data = try? JSONEncoder().encode(core) else { return }
+        UserDefaults.standard.set(data, forKey: key)
     }
 
-    /// The last session start this device saw shared, kept across relaunches.
-    public static var lastStart: Date? {
-        let t = UserDefaults.standard.double(forKey: key)
-        return t > 0 ? Date(timeIntervalSince1970: t) : nil
-    }
-
-    public static func wasShared(_ start: Date) -> Bool {
-        let t = UserDefaults.standard.double(forKey: key)
-        return t > 0 && abs(t - start.timeIntervalSince1970) < 3
+    public static func load() -> LiveTimerCore? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(LiveTimerCore.self, from: data)
     }
 }

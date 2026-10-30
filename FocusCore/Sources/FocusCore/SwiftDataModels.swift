@@ -225,7 +225,7 @@ public final class StoredScratchItem {
 /// `updatedAt` is the conflict-resolution tiebreaker (last write wins).
 @Model
 public final class StoredTimerState {
-    /// Single owner-scoped ID so SwiftData treats it as one record.
+    /// Fixed for rows from builds that kept one shared row; random since.
     public var id: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     /// "idle" | "work" | "breakPhase"
     public var phaseRaw: String = "idle"
@@ -247,6 +247,19 @@ public final class StoredTimerState {
     /// causal "this is newer" signal that doesn't depend on device clocks agreeing.
     /// Tiebreak on equal versions: larger deviceID wins (string comparison).
     public var version: Int = 0
+
+    // Stamped states (10/30): every push is a new row, never an edit; see
+    // `LiveState`. `stampedAt` equals `updatedAt` as written, so a row an
+    // older build edited afterwards reads as unstamped.
+    public var stampedAt: Date? = nil
+    public var blockID: UUID? = nil
+    public var createdAt: Date? = nil
+    public var createdDevice: String? = nil
+    public var intentAt: Date? = nil
+    public var intentDevice: String? = nil
+    public var endedID: UUID? = nil
+    public var endedStart: Date? = nil
+    public var endedAt: Date? = nil
 
     public init() {}
 
