@@ -55,6 +55,9 @@ final class LeetCodeCategoryTests: XCTestCase {
         XCTAssertFalse(LeetCodeDailyGoal.isMet(problems: 3, minutes: 140, problemGoal: 4, minutesGoal: 120))
         XCTAssertTrue(LeetCodeDailyGoal.isMet(problems: 4, minutes: 120, problemGoal: 4, minutesGoal: 120))
         XCTAssertFalse(LeetCodeDailyGoal.isMet(problems: 4, minutes: .nan, problemGoal: 4, minutesGoal: 120))
+        // User, 10/30: one problem a day, no time goal.
+        XCTAssertTrue(LeetCodeDailyGoal.isMet(problems: 1, minutes: 0, problemGoal: 1, minutesGoal: 0))
+        XCTAssertFalse(LeetCodeDailyGoal.isMet(problems: 0, minutes: 90, problemGoal: 1, minutesGoal: 0))
     }
 
     func testRepeatsOnSameDayDoNotInflateDailyWorkAndPriorSolvesAreRedos() {

@@ -37,7 +37,8 @@ public enum LeetCodeDailyGoal {
         return title.isEmpty ? nil : title
     }
 
+    /// `minutesGoal` 0 = no time goal.
     public static func isMet(problems: Int, minutes: Double, problemGoal: Int, minutesGoal: Int) -> Bool {
-        problems >= max(1, problemGoal) && minutes.isFinite && minutes >= Double(max(1, minutesGoal))
+        problems >= max(1, problemGoal) && (minutesGoal <= 0 || minutes.isFinite && minutes >= Double(minutesGoal))
     }
 }

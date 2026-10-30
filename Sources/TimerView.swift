@@ -1191,8 +1191,10 @@ struct LeetCodeDailyGoalRow: View {
                 Spacer(minLength: 0)
             }
             progress("Problems", value: "\(count) / \(max(1, problemGoal))", fraction: Double(count) / Double(max(1, problemGoal)))
-            progress("Focused time", value: "\(durationText(minutes: minutes)) / \(durationText(minutes: Double(max(1, minutesGoal))))",
-                     fraction: minutes / Double(max(1, minutesGoal)))
+            if minutesGoal > 0 {
+                progress("Focused time", value: "\(durationText(minutes: minutes)) / \(durationText(minutes: Double(minutesGoal)))",
+                         fraction: minutes / Double(minutesGoal))
+            }
             if let activeTitle {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(activeTitle).font(.system(size: 13, weight: .semibold)).lineLimit(2)
@@ -1205,7 +1207,7 @@ struct LeetCodeDailyGoalRow: View {
                     .accessibilityElement(children: .combine)
                 }
             }
-            Text("\(newCount) new · \(redoCount) redo · from your log and timer")
+            Text("\(newCount) new · \(redoCount) redo\(minutesGoal > 0 || minutes < 1 ? "" : " · \(durationText(minutes: minutes)) on the timer") · from your log and timer")
                 .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
             HStack(spacing: 12) {
                 if activeTitle != nil {

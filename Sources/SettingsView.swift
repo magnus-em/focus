@@ -192,7 +192,8 @@ struct SettingsView: View {
 
                 SettingsCard("LeetCode") {
                     Stepper("Problems per day: \(settings.leetCodeDailyGoal)", value: $settings.leetCodeDailyGoal, in: 1...30)
-                    Stepper("Focused minutes per day: \(settings.leetCodeMinutesGoal)", value: $settings.leetCodeMinutesGoal, in: 30...360, step: 15)
+                    Stepper(settings.leetCodeMinutesGoal > 0 ? "Focused minutes per day: \(settings.leetCodeMinutesGoal)" : "Focused time goal: none",
+                            value: $settings.leetCodeMinutesGoal, in: 0...360, step: 15)
                     HStack {
                         Text("LeetCode username")
                             .font(.system(size: 12, weight: .medium))
