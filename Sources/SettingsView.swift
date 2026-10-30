@@ -1170,6 +1170,9 @@ private struct ScreenSettings: View {
                 IntRow(label: "After the screen shows it for", value: $settings.screenSuggestMinutes, range: 1...20, suffix: "min")
                 ToggleRow(label: "Switch focus categories on its own for windows I've labeled", isOn: $settings.screenAutoSwitch)
                 ToggleRow(label: "Ask on every switch it sees (testing, ~30s)", isOn: $settings.screenEverySwitch)
+                ToggleRow(label: "Switch without asking until 4 AM, with Undo", isOn: Binding(
+                    get: { settings.screenAutoAll },
+                    set: { settings.screenAutoAllUntil = $0 ? AppSettings.nextFourAM().timeIntervalSince1970 : 0 }))
             }
             HStack(spacing: 6) {
                 Text(watcher.status).font(.system(size: 12)).foregroundStyle(Color.secondaryText)

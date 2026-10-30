@@ -135,6 +135,20 @@ class AppSettings: ObservableObject {
     @Published var screenEverySwitch: Bool {
         didSet { sd.set(screenEverySwitch, forKey: "screenEverySwitch") }
     }
+    /// Until when (epoch, 0 = off) every screen card switches on its own,
+    /// with Undo, instead of asking (user, 10/30: "while I'm at my computer
+    /// today it doesn't keep asking me what I'm working on, it auto switches").
+    @Published var screenAutoAllUntil: Double {
+        didSet { sd.set(screenAutoAllUntil, forKey: "screenAutoAllUntil") }
+    }
+    var screenAutoAll: Bool { screenAutoAllUntil > Date().timeIntervalSince1970 }
+
+    /// The end of today for "today" settings: the next 4 AM.
+    static func nextFourAM(after now: Date = Date()) -> Date {
+        let cal = Calendar.current
+        let four = cal.date(bySettingHour: 4, minute: 0, second: 0, of: now)!
+        return four > now ? four : cal.date(byAdding: .day, value: 1, to: four)!
+    }
     @Published var screenSuggestMinutes: Int {
         didSet { sd.set(screenSuggestMinutes, forKey: "screenSuggestMinutes") }
     }
@@ -259,6 +273,7 @@ class AppSettings: ObservableObject {
             "screenSuggestMinutes": 2,
             "screenAutoSwitch": true,
             "screenEverySwitch": false,
+            "screenAutoAllUntil": 0.0,
             "awayPromptMinutes": 15,
             "idleNudge": true,
             "autoSleepOvernight": true,
@@ -314,6 +329,7 @@ class AppSettings: ObservableObject {
         screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
         screenAutoSwitch = d.bool(forKey: "screenAutoSwitch")
         screenEverySwitch = d.bool(forKey: "screenEverySwitch")
+        screenAutoAllUntil = d.double(forKey: "screenAutoAllUntil")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
         autoSleepOvernight = d.bool(forKey: "autoSleepOvernight")
@@ -420,6 +436,7 @@ class AppSettings: ObservableObject {
         screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
         screenAutoSwitch = d.bool(forKey: "screenAutoSwitch")
         screenEverySwitch = d.bool(forKey: "screenEverySwitch")
+        screenAutoAllUntil = d.double(forKey: "screenAutoAllUntil")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
         idleNudge = d.bool(forKey: "idleNudge")
         autoSleepOvernight = d.bool(forKey: "autoSleepOvernight")

@@ -1417,6 +1417,10 @@ final class ScreenCoach {
             say("Switched to \(run.category): windows you've labeled \(run.category) before")
             return autoSwitch(from: from, to: run)
         }
+        if settings.screenAutoAll {
+            say("Switched to \(run.category): switching without asking until 4 AM")
+            return autoSwitch(from: running, to: run)
+        }
         say("Showing a card: \(run.category) since \(run.start.formatted(date: .omitted, time: .shortened))")
 
         let minutes = Date().timeIntervalSince(run.start) / 60
@@ -1469,14 +1473,17 @@ final class ScreenCoach {
         }
     }
 
-    private func autoSwitch(from: String, to run: Run) {
+    /// `from` nil: nothing was running, so Undo stops it again.
+    private func autoSwitch(from: String?, to run: Run) {
         timer.switchTo(run.category, at: run.start)
+        let why = run.projectAdmin ? "your Focus project rule"
+            : run.trusted ? "windows you've labeled \(run.category)" : "what's on screen"
         let m = AwayPromptModel(
             icon: "arrow.triangle.swap",
             title: "Switched to \(run.category)",
-            subtitle: "since \(run.start.formatted(date: .omitted, time: .shortened)) · \(run.projectAdmin ? "your Focus project rule" : "windows you've labeled \(run.category)")",
+            subtitle: "since \(run.start.formatted(date: .omitted, time: .shortened)) · \(why)",
             question: run.summary,
-            keep: "Undo, still \(from)",
+            keep: from.map { "Undo, still \($0)" } ?? "Undo",
             options: [], tags: settings.tags
         )
         let logID = PromptLog.screenPrompt(model: m, running: from, suggested: run.category, since: run.start,
@@ -1484,9 +1491,16 @@ final class ScreenCoach {
                                            reason: "auto-switch")
         m.onKeep = { [weak self] in
             guard let self else { return }
-            PromptLog.answer(logID, "undid, kept \(from)")
-            self.timer.relabelRunning(from)
-            ScreenWatcher.learn(run.keys, as: from)
+            PromptLog.answer(logID, "undid, kept \(from ?? "nothing")")
+            switch from {
+            case nil: self.timer.stop(at: run.start)
+            case "Break": self.timer.startManualBreak(minutes: 0, at: run.start)
+            case let label?: self.timer.relabelRunning(label)
+            }
+            // Only focus-vs-focus says what a window is (as "Still X" on a card).
+            if let from, from != "Break", !FocusCategories.isLife(from), !FocusCategories.isLife(run.category) {
+                ScreenWatcher.learn(run.keys, as: from)
+            }
             Self.bump(Self.declinedKey)
             self.snoozed[run.category] = Date().addingTimeInterval(20 * 60)
             self.panel.dismiss()

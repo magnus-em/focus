@@ -244,7 +244,7 @@ final class AwayCoach {
     private func checkIdle() {
         let now = Date()
         let cal = Calendar.current
-        guard settings.idleNudge, days.isDayStarted, !timer.isActive, !monitor.isAway, !panel.isBusy, !LeetCodeSolveDraftStore.isShowing,
+        guard settings.idleNudge, !settings.screenAutoAll, days.isDayStarted, !timer.isActive, !monitor.isAway, !panel.isBusy, !LeetCodeSolveDraftStore.isShowing,
               !(ScreenCoach.shared?.isBusy ?? false),
               now.timeIntervalSince(lastNudge) >= 20 * 60,
               nudgesOffDay.map({ !cal.isDateInToday($0) }) ?? true else { return }
