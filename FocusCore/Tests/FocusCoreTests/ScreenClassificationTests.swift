@@ -481,4 +481,13 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertEqual(ScreenClassificationPolicy.readingAlternative(title: "Tech News - The Verge"), "Leisure")
         XCTAssertNil(ScreenClassificationPolicy.readingAlternative(title: "Good News About Expander Graphs | Quanta Magazine"))
     }
+
+    func testOctober30FindMyAndScienceMagazines() {
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Math", app: "Find My", title: "Find My", text: "Poughkeepsie\n3 mi").category)
+        let cells = "Mathematics\nPhysics\nBiology\nThis video of a mouse's brain cells shows actin (blue), a protein that helps the cell change shape"
+        XCTAssertNotEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome",
+            title: "See Inside Cells Like Never Before With Microscopic Images | Quanta Magazine", text: cells).category, "Math")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome", title: "pset6.pdf",
+            text: "Problem 2. Show the graph is bipartite.").category, "Math")
+    }
 }

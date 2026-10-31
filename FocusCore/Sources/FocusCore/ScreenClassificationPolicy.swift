@@ -92,7 +92,8 @@ public enum ScreenClassificationPolicy {
             }
             // 10/27: viewing a friend's screen over Screen Sharing, and glances at Activity Monitor and
             // System Settings → Displays, were Admin and drew five cards mid-AI and with nothing running; none taken.
-            if ["screen sharing", "activity monitor", "system settings", "system preferences"].contains(normalized(app)) {
+            // 10/30: Find My's map (place names, distances) was Math in two cards and Leisure in two more.
+            if ["screen sharing", "activity monitor", "system settings", "system preferences", "find my"].contains(normalized(app)) {
                 return Decision(category: nil, reason: "Someone else's screen or a system utility does not show your task", uncertain: true)
             }
             // 10/27: Google Slides for an ML paper presentation was SWE ("editing a presentation") in three cards, all kept.
@@ -104,7 +105,9 @@ public enum ScreenClassificationPolicy {
             if category == "SWE", isCodeEditor(app: app), !editsSourceFile(title: title) {
                 return Decision(category: nil, reason: "A code editor without a source file open does not show coding", uncertain: true)
             }
-            if category == "Math", showsMaterialCuriosity(title: title, text: text) {
+            // 10/30: a Quanta biology article ("See Inside Cells Like Never Before") was Math from the
+            // site's Mathematics nav link; popular-science magazines are reading, never coursework.
+            if category == "Math", showsMaterialCuriosity(title: title, text: text) || isScienceMagazine(title: title) {
                 return supportsEducationalReading(title: title, text: text)
                     ? Decision(category: "Reading", reason: "An educational explainer, without mathematics or coursework", uncertain: false)
                     : Decision(category: nil, reason: "Curiosity alone does not establish coursework or educational long-form reading", uncertain: true)
@@ -313,6 +316,12 @@ public enum ScreenClassificationPolicy {
         let marks = ["add to cart", "buy now", "customer reviews", "customers liked", "in stock", "free delivery", "free shipping",
                      "before buying", "worth buying", "should i buy", "which one to buy", "best competitors", "cheaper", "costs about"]
         return marks.filter(body.contains).count >= 2
+    }
+
+    public static func isScienceMagazine(title: String) -> Bool {
+        let title = normalized(String(title.prefix(240)))
+        return ["quanta magazine", "scientific american", "new scientist", "nautilus", "aeon", "wired", "the atlantic",
+                "new yorker", "popular science", "smithsonian magazine"].contains { title.hasSuffix($0) }
     }
 
     public static func readingAlternative(title: String) -> String? {
