@@ -1290,6 +1290,7 @@ final class ScreenCoach {
     /// The model labeled the window, or you did earlier: your own label needs
     /// less proof, so a window you've answered for before is suggested in 45s.
     private static let learnedRunSeconds: TimeInterval = 45
+    private static let afterStopQuiet: TimeInterval = 20 * 60
 
     /// Trailing stretch where ≥ 80% of active samples say the same category.
     /// Two misses in a row, a 60s hole (sleep, away, paused) or the moment you
@@ -1388,6 +1389,13 @@ final class ScreenCoach {
         }
         if timer.isActive && !timer.isRunning { return say("Timer paused") }
         guard running != run.category else { return say("Screen agrees with \(run.category)") }
+        // Stopping X says you're done with X for now, whatever the screen
+        // still shows (10/18–11/1: "Looks like X" within 15 min of stopping X
+        // was declined or ignored 6 of 7 times).
+        if running == nil, run.category == timer.currentLabel, let stopped = timer.stoppedAt,
+           Date().timeIntervalSince(stopped) < Self.afterStopQuiet {
+            return say("You stopped \(run.category) at \(stopped.formatted(date: .omitted, time: .shortened)), so no card to restart it")
+        }
         if let until = snoozed[run.category], until > Date() {
             return say("\(run.category) snoozed until \(until.formatted(date: .omitted, time: .shortened)) (you said Still)")
         }

@@ -112,6 +112,7 @@ class TimerManager: ObservableObject {
 
     var isActive: Bool { core.isActive }
     var isOnBreak: Bool { currentPhase != .work }
+    var stoppedAt: Date? { core.isActive ? nil : core.lastEnded?.end }
 
     var menuBarTimeText: String {
         isRunning ? timeString : "⏸ \(timeString)"
