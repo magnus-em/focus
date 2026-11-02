@@ -490,4 +490,13 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome", title: "pset6.pdf",
             text: "Problem 2. Show the graph is bipartite.").category, "Math")
     }
+
+    func testNovember1NewspapersAreNotReading() {
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Reading", app: "Google Chrome",
+            title: "Opinion | The Rise and Fall of …mphal Arch - The New York Times",
+            text: "The history of the arch, for example, explains because it was built").category, "Leisure")
+        XCTAssertEqual(ScreenClassificationPolicy.readingAlternative(title: "Markets slide on rate fears - Reuters"), "Leisure")
+        XCTAssertNil(ScreenClassificationPolicy.readingAlternative(title: "I Spent a Week in a Hacker House - The Atlantic"))
+        XCTAssertNil(ScreenClassificationPolicy.readingAlternative(title: "The CNN architecture explained - Towards Data Science"))
+    }
 }

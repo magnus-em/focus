@@ -1401,7 +1401,7 @@ final class ScreenCoach {
         }
         let declineKey = declineKey(run.category, running: running)
         if stopAsking.contains(declineKey) {
-            return say("Not asking about \(run.category) again during this \(running ?? "stretch"): you said no twice")
+            return say("Not asking about \(run.category) again during this \(running ?? "stretch"): you said no")
         }
         if run.projectAdmin {
             say("Switched to Admin: your Focus project rule")
@@ -1470,13 +1470,13 @@ final class ScreenCoach {
                 let keys = run.keys.filter { k in !ScreenWatcher.chatApps.contains { k.hasPrefix($0 + "|") } }
                 ScreenWatcher.learn(keys, as: running)
             }
-            self.decline(run.category, key: declineKey)
+            self.decline(run.category, key: declineKey, lifeToLife: FocusCategories.isLife(running) && FocusCategories.isLife(run.category))
         }
         panel.show(m)
         let close = m.onClose
         m.onClose = { [weak self] in
             PromptLog.answer(logID, "closed")
-            self?.decline(run.category, key: declineKey)
+            self?.decline(run.category, key: declineKey, lifeToLife: FocusCategories.isLife(running) && FocusCategories.isLife(run.category))
             close?()
         }
     }
@@ -1664,9 +1664,11 @@ final class ScreenCoach {
         return "\(running ?? "")|\(category)@\(Int(start.timeIntervalSince1970))"
     }
 
-    private func decline(_ category: String, key: String) {
+    /// Between two life categories one no is enough (10/18–11/1: Admin ↔ Leisure
+    /// cards switched 1 of 9; on 11/1 SNL clips over Admin drew the card twice).
+    private func decline(_ category: String, key: String, lifeToLife: Bool) {
         snoozed[category] = Date().addingTimeInterval(settings.screenEverySwitch ? 120 : 20 * 60)
-        if declinedOnce.contains(key) { stopAsking.insert(key) } else { declinedOnce.insert(key) }
+        if declinedOnce.contains(key) || lifeToLife { stopAsking.insert(key) } else { declinedOnce.insert(key) }
         Self.bump(Self.declinedKey)
         panel.dismiss()
     }

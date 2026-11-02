@@ -324,6 +324,16 @@ public enum ScreenClassificationPolicy {
                 "new yorker", "popular science", "smithsonian magazine"].contains { title.hasSuffix($0) }
     }
 
+    public static func isNewspaper(title: String) -> Bool {
+        let title = normalized(String(title.prefix(240)))
+        if title.hasPrefix("opinion |") || title.hasPrefix("opinion:") { return true }
+        let papers = ["the new york times", "nytimes.com", "the washington post", "the wall street journal", "wsj",
+                      "the guardian", "bbc news", "cnn", "reuters", "bloomberg", "politico", "axios", "financial times",
+                      "the economist", "los angeles times", "usa today", "nbc news", "abc news", "cbs news", "fox news", "ap news",
+                      "the verge", "the new york post", "yale daily news"]
+        return papers.contains { title.hasSuffix(" - \($0)") || title.hasSuffix(" | \($0)") || title.hasSuffix(" — \($0)") }
+    }
+
     public static func readingAlternative(title: String) -> String? {
         let title = normalized(String(title.prefix(240)))
         if ["pay bill", "bill payment", "tax form", "account settings", "appointment booking", "course registration"].contains(where: title.contains) {
@@ -332,6 +342,8 @@ public enum ScreenClassificationPolicy {
         if isSocialFeed(title: title)
             || ["breaking news", "latest news", "top stories", "hacker news", "shopping cart", "shop online", "amazon.com", "ebay.com"].contains(where: title.contains)
             || title.hasSuffix(" - reddit") || title.hasSuffix(" | reddit") || title.hasPrefix("r/")
+            // 11/1: an NYT opinion piece was Reading while Admin ran; newspapers are news, not study.
+            || isNewspaper(title: title)
             // 10/29: Quanta's front page, "Science and Math News | Quanta Magazine", was Reading.
             || title.range(of: #"^[^|–—:]{0,40}\bnews\s*[|–—:-]"#, options: .regularExpression) != nil
             || title.range(of: #"^(?:news|home feed|for you|shopping|forums?)(?:$|\s*[-|:])"#, options: .regularExpression) != nil {
