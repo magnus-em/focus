@@ -432,6 +432,14 @@ public enum ScreenClassificationPolicy {
         let citesMLVenue = (title + " " + body).range(of: #"\bet al\.?,? (?:\(?\d{4}\)?,? )?(?:icml|neurips|nips|iclr)\b|\b(?:icml|neurips|iclr) ?20\d\d\b"#,
                                                      options: .regularExpression) != nil
         if citesMLVenue { return true }
+        // 11/2: building micrograd in JupyterLab (Value, .grad, backward, Neuron/MLP classes) was SWE for
+        // 109 min while AI ran and drew six AI → SWE cards, all kept or answered AI.
+        if ["micrograd", "makemore", "nanogpt", "nanochat"].contains(where: { title.contains($0) || body.contains($0) }) { return true }
+        let codeWords = Set(body.components(separatedBy: CharacterSet.alphanumerics.inverted))
+        let autograd = body.contains(".grad") && codeWords.contains("backward")
+        let networkClass = ["class neuron", "class mlp", "class layer"].filter(body.contains).count
+        let activation = ["tanh", "relu", "sigmoid", "softmax", "logits"].contains(where: codeWords.contains)
+        if autograd && (activation || networkClass > 0) || networkClass >= 2 { return true }
         let hasStudyEvidence = study.contains { containsWordBeginning($0, in: title + " " + body) }
         let strongBodyDomain = ["softmax attention", "linear attention", "linear-attention", "self attention", "self-attention",
                                 "multi-head attention", "multihead attention", "attention mechanism", "transformer architecture"]

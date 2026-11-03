@@ -54,6 +54,19 @@ final class ScreenClassificationPolicyTests: XCTestCase {
             text: "Gradient descent\nWe derive the loss function", source: .learned).category, "AI")
     }
 
+    func testNeuralNetCodeInNotebookIsAI() {
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "Google Chrome",
+            title: "micrograd_wo… - JupyterLab", text: "Python 3 (ipykernel)\nclass Value:", source: .model).category, "AI")
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "micro.ipynb - JupyterLab",
+            text: "def backward():\n    self.grad += (1 - t**2) * out.grad\nt = math.tanh(x)"))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "micro.ipynb - JupyterLab",
+            text: "import random\nclass Neuron:\n    def __init__(self, nin):\nclass MLP:"))
+        XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "hw1default.ipynb - JupyterLab",
+            text: "probs = {\"H\": 0.5}\ndef sample(table):\n    return random.choice(table)"))
+        XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "game.py",
+            text: "class Layer:\n    def draw(self): pass"))
+    }
+
     func testTransformerCourseVideoOverridesLeisureAndOldHeldLabels() {
         let pages = [
             ("(605) Attention in transformers…p Learning Chapter 6 - YouTube",

@@ -151,6 +151,8 @@ final class ClassCalendar: ObservableObject {
         guard !e.isAllDay, e.availability != .free, e.endDate.timeIntervalSince(e.startDate) <= 4 * 3600 else { return false }
         let title = e.title ?? ""
         let notes = e.notes ?? ""
+        // 11/2: "Purposes of College Education (Audit)" drew two In class cards, both kept: an audit is a sit-in.
+        if title.range(of: #"(?i)\baudit\b"#, options: .regularExpression) != nil { return false }
         if title.range(of: #"\b[A-Z]{3,4} ?\d{3,4}\b"#, options: .regularExpression) != nil,
            !title.localizedCaseInsensitiveContains("due"), !title.localizedCaseInsensitiveContains("pset") { return true }
         if title.range(of: #"(?i)\b(exam|midterm|quiz|lecture|seminar|section)\b"#, options: .regularExpression) != nil { return true }
