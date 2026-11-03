@@ -247,7 +247,7 @@ class AppSettings: ObservableObject {
             "darkPagesContrast": 100,
             "pauseGraceMinutes": 10,
             "autoBreakEnabled": true,
-            "commitmentEnabled": true,
+            "commitmentEnabled": false,
             "commitmentReviewReminder": true,
             "leetCodeDailyGoal": 1,
             "leetCodeMinutesGoal": 0,
@@ -261,9 +261,9 @@ class AppSettings: ObservableObject {
             "sweWeeklyGoal": 0,
             "homeworkDailyGoal": 10,
             "problemSources": ["QuantGuide", "LeetCode"],
-            "recallAfterSession": true,
+            "recallAfterSession": false,
             "recallMinMinutes": 20,
-            "morningRecall": true,
+            "morningRecall": false,
             "recallDailyCap": 12,
             "journalShortcut": "",
             "leetCodeUsername": "",
@@ -375,6 +375,19 @@ class AppSettings: ObservableObject {
         }
         sd.set(tags, forKey: "tags")
         sd.set(lifeTags, forKey: FocusCategories.lifeTagsKey)
+
+        // Paused 11/3 (user: never used the morning commitment, the morning
+        // recall of yesterday or the recall card after focus). Code and Settings
+        // switches stay; turning one back on there sticks.
+        if !d.bool(forKey: "didPauseDailyPrompts") {
+            commitmentEnabled = false
+            recallAfterSession = false
+            morningRecall = false
+            sd.set(false, forKey: "commitmentEnabled")
+            sd.set(false, forKey: "recallAfterSession")
+            sd.set(false, forKey: "morningRecall")
+            d.set(true, forKey: "didPauseDailyPrompts")
+        }
 
         if tags.contains("AI/ML") {
             tags = tags.map { $0 == "AI/ML" ? "AI" : $0 }

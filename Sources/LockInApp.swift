@@ -499,7 +499,7 @@ struct PopoverContent: View {
                 // Catch unreviewed past commitments — surfaces a Yes/No prompt
                 // for yesterday (or earlier) so the streak stays honest. Only
                 // when the morning commitment isn't currently in the way.
-                if !showCommitment, let pending = dayStore.pendingReviewDay() {
+                if settings.commitmentEnabled, !showCommitment, let pending = dayStore.pendingReviewDay() {
                     reviewTarget = pending
                 }
             }
