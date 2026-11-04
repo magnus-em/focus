@@ -255,3 +255,4 @@ Added local, regular-browser exact-URL identity observations and a persisted per
 ## 2026-11-04 — Codex: Dashboard Day overview
 
 - Added selected-day timer totals by category above the timeline. The activity story, log fixes and study notes sit under Day details, collapsed by default and on date changes.
+- Installed clean main at `368224d`; 665 saved sessions before and after, 255 FocusCore tests passed. Hidden screenshots in `.shots/dashboard-overview-before` and `.shots/dashboard-overview-after`. Independent review scored the collapsed view 90/100 in light mode and 92/100 in dark mode. The expanded state was not exercised. The timestamped coach headline can reflect older tracking than the new timer totals.
