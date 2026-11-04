@@ -1078,7 +1078,8 @@ final class ScreenWatcher: ObservableObject {
             labelReason = "A journal app"
             return ("Journaling", fallbackSummary)
         }
-        if candidates.contains("AI"), ScreenClassificationPolicy.supportsMLStudy(title: title, text: text) {
+        if candidates.contains("AI"), !ScreenClassificationPolicy.isSocialFeed(title: title),
+           ScreenClassificationPolicy.supportsMLStudy(title: title, text: text) {
             labelSource = "visible ML study rule"
             labelReason = "Visible ML/deep-learning study or research material"
             return ("AI", fallbackSummary)

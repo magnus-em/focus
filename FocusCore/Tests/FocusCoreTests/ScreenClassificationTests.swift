@@ -360,6 +360,13 @@ final class SocialFeedPolicyTests: XCTestCase {
             title: "Dashboard", text: "MATH 2440 pset 5").category, "Math")
     }
 
+    func testSocialFeedWithMLPostsIsLeisureAndCS7770IsAI() {
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "AI", app: "Google Chrome", title: "(18) Home / X",
+            text: "New paper: linear attention as in-context learning. We study transformer meta-learning and gradient descent.").category, "Leisure")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "SWE", app: "ChatGPT", title: "Review CS 7770 Project Ideas",
+            text: "Here are some project ideas").category, "AI")
+    }
+
     func testDeepLearningCourseworkIsAINotMath() {
         let plan = ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Plan 7770 course review",
             text: """

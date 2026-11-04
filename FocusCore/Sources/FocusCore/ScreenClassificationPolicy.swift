@@ -40,7 +40,8 @@ public enum ScreenClassificationPolicy {
         }
         // 10/21: the model repeatedly called 3Blue1Brown's "Attention in transformers ·
         // Deep Learning Chapter 6" video Leisure, even with the attention equation visible.
-        if supportsMLStudy(title: title, text: text) {
+        // 11/3: the X home feed was AI in four snapshots because posts in it named ML terms.
+        if !isSocialFeed(title: title), supportsMLStudy(title: title, text: text) {
             return Decision(category: "AI", reason: "Visible ML/deep-learning study or research material", uncertain: false)
         }
         if category == "Reading", isVideo(title: title) {
@@ -403,7 +404,7 @@ public enum ScreenClassificationPolicy {
         let titleIsMeta = meta.contains { title.contains($0) }
         let transformerAttentionTitle = ["attention in transformer", "transformer attention", "multi-head attention", "multihead attention"]
             .contains { title.contains($0) }
-        let knownMLCourseTitle = title.range(of: #"\bcpsc\s*7770\b"#, options: .regularExpression) != nil
+        let knownMLCourseTitle = title.range(of: #"\b(?:cpsc|cs)\s*7770\b"#, options: .regularExpression) != nil
         let learningChapterTitle = title.range(
             of: #"(?:deep |machine )?learning chapter [0-9]+|(?:…|\.\.\.)earning chapter [0-9]+"#,
             options: .regularExpression
@@ -452,7 +453,7 @@ public enum ScreenClassificationPolicy {
         let bodyWords = body.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
         let abbreviatedHits = ["relu", "mlp"].filter { bodyWords.contains($0) }.count
         // 10/21: the CPSC 7770 Canvas Files page ("Advanced Topics in Deep Learning") was Math.
-        let courseHit = body.range(of: #"\bcpsc\s*7770\b"#, options: .regularExpression) != nil ? 1 : 0
+        let courseHit = body.range(of: #"\b(?:cpsc|cs)\s*7770\b"#, options: .regularExpression) != nil ? 1 : 0
         let hits = domains.filter { body.contains($0) }.count + abbreviatedHits + courseHit
         return hits >= 2 && hasStudyEvidence
     }
