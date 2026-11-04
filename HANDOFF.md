@@ -2,7 +2,7 @@
 
 Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-10-30 (Claude: cross-device timer rewrite).
+Last touched: 2026-11-04 (Codex: Dashboard Day overview).
 
 ## Cross-device timer rewrite — 10/30 (Claude)
 

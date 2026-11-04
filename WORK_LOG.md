@@ -251,3 +251,7 @@ Added local, regular-browser exact-URL identity observations and a persisted per
 - Commit `c34cb38` built, signed and installed from a clean detached `main`; deployment preserved 495 sessions before/after and relaunched the active timer through its checkpoint.
 - The surrounding log also showed why the lesson could still oscillate: prerequisite slides reduced to outer-product algebra, and the generic `Session 4 Q&A tutor` title lost the visible attention terms. Added CPSC 7770 as the known deep-learning course title and a narrow outer-product + key + value + memory teaching pattern, with ordinary outer-product math as the negative regression.
 - A clean detached-main run passed all 221 FocusCore tests. Commit `10d8829` then built, signed and installed from clean `main`; deployment preserved 495 sessions before/after and relaunched Focus through the normal checkpoint path.
+
+## 2026-11-04 — Codex: Dashboard Day overview
+
+- Added selected-day timer totals by category above the timeline. The activity story, log fixes and study notes sit under Day details, collapsed by default and on date changes.

@@ -98,6 +98,7 @@ struct DayStoryPage: View {
     let openCoach: () -> Void
 
     @State private var dismissed: Set<String> = Set(UserDefaults.standard.stringArray(forKey: Self.dismissedKey) ?? [])
+    @State private var showDayDetails = false
     @State private var expanded: Set<Date> = []
 
     static let dismissedKey = "dayStoryDismissedFixes"
@@ -110,22 +111,69 @@ struct DayStoryPage: View {
             if let story = model.story {
                 header(story)
                 glance(story)
+                trackedTimeSummary
                 VStack(alignment: .leading, spacing: 12) {
                     SectionTitle("Timeline", subtitle: "Midnight to midnight: your calendar, what you tracked with the timer, and what was on your Mac's screen.")
                     DayLanesView(lanes: model.lanes, day: day)
                 }
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 28) {
-                        storyColumn(story).frame(minWidth: 500, idealWidth: 560, maxWidth: .infinity, alignment: .leading)
-                        side(story).frame(width: 300)
+                DisclosureGroup(isExpanded: $showDayDetails) {
+                    if showDayDetails {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .top, spacing: 28) {
+                                storyColumn(story).frame(minWidth: 500, idealWidth: 560, maxWidth: .infinity, alignment: .leading)
+                                side(story).frame(width: 300)
+                            }
+                            VStack(alignment: .leading, spacing: 24) {
+                                storyColumn(story)
+                                side(story)
+                            }
+                        }
+                        .padding(.top, 12)
                     }
-                    VStack(alignment: .leading, spacing: 24) {
-                        storyColumn(story)
-                        side(story)
-                    }
+                } label: {
+                    SectionTitle("Day details", subtitle: "Activity by time, study notes and suggested log fixes")
                 }
             } else {
                 ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 120)
+            }
+        }
+        .onChange(of: day) { _, _ in
+            showDayDetails = false
+            expanded.removeAll()
+        }
+    }
+
+    private var trackedTimeSummary: some View {
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: day)
+        let end = min(calendar.date(byAdding: .day, value: 1, to: start)!, Date())
+        var totals: [String: Double] = [:]
+        for block in model.lanes.tracked {
+            let minutes = min(block.end, end).timeIntervalSince(max(block.start, start)) / 60
+            if minutes > 0 { totals[block.label, default: 0] += minutes }
+        }
+        let rows = totals.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
+        return VStack(alignment: .leading, spacing: 8) {
+            SectionTitle("Where your time went", subtitle: "Time by category from your timer")
+            if rows.isEmpty {
+                Text(isToday ? "No time tracked yet today." : "No time tracked on this day.")
+                    .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+            } else {
+                FlowLayout(spacing: 8) {
+                    ForEach(rows, id: \.key) { row in
+                        HStack(spacing: 6) {
+                            Circle().fill(categoryColor(row.key)).frame(width: 7, height: 7)
+                                .accessibilityHidden(true)
+                            Text(row.key)
+                            Text(row.value < 1 ? "<1m" : durationText(minutes: row.value))
+                                .monospacedDigit().foregroundStyle(Color.secondaryText)
+                        }
+                        .font(.system(size: 13))
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                        .background(Capsule().fill(Color.primary.opacity(0.06)))
+                        .accessibilityElement(children: .combine)
+                    }
+                }
             }
         }
     }
@@ -175,7 +223,7 @@ struct DayStoryPage: View {
             }
             if !fixes.isEmpty {
                 fact("Log check", fixes.count == 1 ? "1 to fix" : "\(fixes.count) to fix",
-                     fixSummary(fixes[0]) + (fixes.count > 1 ? ", and \(fixes.count - 1) more below" : "; fix it below"),
+                     "Open Day details to review suggested changes",
                      color: .attention)
             } else if !story.blocks.isEmpty {
                 fact("Log check", "Looks right", "Nothing disagrees with your calendar or screen", color: .good)
@@ -204,14 +252,6 @@ struct DayStoryPage: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: 260, alignment: .leading)
-    }
-
-    private func fixSummary(_ f: DayStory.Fix) -> String {
-        switch f.kind {
-        case .calendar(let event): return "You tracked \(f.tracked ?? "something else") during \(event) on your calendar"
-        case .untracked: return "Nothing logged for \(durationText(minutes: f.minutes)) at \(clock(f.start))"
-        case .screenDiffers(let seen): return "The screen showed \(seen) while \(f.tracked ?? "something else") was tracked"
-        }
     }
 
     // MARK: Story
