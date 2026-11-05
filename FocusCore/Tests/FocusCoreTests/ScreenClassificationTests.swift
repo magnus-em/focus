@@ -258,10 +258,12 @@ final class LocalTaskContextTests: XCTestCase {
 final class SocialFeedPolicyTests: XCTestCase {
     func testSocialFeedsAreLeisure() {
         for title in ["(9+) Lindsey (@lindsey.lucid.dreams) • Threads, Say more", "Home • Threads",
-                      "Lindsey (@lindsey.lucid.dreams) • Instagram photos and videos", "(3) Instagram"] {
+                      "Lindsey (@lindsey.lucid.dreams) • Instagram photos and videos", "(3) Instagram", "(23) Feed | LinkedIn"] {
             let result = ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome", title: title, text: "")
             XCTAssertEqual(result.category, "Leisure", title)
         }
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Recruiting", app: "Google Chrome", title: "Jobs | LinkedIn",
+            text: "Software engineering internship applications recruiter").category, "Recruiting")
     }
 
     func testVideosAreNeverErrandsOrReading() {

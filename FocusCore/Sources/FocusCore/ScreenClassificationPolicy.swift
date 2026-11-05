@@ -230,6 +230,8 @@ public enum ScreenClassificationPolicy {
         let title = normalized(String(title.prefix(240)))
         return ["• threads", "• instagram", "instagram photos", "tiktok", "facebook"].contains { title.contains($0) }
             || title.hasSuffix("instagram") || title.hasSuffix(" / x")
+            // 11/4: the LinkedIn home feed was Admin for 4 min and drew a card over Leisure (kept).
+            || title.range(of: #"(^|\) )feed \| linkedin$"#, options: .regularExpression) != nil
     }
 
     public static func isVideo(title: String) -> Bool {
