@@ -256,3 +256,7 @@ Added local, regular-browser exact-URL identity observations and a persisted per
 
 - Added selected-day timer totals by category above the timeline. The activity story, log fixes and study notes sit under Day details, collapsed by default and on date changes.
 - Installed clean main at `368224d`; 665 saved sessions before and after, 255 FocusCore tests passed. Hidden screenshots in `.shots/dashboard-overview-before` and `.shots/dashboard-overview-after`. Independent review scored the collapsed view 90/100 in light mode and 92/100 in dark mode. The expanded state was not exercised. The timestamped coach headline can reflect older tracking than the new timer totals.
+
+## 2026-11-05 — Codex: confirmed course roster
+
+- The prompt log traced “AI Apps” and “Data Structures Exam 2” cards to Calendar events. Earlier cards also included “Purposes of College Education (Audit)”. Calendar classes and exams now require a title matching one of the four user-confirmed courses. Daily, observation and chat coach prompts share that roster. Regression cases cover the actual calendar titles, abbreviated Systems and Deep Learning exams, and optional or prep events.

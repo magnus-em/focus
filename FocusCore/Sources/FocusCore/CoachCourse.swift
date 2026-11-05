@@ -70,10 +70,28 @@ public enum CoachCourse {
         }
     }
 
-    /// Fall 2026, as the coach prompts list them.
-    public static let known: [Course] = [
-        Course("CPSC 3231", category: "SWE"), Course("MATH 244", category: "Math"), Course("CPSC 1710", category: "AI"),
+    private static let enrollment: [(course: Course, name: String, calendarAlias: String)] = [
+        (Course("CPSC 3231", category: "SWE"), "Computer Systems",
+         #"(?:CPSC|CS) ?3231?|3231|(?:Computer )?Systems 3231|Computer Systems"#),
+        (Course("MATH 244", category: "Math"), "Discrete Math",
+         #"MATH ?2440?|Discrete Math(?:ematics)?"#),
+        (Course("CPSC 4585", category: "HW"), "Probabilistic Programming",
+         #"(?:CPSC|CS) ?4585|4585|Probabilistic Programming"#),
+        (Course("CPSC 7770", category: "AI"), "Deep Learning: General Sequence Processing",
+         #"(?:CPSC|CS) ?7770|7770|Advanced Topics in Deep Learning|Deep Learning[: ]+General Sequence Processing|General Sequence Processing"#),
     ]
+
+    public static let known = enrollment.map(\.course)
+    static let enrollmentDescription = enrollment.map { "\($0.course.code) \($0.name)" }.joined(separator: "; ")
+
+    public static func enrolledCourse(forCalendarTitle title: String) -> Course? {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard title.range(of: #"(?i)\b(audit|optional|office hours|review session|pset|problem set|homework|hw|due|study|prep)\b"#,
+                          options: .regularExpression) == nil else { return nil }
+        return enrollment.first { entry in
+            title.range(of: #"(?i)^(?:"# + entry.calendarAlias + #")\b"#, options: .regularExpression) != nil
+        }?.course
+    }
 
     static let studyCategories: Set<String> = ["Math", "SWE", "HW", "AI", "Quant", "Class", "Reading"]
     private static let interviewPrep = ["leetcode", "neetcode", "hackerrank", "codeforces"]
@@ -154,7 +172,7 @@ public enum CoachCourse {
         let classes = context.classes.filter { $0.start < end && $0.end > start }
             .sorted { min(end, $0.end).timeIntervalSince(max(start, $0.start)) > min(end, $1.end).timeIntervalSince(max(start, $1.start)) }
         for c in classes {
-            guard let code = codes(in: c.title, context: context).first else { continue }
+            guard let code = calendarCode(c.title, context: context) else { continue }
             if category == "Class" || category == nil || courseCategory(code, context: context) == category {
                 return Attribution(course: code, basis: .calendar)
             }
@@ -179,7 +197,7 @@ public enum CoachCourse {
         }
         let category = studyCategory(r)
         for c in context.classes where c.start <= r.source.at && c.end > r.source.at {
-            guard let code = codes(in: c.title, context: context).first else { continue }
+            guard let code = calendarCode(c.title, context: context) else { continue }
             if category == "Class" || r.source.trackedCategory == "Class" || courseCategory(code, context: context) == category {
                 return Attribution(course: code, basis: .calendar)
             }
@@ -189,6 +207,10 @@ public enum CoachCourse {
 
     private static let lettered = try! NSRegularExpression(pattern: #"(?<![A-Za-z])([A-Za-z]{2,4}) ?-?(\d{3,4})(?!\d)"#)
     private static let bare = try! NSRegularExpression(pattern: #"(?<![A-Za-z0-9])(?<![A-Za-z] )(\d{3,4})(?![0-9])"#)
+
+    private static func calendarCode(_ title: String, context: Context) -> String? {
+        enrolledCourse(forCalendarTitle: title)?.code ?? codes(in: title, context: context).first
+    }
 
     /// Course codes in a title, canonical to the semester's courses:
     /// "math 2440", "MAIH 244", "cpsc3231-midterm-cheat-sheet.pdf", "CPSC 323"
@@ -225,7 +247,8 @@ public enum CoachCourse {
             let l = String(parts[0]), n = String(parts[1])
             let zero = n == number || (number.count == 4 && n.count == 3 && number == n + "0")
                 || (n.count == 4 && number.count == 3 && n == number + "0")
-            if l == letters, zero || (n.count == 4 && number.count == 3 && n.hasPrefix(number)) { return course.code }
+            let sameSubject = l == letters || (l == "CPSC" && letters == "CS")
+            if sameSubject, zero || (n.count == 4 && number.count == 3 && n.hasPrefix(number)) { return course.code }
             if zero, letters.count >= 3, letters.count == l.count,
                zip(letters, l).filter({ $0 != $1 }).count == 1 { return course.code }
         }

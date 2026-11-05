@@ -1,11 +1,8 @@
 import EventKit
+import FocusCore
 import Foundation
 
-/// Reads the Mac's calendars (Google/Yale accounts added in Internet Accounts)
-/// to know when you're in class. A class is a timed, busy event that looks
-/// like coursework: a course code in the title ("CPSC 3231"), an instructor or
-/// CRN in the notes, or an exam/midterm/quiz. Rugby, reminders and
-/// free/optional sit-ins don't count.
+/// Reads the Mac's calendars for events in the user's confirmed course roster.
 @MainActor
 final class ClassCalendar: ObservableObject {
     static let shared = ClassCalendar()
@@ -15,14 +12,17 @@ final class ClassCalendar: ObservableObject {
     struct Exam: Identifiable {
         let title: String
         let date: Date
-        /// From the course code: MATH → Math, CPSC/CS → SWE; nil = unknown.
         let category: String?
         var id: String { "\(title)|\(date.timeIntervalSince1970)" }
     }
     /// Exams, midterms and finals in the next 30 days.
     @Published private(set) var exams: [Exam] = []
     /// Course number → subject letters from class events ("3231" → "CPSC").
-    private(set) var coursePrefixes: [String: String] = [:]
+    let coursePrefixes = Dictionary(uniqueKeysWithValues: CoachCourse.known.compactMap { course -> (String, String)? in
+        let parts = course.code.split(separator: " ")
+        guard parts.count == 2 else { return nil }
+        return (String(parts[1]), String(parts[0]))
+    })
     private let store = EKEventStore()
     private var today: [EKEvent] = []
     private var loadedAt = Date.distantPast
@@ -65,33 +65,7 @@ final class ClassCalendar: ObservableObject {
         today = events.filter { Self.isClass($0) && Self.isLocal($0) }.sorted { $0.startDate < $1.startDate }
         let ahead = store.events(matching: store.predicateForEvents(
             withStart: Date(), end: cal.date(byAdding: .day, value: 30, to: start)!, calendars: nil))
-        // "3231 Exam 1" names only the number; the class events say "CPSC 3231".
-        let around = store.events(matching: store.predicateForEvents(
-            withStart: cal.date(byAdding: .day, value: -14, to: start)!, end: cal.date(byAdding: .day, value: 30, to: start)!, calendars: nil))
-        var prefixes: [String: String] = [:]
-        for e in around {
-            let t = (e.title ?? "").uppercased()
-            if let r = t.range(of: #"\b[A-Z]{2,4} ?\d{3,4}\b"#, options: .regularExpression) {
-                let code = String(t[r])
-                let number = code.filter(\.isNumber), letters = code.filter(\.isLetter)
-                prefixes[number] = letters
-            }
-        }
-        coursePrefixes = prefixes
-        exams = ahead.compactMap { e in
-            let title = e.title ?? ""
-            guard Self.isExam(title) else { return nil }
-            var category = Self.category(for: title)
-            if category == nil, let r = title.range(of: #"\b\d{3,4}\b"#, options: .regularExpression),
-               let letters = prefixes[String(title[r])] {
-                category = Self.category(for: "\(letters) \(title[r])")
-            }
-            return Exam(title: title, date: e.startDate, category: category)
-        }
-        .sorted { $0.date < $1.date }
-        // The same exam on two calendars (school + personal) shows once.
-        var seen = Set<String>()
-        exams = exams.filter { seen.insert($0.id).inserted }
+        exams = Self.enrolledExams(in: ahead)
         status = today.isEmpty ? "No classes on your calendar today"
             : "\(today.count) class\(today.count == 1 ? "" : "es") today: " + today.map { $0.title ?? "" }.joined(separator: ", ")
     }
@@ -124,19 +98,18 @@ final class ClassCalendar: ObservableObject {
         let start = cal.startOfDay(for: day)
         let events = store.events(matching: store.predicateForEvents(
             withStart: start, end: cal.date(byAdding: .day, value: 1, to: start)!, calendars: nil))
-        var seen = Set<String>()
-        return events.filter { !$0.isAllDay && Self.isExam($0.title ?? "") }
-            .map { Exam(title: $0.title ?? "", date: $0.startDate, category: Self.category(for: $0.title ?? "")) }
-            .filter { seen.insert($0.id).inserted }
-            .sorted { $0.date < $1.date }
+        return Self.enrolledExams(in: events.filter { !$0.isAllDay })
     }
 
-    nonisolated static func category(for title: String) -> String? {
-        let t = title.uppercased()
-        if t.range(of: #"\bMATH ?\d|\bDISCRETE\b|\bMATH\b|\bLINEAR ALGEBRA\b|\bCALCULUS\b|\bPROBABILITY\b"#, options: .regularExpression) != nil { return "Math" }
-        if t.range(of: #"\b(CPSC|CS) ?\d|\bSYSTEMS\b|\bALGORITHMS\b"#, options: .regularExpression) != nil { return "SWE" }
-        if t.range(of: #"\bAI\b|\bMACHINE LEARNING\b|\bML\b"#, options: .regularExpression) != nil { return "AI" }
-        return nil
+    private static func enrolledExams(in events: [EKEvent]) -> [Exam] {
+        var seen = Set<String>()
+        return events.compactMap { event -> Exam? in
+            let title = event.title ?? ""
+            guard isExam(title), let course = CoachCourse.enrolledCourse(forCalendarTitle: title) else { return nil }
+            return Exam(title: title, date: event.startDate, category: course.category)
+        }
+        .filter { seen.insert($0.id).inserted }
+        .sorted { $0.date < $1.date }
     }
 
     /// 10/26: travelling on Pacific time, the Eastern-time CPSC 3231 and an audit class
@@ -149,13 +122,6 @@ final class ClassCalendar: ObservableObject {
 
     nonisolated static func isClass(_ e: EKEvent) -> Bool {
         guard !e.isAllDay, e.availability != .free, e.endDate.timeIntervalSince(e.startDate) <= 4 * 3600 else { return false }
-        let title = e.title ?? ""
-        let notes = e.notes ?? ""
-        // 11/2: "Purposes of College Education (Audit)" drew two In class cards, both kept: an audit is a sit-in.
-        if title.range(of: #"(?i)\baudit\b"#, options: .regularExpression) != nil { return false }
-        if title.range(of: #"\b[A-Z]{3,4} ?\d{3,4}\b"#, options: .regularExpression) != nil,
-           !title.localizedCaseInsensitiveContains("due"), !title.localizedCaseInsensitiveContains("pset") { return true }
-        if title.range(of: #"(?i)\b(exam|midterm|quiz|lecture|seminar|section)\b"#, options: .regularExpression) != nil { return true }
-        return notes.range(of: #"(?i)\b(instructor|CRN)\b"#, options: .regularExpression) != nil
+        return CoachCourse.enrolledCourse(forCalendarTitle: e.title ?? "") != nil
     }
 }

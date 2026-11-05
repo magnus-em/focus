@@ -2,11 +2,11 @@
 
 Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-11-04 (Codex: Dashboard Day overview).
+Last touched: 2026-11-05 (Codex: confirmed course roster).
 
 ## Cross-device timer rewrite — 10/30 (Claude)
 
-- `7252af9` (see CLAUDE.md → Cross-device timer) is installed on the Mac and the iPhone. **The iPad still runs the old build** (it was locked); install with `./install_ios.sh` from a clean checkout of main (the main checkout carries Codex's untracked `AIUsage.swift`, which doesn't compile). Until then the old iPad can still re-announce a stale block on relaunch; new builds ignore old-build states that began before their own block, and never log a block on an old build's say-so.
+- `7252af9` (see CLAUDE.md → Cross-device timer) is installed on the Mac and the iPhone. **The iPad still runs the old build** (it was locked); install with `./install_ios.sh` from a clean checkout of main (the main checkout carries Codex's untracked AI Usage work). Until then the old iPad can still re-announce a stale block on relaunch; new builds ignore old-build states that began before their own block, and never log a block on an old build's say-so.
 - Not yet verified on real devices: read the iPhone's and Mac's sync.log (`statePublish`, `liveAdopt`, `liveAdoptMp`, `liveSave`) after a day of normal use.
 - Repaired 10/30 at the user's word through `focus://log`: Class 10/28 now 9:25–11:30 AM then Leisure to the existing Sleep; LeetCode 10/24 now 4:25–6:25 PM, then Leisure, Sleep 8:38 AM–2:36 PM (Mac asleep per presence.json), Leisure; today Chores 10:50–12:28 (the stop at 12:28 had been dropped as a "copy" of a zero-length row; fixed in TimeIntegrity.sameBlock).
 

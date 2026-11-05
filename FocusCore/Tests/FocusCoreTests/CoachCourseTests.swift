@@ -42,7 +42,7 @@ final class CoachCourseTests: XCTestCase {
         XCTAssertEqual(CoachCourse.codes(in: "cpsc3231-midterm-cheat-sheet.pdf", context: context), ["CPSC 3231"])
         XCTAssertEqual(CoachCourse.codes(in: "CPSC 323 exam topics", context: context), ["CPSC 3231"])
         XCTAssertEqual(CoachCourse.codes(in: "3231 Study Guides", context: context), ["CPSC 3231"])
-        XCTAssertEqual(CoachCourse.codes(in: "CPSC 171 slides", context: context), ["CPSC 1710"])
+        XCTAssertEqual(CoachCourse.codes(in: "CS 7770 slides", context: context), ["CPSC 7770"])
         XCTAssertEqual(CoachCourse.codes(in: "ECON 1150 problem set", context: context), ["ECON 1150"])
         XCTAssertEqual(CoachCourse.codes(in: "midterm1_review.pdf", context: context), [])
         XCTAssertEqual(CoachCourse.codes(in: "page 244 of 300", context: context), [])
@@ -50,7 +50,26 @@ final class CoachCourseTests: XCTestCase {
         let calendar = CoachCourse.Context(coursePrefixes: ["2440": "MATH", "4770": "CPSC"])
         XCTAssertEqual(CoachCourse.codes(in: "4770 lecture notes", context: calendar), ["CPSC 4770"])
         XCTAssertEqual(CoachCourse.codes(in: "777 class", context: calendar), [])
-        XCTAssertEqual(calendar.courses.map(\.code), ["CPSC 3231", "MATH 244", "CPSC 1710", "CPSC 4770"])
+        XCTAssertEqual(calendar.courses.map(\.code), ["CPSC 3231", "MATH 244", "CPSC 4585", "CPSC 7770", "CPSC 4770"])
+    }
+
+    func testCalendarEnrollmentRequiresAConfirmedCourse() {
+        let enrolled = [
+            "Discrete Math": "MATH 244",
+            "Probabilistic Programming": "CPSC 4585",
+            "CPSC 7770: Advanced Topics in Deep Learning": "CPSC 7770",
+            "CS 7770 Final": "CPSC 7770",
+            "CPSC 3231: Computer Systems 1: Foundations": "CPSC 3231",
+            "3231 Exam 1": "CPSC 3231",
+        ]
+        for (title, code) in enrolled {
+            XCTAssertEqual(CoachCourse.enrolledCourse(forCalendarTitle: title)?.code, code, title)
+        }
+        for title in ["Psychology Lecture", "Data Structures Exam 2", "Purposes of College Education (Audit)",
+                      "AI Apps", "CPSC 1710 AI Applications", "Exam 2", "Discrete Math (Optional)",
+                      "CPSC 3231 PSET due", "Probabilistic Programming office hours", "CPSC 7770 final prep"] {
+            XCTAssertNil(CoachCourse.enrolledCourse(forCalendarTitle: title), title)
+        }
     }
 
     func testStudyObservationsGetACourseFromTheBestEvidence() {
@@ -96,15 +115,15 @@ final class CoachCourseTests: XCTestCase {
     }
 
     func testCalendarClassesNameTheCourseInClass() {
-        let lecture = CoachCourse.ClassEvent(start: at(16, 0), end: at(17, 15), title: "CPSC 1710 AI Applications")
+        let lecture = CoachCourse.ClassEvent(start: at(16, 0), end: at(17, 15), title: "Advanced Topics in Deep Learning")
         let context = CoachCourse.Context(classes: [lecture])
         let inClass = rec(16, 6, title: "Context Learning Bayesian Inference", screen: "AI", tracked: "Class")
         let mathInClass = rec(16, 10, title: "Some proof", screen: "Math", tracked: "Math")
         let after = rec(18, 0, title: "Another chat", screen: "AI", tracked: "AI")
         let courses = CoachCourse.attribute([inClass, mathInClass, after], context: context)
-        XCTAssertEqual(courses[inClass.source.id], .init(course: "CPSC 1710", basis: .calendar))
+        XCTAssertEqual(courses[inClass.source.id], .init(course: "CPSC 7770", basis: .calendar))
         XCTAssertNil(courses[mathInClass.source.id])
-        XCTAssertEqual(courses[after.source.id], .init(course: "CPSC 1710", basis: .category))
+        XCTAssertEqual(courses[after.source.id], .init(course: "CPSC 7770", basis: .category))
     }
 
     func testCategoryOnlyWhenOneCourseFitsAndItWasSeen() {
