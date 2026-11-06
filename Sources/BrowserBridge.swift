@@ -9,7 +9,7 @@ import Combine
 ///   POST /events  → `{ "events": [...] }` block hits, reasons, bypasses, browsing spans
 ///   POST /tab     → `{ "url", "title" }` the focused tab, for the screen watcher
 ///   POST /dark    → `DarkPages` changed from the extension's popup
-///   POST /reader  → `{ "url", "title", "author", "html", "source" }` save a page to Readwise Reader
+///   POST /reader  → `{ "url", "title", "author", "html", "source" }` save a page to Focus's reading list
 ///
 /// Only browsers attach an `Origin`, and a web page can't forge one, so any
 /// request whose Origin isn't the extension is refused. Local processes are
@@ -166,7 +166,7 @@ final class BrowserBridge: ObservableObject {
             if let data { buf.append(data) }
             if let req = Request(buf) {
                 self.handle(req, conn)
-            } else if done || error != nil || buf.count > 4 * 1024 * 1024 {
+            } else if done || error != nil || buf.count > 12 * 1024 * 1024 {
                 conn.cancel()
             } else {
                 self.receive(conn, buffer: buf)

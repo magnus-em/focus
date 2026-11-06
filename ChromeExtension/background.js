@@ -396,8 +396,8 @@ function flush() {
 
 // MARK: - Read later
 
-// The app holds the Readwise token and the local record; if it's down the save
-// waits here and goes on the next tick.
+// Pages go to Focus's own reading list (Sources/ReaderStore.swift); if the app is
+// down the save waits here and goes on the next tick.
 async function postReadLater(item) {
   const r = await fetch(API + '/reader', {
     method: 'POST',
@@ -424,8 +424,7 @@ function decodeEntities(s) {
 }
 
 // The blocked page never loaded, so fetch it here with the user's cookies (the
-// block rule only covers main_frame). Reader's own scrape of a paywalled site
-// misses the author and often the text.
+// block rule only covers main_frame), so paywalled sites come with their text.
 async function pageForReader(url) {
   try {
     const r = await fetch(url, { credentials: 'include', signal: AbortSignal.timeout(10000) });
@@ -444,9 +443,9 @@ async function pageForReader(url) {
   }
 }
 
-async function readLater(url) {
-  const page = await pageForReader(url);
-  const item = { url, title: page.title || '', author: page.author || '', html: page.html || '', source: 'blocked' };
+async function readLater(url, source = 'blocked', live = null) {
+  const page = live || await pageForReader(url);
+  const item = { url, title: page.title || '', author: page.author || '', html: page.html || '', source };
   try {
     return await postReadLater(item);
   } catch {
@@ -455,9 +454,64 @@ async function readLater(url) {
       if (!readerQueue.some((q) => q.url === url)) readerQueue.push({ ...item, html: '' });
       await local.set({ readerQueue: readerQueue.slice(-500) });
     });
-    return { status: 'queued', reason: 'Focus isn\'t running; it goes to Reader when Focus is back.' };
+    return { status: 'queued', reason: 'Focus isn\'t running; it goes to your reading list when Focus is back.' };
   }
 }
+
+// The open tab's DOM as the user sees it (signed in, scripts already run).
+async function livePage(tab) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: () => {
+        const m = (n) => document.querySelector(`meta[name="${n}"], meta[property="${n}"]`)?.content || '';
+        return { html: document.documentElement.outerHTML, title: m('og:title') || document.title, author: m('author') || m('article:author') };
+      },
+    });
+    const page = res && res.result;
+    if (page && page.html && page.html.length < 4_000_000) return page;
+  } catch {}
+  return null;
+}
+
+async function saveTab(tab) {
+  if (!tab || !/^https?:/.test(tab.url || '')) return { status: 'error', error: 'Only web pages can be saved.' };
+  const live = await livePage(tab);
+  const res = await readLater(tab.url, 'extension', live || { title: tab.title || '' });
+  flashBadge(tab.id, res && res.status !== 'error');
+  return res;
+}
+
+async function saveLink(url, tabId) {
+  const res = await readLater(url, 'extension');
+  flashBadge(tabId, res && res.status !== 'error');
+  return res;
+}
+
+function flashBadge(tabId, ok) {
+  if (tabId == null) return;
+  chrome.action.setBadgeBackgroundColor({ color: ok ? '#34c759' : '#ff3b30', tabId }).catch(() => {});
+  chrome.action.setBadgeText({ text: ok ? '✓' : '!', tabId }).catch(() => {});
+  setTimeout(() => chrome.action.setBadgeText({ text: '', tabId }).catch(() => {}), 2500);
+}
+
+function ensureMenus() {
+  chrome.contextMenus?.removeAll(() => {
+    chrome.contextMenus.create({ id: 'save-page', title: 'Save page to reading list', contexts: ['page'] });
+    chrome.contextMenus.create({ id: 'save-link', title: 'Save link to reading list', contexts: ['link'] });
+  });
+}
+
+chrome.contextMenus?.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'save-link' && info.linkUrl) saveLink(info.linkUrl, tab && tab.id);
+  else if (info.menuItemId === 'save-page' && tab) saveTab(tab);
+});
+
+chrome.commands?.onCommand.addListener(async (command, tab) => {
+  if (command !== 'save-page') return;
+  const t = tab || (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+  saveTab(t);
+});
 
 async function flushReadLater() {
   const { readerQueue = [] } = await local.get('readerQueue');
@@ -658,6 +712,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       }
       case 'readLater':
         return readLater(msg.url);
+      case 'saveTab': {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        return saveTab(tab);
+      }
       case 'leave': {
         const tab = sender.tab;
         if (!tab) return { ok: false };
@@ -718,7 +776,7 @@ function ensureAlarm() {
   chrome.idle.setDetectionInterval(IDLE_SECS);
   chrome.alarms.get('tick', (a) => { if (!a) chrome.alarms.create('tick', { periodInMinutes: 0.5 }); });
 }
-chrome.runtime.onInstalled.addListener(() => { ensureAlarm(); refreshState(true); });
+chrome.runtime.onInstalled.addListener(() => { ensureAlarm(); ensureMenus(); refreshState(true); });
 chrome.runtime.onStartup.addListener(() => { ensureAlarm(); refreshState(true); });
 chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name === 'darkBoundary') { await syncDark(); return; }

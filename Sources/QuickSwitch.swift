@@ -133,6 +133,11 @@ final class QuickSwitch {
         case "toggle": toggle()
         case "switcher": showSwitcher()
         case "recall": openRecall?()
+        case "reader":
+            let remove = param("remove")
+            Task { @MainActor in
+                if let remove { ReaderStore.shared.remove(url: remove) } else { ReaderWindowController.shared.open() }
+            }
         case "coach": Task { @MainActor in CoachChatWindow.shared.open() }
         case "coach-day":
             // focus://coach-day?date=2026-10-15 writes (or rewrites) that day's record now.

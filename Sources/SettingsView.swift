@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import CloudKit
 import FocusCore
 
@@ -38,6 +39,14 @@ struct SettingsView: View {
                 settings[keyPath: key] = (c.hour ?? 21) * 60 + (c.minute ?? 0)
             }
         )
+    }
+
+    private func pickReaderCSV() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.commaSeparatedText, .plainText]
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls { reader.importCSV(url) }
     }
 
     private var chromeExtensionRow: some View {
@@ -310,6 +319,21 @@ struct SettingsView: View {
                 }
 
                 SettingsCard("Read later") {
+                    HStack {
+                        Text("\(reader.items.count) saved · \(reader.inboxCount) in the Inbox")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.secondaryText)
+                        Spacer()
+                        Button("Open reading list") { ReaderWindowController.shared.open() }
+                            .controlSize(.small)
+                    }
+                    Text("The block page's \u{201C}Save for later\u{201D}, the extension's toolbar button, right-click \u{2192} Save to reading list and \u{2325}R save the page into Focus's own reading list, with the article text taken from your signed-in browser.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Divider()
+                    Text("Bring over your Readwise library")
+                        .font(.system(size: 11, weight: .semibold))
                     HStack(spacing: 6) {
                         SecureField(reader.hasToken ? "Readwise token saved" : "Readwise access token", text: $readerToken)
                             .textFieldStyle(.roundedBorder)
@@ -321,27 +345,19 @@ struct SettingsView: View {
                         .controlSize(.small)
                         .disabled(readerToken.isEmpty && !reader.hasToken)
                     }
-                    Text("The block page offers \u{201C}Save for later\u{201D}: the article goes to Readwise Reader's Later list, tagged focus-blocked. Get a token at readwise.io/access_token; it's kept in the Keychain.")
+                    HStack(spacing: 6) {
+                        Button("Import from Readwise") { reader.importFromReadwise() }
+                            .controlSize(.small)
+                            .disabled(!reader.hasToken || reader.importing)
+                        Button("Import CSV\u{2026}") { pickReaderCSV() }
+                            .controlSize(.small)
+                            .disabled(reader.importing)
+                        if reader.importing { ProgressView().controlSize(.small) }
+                    }
+                    Text(reader.importStatus ?? "Imports everything in Reader (not the RSS feed) with its text and highlights. If the API no longer answers, export a CSV in Reader (Preferences \u{2192} Export) or your highlights at readwise.io/export and import that. Running it twice doesn't duplicate anything.")
                         .font(.system(size: 11))
                         .foregroundStyle(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
-                    let failed = reader.saves.filter { $0.status == .failed }
-                    let waiting = reader.saves.filter { $0.status == .pending }.count
-                    if !reader.saves.isEmpty {
-                        HStack {
-                            Text("\(reader.saves.count - reader.pendingCount) saved"
-                                 + (waiting > 0 ? " · \(waiting) waiting\(reader.hasToken ? "" : " for a token")" : "")
-                                 + (failed.isEmpty ? "" : " · \(failed.count) failed"))
-                                .font(.system(size: 11))
-                                .foregroundStyle(Color.secondaryText)
-                            Spacer()
-                            if !failed.isEmpty {
-                                Button("Retry") { reader.retryFailed() }
-                                    .controlSize(.small)
-                                    .help(failed.last?.error ?? "")
-                            }
-                        }
-                    }
                 }
 
                 SettingsCard("Dark pages") {

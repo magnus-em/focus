@@ -46,12 +46,12 @@ $('saveLater').onclick = async () => {
   const note = $('savedNote');
   note.hidden = false;
   if (res && res.status === 'saved') {
-    $('saveLater').textContent = 'Saved to Reader';
-    note.textContent = 'It\'s in your Later list. Back to work in a moment.';
+    $('saveLater').textContent = 'Saved to your reading list';
+    note.textContent = 'It\'s in the Inbox of Focus\'s reading list. Back to work in a moment.';
     setTimeout(() => chrome.runtime.sendMessage({ type: 'leave' }), 1500);
   } else if (res && res.status === 'queued') {
     $('saveLater').textContent = 'Saved for later';
-    note.textContent = res.reason || 'Focus will send it to Reader once it can.';
+    note.textContent = res.reason || 'Focus will add it once it\'s running.';
     setTimeout(() => chrome.runtime.sendMessage({ type: 'leave' }), 2500);
   } else {
     $('saveLater').disabled = false;

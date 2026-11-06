@@ -187,7 +187,6 @@ struct FocusApp: App {
             await ReaderStore.shared.save(page, label: timer.isOnBreak ? "Break" : timer.currentLabel, wasFocus: timer.isFocusRunning)
         }
         BrowserBridge.shared.onLeetCodeHistory = { leetCode.importHistory($0) }
-        Task { @MainActor in await ReaderStore.shared.uploadPending() }
         BrowserBridge.shared.observeDarkPages(appSettings)
         BrowserBridge.shared.start()
 
@@ -534,6 +533,9 @@ struct PopoverContent: View {
                   badge: practiceStore.isActive ? practiceElapsedShort : (dueReviewBadge > 0 ? "\(dueReviewBadge) due" : nil),
                   action: openPractice),
             .init(title: "Recall", icon: "brain.head.profile", badge: recallDue > 0 ? "\(recallDue) due" : nil, action: openRecall),
+            .init(title: "Reading list", icon: "book", badge: readerInbox > 0 ? "\(readerInbox)" : nil) {
+                ReaderWindowController.shared.open()
+            },
             .init(title: "Math Sprint", icon: "plus.forwardslash.minus",
                   badge: zetamacStore.isGameActive ? zetamacLiveTimeShort : (zetamacStore.bestScore > 0 ? "best \(zetamacStore.bestScore)" : nil),
                   action: openZetamac),
@@ -551,6 +553,7 @@ struct PopoverContent: View {
 
     private var dueReviewBadge: Int { homeworkStoreForPractice.dueForReview.count }
     private var recallDue: Int { recallStore.dueCount(cap: settings.recallDailyCap) }
+    private var readerInbox: Int { ReaderStore.shared.inboxCount }
 
     private var needsYesterdayRecall: Bool {
         settings.morningRecall && recallStore.needsYesterdayRecall(sessionStore: sessionStore)
