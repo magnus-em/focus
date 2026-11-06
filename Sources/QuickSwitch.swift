@@ -134,9 +134,11 @@ final class QuickSwitch {
         case "switcher": showSwitcher()
         case "recall": openRecall?()
         case "reader":
-            let remove = param("remove")
+            let remove = param("remove"), importFrom = param("import")
             Task { @MainActor in
-                if let remove { ReaderStore.shared.remove(url: remove) } else { ReaderWindowController.shared.open() }
+                if let remove { ReaderStore.shared.remove(url: remove) }
+                else if importFrom == "readwise" { ReaderStore.shared.importFromReadwise() }
+                else { ReaderWindowController.shared.open() }
             }
         case "coach": Task { @MainActor in CoachChatWindow.shared.open() }
         case "coach-day":

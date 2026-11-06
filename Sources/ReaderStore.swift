@@ -22,7 +22,13 @@ final class ReaderStore: ObservableObject {
 
     @Published private(set) var items: [ReadingItem] = []
     @Published private(set) var hasToken = ReaderKey.load() != nil
-    @Published private(set) var importStatus: String?
+    @Published private(set) var importStatus: String? {
+        didSet {
+            guard let importStatus else { return }
+            try? Data("\(ISO8601DateFormatter().string(from: Date())) \(importStatus)\n".utf8)
+                .write(to: dir.appendingPathComponent("import-status.txt"), options: .atomic)
+        }
+    }
     @Published private(set) var importing = false
     @Published private(set) var fetching: Set<UUID> = []
 
