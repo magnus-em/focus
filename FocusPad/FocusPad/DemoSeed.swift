@@ -19,6 +19,20 @@ enum DemoSeed {
             context.insert(StoredWorkSession(value: WorkSession(
                 startTime: at(a), durationMinutes: (b - a) * 60, type: label == nil ? .shortBreak : .work, label: label)))
         }
+        let cal = Calendar.current
+        let pattern: [[(Double, Double, String?)]] = [
+            [(0, 7.5, "Sleep"), (8, 8.5, "Meals"), (9, 11, "Math"), (11.2, 12.4, "SWE"), (12.4, 13, "Meals"), (13, 14.3, "Class"), (14.5, 16, "LeetCode"), (16, 16.3, nil), (16.3, 18, "AI"), (18, 19, "Meals"), (19.5, 22, "Leisure"), (23.5, 24, "Sleep")],
+            [(0, 8, "Sleep"), (8.5, 9, "Meals"), (9.5, 10.5, "Reading"), (10.5, 12.5, "Math"), (12.5, 13.2, "Meals"), (14, 15.5, "Admin"), (15.5, 17.5, "AI"), (18, 19, "Exercise"), (19.5, 23, "Leisure")],
+            [(0, 9, "Sleep"), (10, 11, "Meals"), (11, 12.5, "LeetCode"), (13, 15, "SWE"), (15, 15.4, nil), (15.4, 17, "Math"), (18, 20, "Social"), (20, 22.5, "Leisure"), (23, 24, "Sleep")],
+        ]
+        for back in 1...13 {
+            let day = cal.date(byAdding: .day, value: -back, to: cal.startOfDay(for: now))!
+            for (a, b, label) in pattern[back % pattern.count] {
+                context.insert(StoredWorkSession(value: WorkSession(
+                    startTime: day.addingTimeInterval(a * 3600), durationMinutes: (b - a) * 60 * (back > 7 ? 0.8 : 1),
+                    type: label == nil ? .shortBreak : .work, label: label)))
+            }
+        }
         context.insert(StoredHealthEvent(date: at(-2.9), kind: HealthKind.adderallXR20.rawValue))
         let record = StoredDayRecord()
         record.calendarDay = Calendar.current.startOfDay(for: now)

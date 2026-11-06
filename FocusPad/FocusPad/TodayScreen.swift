@@ -21,6 +21,13 @@ struct TodayScreen: View {
     @State private var reading = false
     @State private var readProblem: String?
     @State private var telling = false
+    @State private var showingWeek: Bool = {
+        #if DEBUG && targetEnvironment(simulator)
+        return UserDefaults.standard.string(forKey: "todayMode") == "week"
+        #else
+        return false
+        #endif
+    }()
     @AppStorage("phoneDismissedFixes") private var dismissedRaw = ""
 
     struct Change {
@@ -46,8 +53,42 @@ struct TodayScreen: View {
     private var dismissed: Set<String> { Set(dismissedRaw.split(separator: "|").map(String.init)) }
 
     var body: some View {
+        Group {
+            if showingWeek {
+                WeekView { date in
+                    day = date
+                    showingWeek = false
+                }
+            } else {
+                dayList
+            }
+        }
+        .navigationTitle(showingWeek ? "Last 7 days" : title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("Show", selection: $showingWeek) {
+                    Text(isToday ? "Today" : title).tag(false)
+                    Text("Week").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 210)
+            }
+            if !showingWeek {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button { shift(-1) } label: { Image(systemName: "chevron.left") }
+                        .accessibilityLabel("Previous day")
+                    Button { shift(1) } label: { Image(systemName: "chevron.right") }
+                        .disabled(isToday)
+                        .accessibilityLabel("Next day")
+                }
+            }
+        }
+    }
+
+    private var dayList: some View {
         let rows = self.rows
-        List {
+        return List {
             Section {
                 Text("\(day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())) · Your log for the day. Fix what's wrong here; it syncs to your Mac.")
                     .font(.subheadline).foregroundStyle(Color.secondaryText)
@@ -55,23 +96,13 @@ struct TodayScreen: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
             }
             if let change = lastChange { changeBanner(change) }
+            totals(rows)
             if let brief, brief.headline != nil || !brief.courses.isEmpty { summary(brief) }
             fixSection(rows)
-            totals(rows)
             logSection(rows)
         }
         .listStyle(.insetGrouped)
         .readableWidth()
-        .navigationTitle(title)
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { shift(-1) } label: { Image(systemName: "chevron.left") }
-                    .accessibilityLabel("Previous day")
-                Button { shift(1) } label: { Image(systemName: "chevron.right") }
-                    .disabled(isToday)
-                    .accessibilityLabel("Next day")
-            }
-        }
         .sheet(item: $editing) { row in
             BlockEditSheet(row: row, tags: settings.tags) { start, end, label, delete in
                 edit(row, start: start, end: end, label: label, delete: delete)
@@ -414,6 +445,8 @@ struct TodayScreen: View {
                 FlowRows(items: top.map { ($0.key, $0.value) })
             }
             .padding(.vertical, 4)
+        } header: {
+            Text("Where the day went")
         }
     }
 
