@@ -310,6 +310,8 @@ struct FocusApp: App {
                     WhereWasIRow(line: .init(text: "Last time on MATH 244 (12:52 PM): Inclusion–exclusion for ball distributions; you asked: Why inclusion-exclusion on (b) but not (c)?", url: nil, bundle: "com.openai.chat", topic: "Inclusion–exclusion for ball distributions", end: Date().addingTimeInterval(-7200)), color: categoryColor("Math"))
                     WhereWasIRow(line: .init(text: "Last time on SWE (Tue 4:50 PM): Two Sum with a hash map", url: URL(string: "https://leetcode.com/problems/two-sum/"), bundle: "com.google.Chrome", topic: "Two Sum with a hash map", end: Date().addingTimeInterval(-3600)), color: categoryColor("SWE"))
                 }.padding(16), name: name, dark: dark, size: NSSize(width: 360, height: 160))
+            case "reader":
+                DesignGallery.show(ReaderView(), name: name, dark: dark, size: NSSize(width: 1180, height: 800))
             case "learned-labels":
                 DesignGallery.show(ScrollView { LearnedLabelReviewView(preview: true).padding(16) },
                                    name: name, dark: dark, size: NSSize(width: 360, height: 650))
