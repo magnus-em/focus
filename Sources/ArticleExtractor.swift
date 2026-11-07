@@ -103,6 +103,18 @@ final class ArticleExtractor: NSObject, WKNavigationDelegate {
         return s.replacingOccurrences(of: "\\son[a-z]+\\s*=\\s*(\"[^\"]*\"|'[^']*')", with: "", options: [.regularExpression, .caseInsensitive])
     }
 
+    /// Whether `b` contains the first words of `a`'s text (the same article, not its comments).
+    static func sameOpening(_ a: String, _ b: String) -> Bool {
+        let words = { (h: String) -> [Substring] in
+            h.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+                .replacingOccurrences(of: "&[a-z#0-9]+;", with: " ", options: .regularExpression)
+                .lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        }
+        let opening = words(a).prefix(12).joined(separator: " ")
+        guard !opening.isEmpty else { return false }
+        return words(b).prefix(600).joined(separator: " ").contains(opening)
+    }
+
     static func wordCount(_ html: String) -> Int {
         html.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
             .split(whereSeparator: { $0.isWhitespace }).count
@@ -169,9 +181,17 @@ final class ArticleExtractor: NSObject, WKNavigationDelegate {
       if (!scores.has(el)) scores.set(el, classScore(el) + ({ ARTICLE: 10, MAIN: 8, SECTION: 3, DIV: 5 }[el.tagName] || 0));
       scores.set(el, scores.get(el) + n);
     };
+    // A long comment thread outweighs a short post (scottaaronson.blog, 11/7), so its text never votes.
+    const COMMENTS = /(^|[\s_-])(comments?|commentlist|comment-list|comments-area|respond|replies|discussion|disqus)([\s_-]|$)/i;
+    const inComments = (el) => {
+      for (let a = el; a && a !== doc.body; a = a.parentElement) {
+        if (COMMENTS.test(`${typeof a.className === 'string' ? a.className : ''} ${a.id || ''}`)) return true;
+      }
+      return false;
+    };
     for (const p of doc.body ? doc.body.querySelectorAll('p, pre, td, blockquote, li') : []) {
       const t = (p.textContent || '').trim();
-      if (t.length < 25) continue;
+      if (t.length < 25 || inComments(p)) continue;
       if (p.tagName === 'LI' && t.length < 80) continue;
       const n = 1 + t.split(/[,，]/).length + Math.min(Math.floor(t.length / 100), 3);
       add(p.parentElement, n);

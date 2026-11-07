@@ -39,6 +39,7 @@ final class ReaderStore: ObservableObject {
     private var fetchQueue: [UUID] = []
     private var fetchRunning = false
     private var refreshingImports = false
+    private var forcedFetch: Set<UUID> = []
     private var persistWork: DispatchWorkItem?
 
     init() {
@@ -158,9 +159,16 @@ final class ReaderStore: ObservableObject {
 
     func articleHTML(_ id: UUID) -> String? { try? String(contentsOf: articleURL(id), encoding: .utf8) }
 
+    /// Fetches the page again even when there's text already; the old text stays until the new one is in.
     func refetch(_ id: UUID) {
         update(id) { $0.contentError = nil }
+        forcedFetch.insert(id)
         enqueueFetch(id, front: true)
+    }
+
+    func refetch(url: String) {
+        let key = ReadingURL.key(url)
+        for item in items where ReadingURL.key(item.url) == key { refetch(item.id) }
     }
 
     private func extract(id: UUID, html: String, baseURL: URL) async {
@@ -203,7 +211,8 @@ final class ReaderStore: ObservableObject {
         Task {
             while !fetchQueue.isEmpty {
                 let id = fetchQueue.removeFirst()
-                guard let item = item(id), !item.hasContent, let url = URL(string: item.url) else { continue }
+                let forced = forcedFetch.remove(id) != nil
+                guard let item = item(id), !item.hasContent || forced, let url = URL(string: item.url) else { continue }
                 fetching.insert(id)
                 let error = await fetchArticle(id, url: url)
                 fetching.remove(id)
@@ -246,7 +255,8 @@ final class ReaderStore: ObservableObject {
     /// Readwise's cleaned copies drop image captions, some images and LaTeX (10/7:
     /// Karpathy's RNN post lost 5 of 12 images and every caption). When the site
     /// serves the article itself, our own extraction replaces Readwise's if it has
-    /// at least 90% of the words and as many images, so paywalled pieces keep theirs.
+    /// 90–160% of the words, as many images and the same opening, so paywalled pieces keep theirs
+    /// and a comment thread can't stand in for the post.
     func refreshImportedArticles() {
         guard !refreshingImports else { return }
         let key = "reader.refreshedFromSite"
@@ -260,7 +270,9 @@ final class ReaderStore: ObservableObject {
                    case .success(let fresh) = await download(url) {
                     let images = { (h: String) in h.components(separatedBy: "<img").count - 1 }
                     let oldWords = ArticleExtractor.wordCount(old)
-                    if Double(fresh.words) >= Double(oldWords) * 0.9, images(fresh.html) >= images(old) {
+                    let ratio = Double(fresh.words) / Double(max(1, oldWords))
+                    if ratio >= 0.9, ratio <= 1.6, images(fresh.html) >= images(old),
+                       ArticleExtractor.sameOpening(old, fresh.html) {
                         storeArticle(id, article: fresh)
                     }
                 }
