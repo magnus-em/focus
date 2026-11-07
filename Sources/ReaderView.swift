@@ -147,12 +147,12 @@ struct ReaderView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+                .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
         } content: {
             Group {
                 if section == .highlights { AllHighlightsList(query: query, open: openFromHighlights) } else { articleList }
             }
-            .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 480)
+            .navigationSplitViewColumnWidth(min: 360, ideal: 400, max: 520)
             .searchable(text: $query, placement: .sidebar, prompt: "Search")
         } detail: {
             if let item = current {
@@ -196,7 +196,7 @@ struct ReaderView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
-            if let status = store.importStatus {
+            if let status = store.importStatus, store.importing || !status.hasPrefix("Imported") {
                 HStack(alignment: .top, spacing: 6) {
                     if store.importing { ProgressView().controlSize(.small) }
                     Text(status)
@@ -313,7 +313,8 @@ private struct ReadingRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
                     .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(2)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(item.location == .archive ? .secondary : .primary)
                 if let excerpt = item.summary, !excerpt.isEmpty {
                     Text(excerpt)
@@ -328,8 +329,10 @@ private struct ReadingRow: View {
                     }
                     Text(meta)
                         .lineLimit(1)
+                        .truncationMode(.middle)
                     Spacer(minLength: 4)
                     trailing
+                        .fixedSize()
                 }
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -341,9 +344,19 @@ private struct ReadingRow: View {
 
     private var meta: String {
         var parts = [item.siteName ?? item.host]
-        if let a = item.author, !a.isEmpty, a.count < 40 { parts.append(a) }
         if let m = item.readingMinutes { parts.append("\(m) min") }
         return parts.joined(separator: " · ")
+    }
+
+    private var age: String {
+        let s = Date().timeIntervalSince(item.savedAt)
+        switch s {
+        case ..<3600: return "now"
+        case ..<86400: return "\(Int(s / 3600))h"
+        case ..<(7 * 86400): return "\(Int(s / 86400))d"
+        case ..<(60 * 86400): return "\(Int(s / (7 * 86400)))w"
+        default: return item.savedAt.formatted(.dateTime.month(.abbreviated).day())
+        }
     }
 
     @ViewBuilder private var trailing: some View {
@@ -357,7 +370,7 @@ private struct ReadingRow: View {
             ProgressRing(value: item.progress).frame(width: 12, height: 12)
                 .help("\(Int(item.progress * 100))% read")
         } else {
-            Text(item.savedAt.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)))
+            Text(age).help(item.savedAt.formatted(date: .abbreviated, time: .shortened))
         }
     }
 }
@@ -386,7 +399,7 @@ private struct Cover: View {
                 }
             }
         }
-        .frame(width: 64, height: 64)
+        .frame(width: 56, height: 56)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.primary.opacity(0.08)))
     }
@@ -399,7 +412,7 @@ private struct Cover: View {
                                     Color(hue: hue, saturation: 0.45, brightness: 0.65)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
             Text(String(name.prefix(1)).uppercased())
-                .font(.system(size: 26, weight: .semibold, design: .serif))
+                .font(.system(size: 24, weight: .semibold, design: .serif))
                 .foregroundStyle(.white.opacity(0.95))
         }
     }
