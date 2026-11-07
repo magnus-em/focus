@@ -45,6 +45,11 @@ final class ReaderStore: ObservableObject {
            let decoded = try? JSONDecoder.iso.decode([ReadingItem].self, from: data) {
             items = decoded
         }
+        // 11/7: the Readwise import marked items as having text before writing it.
+        for i in items.indices where items[i].hasContent
+            && !FileManager.default.fileExists(atPath: articleURL(items[i].id).path) {
+            items[i].hasContent = false
+        }
         migrateOldSaves()
     }
 

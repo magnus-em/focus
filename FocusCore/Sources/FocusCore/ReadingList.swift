@@ -146,7 +146,6 @@ public enum ReadwiseImport {
             progress: min(1, max(0, (d["reading_progress"] as? Double) ?? 0)),
             openedAt: date(d["last_opened_at"]) ?? date(d["first_opened_at"]),
             wordCount: d["word_count"] as? Int,
-            hasContent: html != nil,
             source: "readwise",
             readwiseID: id)
         return ReadwiseDocument(id: id, item: item, html: html, highlight: nil)

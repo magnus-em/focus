@@ -1,10 +1,11 @@
 import AppKit
 import FocusCore
 import SwiftUI
-import UniformTypeIdentifiers
 import WebKit
 
 /// Reading list window: `focus://reader`, More → Reading list, or Settings → Read later.
+/// Layout after Apple Books and Readwise Reader: library sidebar, article list with
+/// covers and excerpts, and a reader with Books-style themes, typefaces and sizes.
 @MainActor
 final class ReaderWindowController: NSObject, NSWindowDelegate {
     static let shared = ReaderWindowController()
@@ -19,9 +20,10 @@ final class ReaderWindowController: NSObject, NSWindowDelegate {
         }
         let w = NSWindow(contentViewController: NSHostingController(rootView: ReaderView()))
         w.title = "Reading list"
-        w.setContentSize(NSSize(width: 1180, height: 800))
-        w.minSize = NSSize(width: 860, height: 560)
+        w.setContentSize(NSSize(width: 1280, height: 820))
+        w.minSize = NSSize(width: 940, height: 580)
         w.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        w.toolbarStyle = .unified
         w.isReleasedWhenClosed = false
         w.setFrameAutosaveName("FocusReadingList")
         if !w.setFrameUsingName("FocusReadingList") { w.center() }
@@ -41,14 +43,103 @@ final class ReaderSelection: ObservableObject {
     @Published var selected: UUID?
 }
 
+enum ReaderSection: Hashable {
+    case location(ReadingItem.Location)
+    case highlights
+
+    var title: String {
+        switch self {
+        case .location(let l): l.title
+        case .highlights: "Highlights"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .location(.inbox): "tray"
+        case .location(.later): "clock"
+        case .location(.archive): "archivebox"
+        case .highlights: "highlighter"
+        }
+    }
+}
+
+/// Reader appearance, after the Books "Aa" menu.
+struct ReaderStyle: Equatable {
+    enum Theme: String, CaseIterable { case auto, white, sepia, night }
+    enum Font: String, CaseIterable {
+        case newYork, charter, iowan, sanFrancisco
+        var name: String {
+            switch self {
+            case .newYork: "New York"
+            case .charter: "Charter"
+            case .iowan: "Iowan"
+            case .sanFrancisco: "San Francisco"
+            }
+        }
+        var css: String {
+            switch self {
+            case .newYork: #""New York", ui-serif, Georgia, serif"#
+            case .charter: #"Charter, "Bitstream Charter", Georgia, serif"#
+            case .iowan: #""Iowan Old Style", Palatino, Georgia, serif"#
+            case .sanFrancisco: #"-apple-system, system-ui, sans-serif"#
+            }
+        }
+        var swiftUI: SwiftUI.Font {
+            switch self {
+            case .newYork: .system(size: 15, design: .serif)
+            case .charter: .custom("Charter", size: 15)
+            case .iowan: .custom("Iowan Old Style", size: 15)
+            case .sanFrancisco: .system(size: 15)
+            }
+        }
+    }
+    enum Width: String, CaseIterable { case narrow, medium, wide }
+
+    var theme: Theme
+    var font: Font
+    var size: Int
+    var width: Width
+
+    var json: String {
+        let px = ["narrow": 600, "medium": 690, "wide": 800][width.rawValue] ?? 690
+        let o: [String: Any] = ["theme": theme.rawValue, "font": font.css, "size": size, "width": px]
+        return (try? JSONSerialization.data(withJSONObject: o)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+    }
+
+    var background: NSColor {
+        switch theme {
+        case .white: NSColor(white: 1, alpha: 1)
+        case .sepia: NSColor(srgbRed: 0.973, green: 0.945, blue: 0.890, alpha: 1)
+        case .night: NSColor(srgbRed: 0.110, green: 0.110, blue: 0.118, alpha: 1)
+        case .auto: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 0.110, green: 0.110, blue: 0.118, alpha: 1) : .white }
+        }
+    }
+}
+
 struct ReaderView: View {
     @ObservedObject private var store = ReaderStore.shared
     @ObservedObject private var selection = ReaderSelection.shared
-    @State private var location: ReadingItem.Location = .inbox
+    @State private var section: ReaderSection? = .location(.inbox)
     @State private var query = ""
     @State private var adding = false
     @State private var newLink = ""
     @State private var showHighlights = false
+    @AppStorage("reader.theme") private var theme = ReaderStyle.Theme.auto.rawValue
+    @AppStorage("reader.font") private var font = ReaderStyle.Font.newYork.rawValue
+    @AppStorage("reader.size") private var size = 19
+    @AppStorage("reader.width") private var width = ReaderStyle.Width.medium.rawValue
+
+    private var style: ReaderStyle {
+        ReaderStyle(theme: .init(rawValue: theme) ?? .auto, font: .init(rawValue: font) ?? .newYork,
+                    size: size, width: .init(rawValue: width) ?? .medium)
+    }
+
+    private var location: ReadingItem.Location {
+        if case .location(let l) = section { return l }
+        return .inbox
+    }
 
     private var list: [ReadingItem] { store.items(in: location, matching: query) }
     private var current: ReadingItem? { selection.selected.flatMap(store.item) }
@@ -56,201 +147,351 @@ struct ReaderView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 460)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+        } content: {
+            Group {
+                if section == .highlights { AllHighlightsList(query: query, open: openFromHighlights) } else { articleList }
+            }
+            .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 480)
+            .searchable(text: $query, placement: .sidebar, prompt: "Search")
         } detail: {
             if let item = current {
-                ArticleDetail(item: item, showHighlights: $showHighlights, next: selectNext)
+                ArticleDetail(item: item, style: style, showHighlights: $showHighlights, next: selectNext)
                     .id(item.id)
             } else {
                 ContentUnavailableView("Nothing open", systemImage: "book",
-                                       description: Text("Pick something from the list. Pages you save from Chrome's block page land in the Inbox."))
+                                       description: Text("Pick an article to read it here."))
             }
         }
-        .onChange(of: location) { _, _ in selection.selected = list.first?.id }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button { adding = true } label: { Label("Save a link", systemImage: "plus") }
+                    .help("Save a link")
+                    .popover(isPresented: $adding, arrowEdge: .bottom) { addLinkPopover }
+            }
+        }
+        .onChange(of: section) { _, _ in
+            if section != .highlights { selection.selected = list.first?.id }
+        }
         .onAppear { if current == nil { selection.selected = list.first?.id } }
     }
 
+    // MARK: Sidebar
+
     private var sidebar: some View {
-        VStack(spacing: 0) {
-            Picker("", selection: $location) {
+        List(selection: $section) {
+            Section("Library") {
                 ForEach(ReadingItem.Location.allCases, id: \.self) { loc in
-                    Text(loc == .archive ? loc.title : "\(loc.title) \(store.items(in: loc).count)").tag(loc)
+                    let s = ReaderSection.location(loc)
+                    Label(s.title, systemImage: s.icon)
+                        .badge(loc == .archive ? 0 : store.items(in: loc).count)
+                        .tag(s)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search titles, sites, authors, tags", text: $query)
-                    .textFieldStyle(.plain)
-                Button { adding.toggle() } label: { Image(systemName: "plus") }
-                    .buttonStyle(.borderless)
-                    .help("Save a link")
+            Section("Notes") {
+                Label("Highlights", systemImage: "highlighter")
+                    .badge(store.items.reduce(0) { $0 + $1.highlights.count })
+                    .tag(ReaderSection.highlights)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            if adding {
-                HStack(spacing: 6) {
-                    TextField("Paste a link", text: $newLink)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(addLink)
-                    Button("Save", action: addLink).disabled(newLink.isEmpty)
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-            }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
             if let status = store.importStatus {
                 HStack(alignment: .top, spacing: 6) {
                     if store.importing { ProgressView().controlSize(.small) }
-                    Text(status).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(status)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-            }
-            Divider()
-            if list.isEmpty {
-                ContentUnavailableView(query.isEmpty ? "\(location.title) is empty" : "No matches",
-                                       systemImage: location == .archive ? "archivebox" : "tray",
-                                       description: Text(location == .inbox && query.isEmpty
-                                                         ? "Save from Chrome: the block page's Save for later, the Focus toolbar button, right-click → Save to reading list, or ⌥R."
-                                                         : ""))
-                    .frame(maxHeight: .infinity)
-            } else {
-                List(selection: $selection.selected) {
-                    ForEach(list) { item in
-                        ReadingRow(item: item, fetching: store.fetching.contains(item.id))
-                            .tag(item.id)
-                            .contextMenu { rowMenu(item) }
-                    }
-                }
-                .listStyle(.sidebar)
+                .padding(12)
             }
         }
+    }
+
+    private var addLinkPopover: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Save a link").font(.system(size: 13, weight: .semibold))
+            TextField("https://", text: $newLink)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 320)
+                .onSubmit(addLink)
+            HStack {
+                Spacer()
+                Button("Cancel") { adding = false }
+                Button("Save", action: addLink)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(newLink.isEmpty)
+            }
+        }
+        .padding(16)
+    }
+
+    // MARK: Article list
+
+    @ViewBuilder private var articleList: some View {
+        if list.isEmpty {
+            ContentUnavailableView {
+                Label(query.isEmpty ? "\(location.title) is empty" : "No matches",
+                      systemImage: ReaderSection.location(location).icon)
+            } description: {
+                if query.isEmpty && location == .inbox {
+                    Text("Save from Chrome with the block page's Save for later, the Focus toolbar button, right-click → Save to reading list, or ⌥R.")
+                } else if query.isEmpty && location == .archive {
+                    Text("Press E while reading to archive what you've finished.")
+                }
+            }
+        } else {
+            List(selection: $selection.selected) {
+                ForEach(list) { item in
+                    ReadingRow(item: item, fetching: store.fetching.contains(item.id))
+                        .tag(item.id)
+                        .contextMenu { rowMenu(item) }
+                        .listRowSeparator(.visible)
+                }
+            }
+            .listStyle(.inset)
+            .scrollContentBackground(.hidden)
+            .navigationTitle(location.title)
+            .navigationSubtitle(subtitle)
+        }
+    }
+
+    private var subtitle: String {
+        let n = list.count
+        let minutes = list.compactMap(\.readingMinutes).reduce(0, +)
+        let time = minutes >= 60 ? "\(minutes / 60) h \(minutes % 60) min" : "\(minutes) min"
+        return "\(n) article\(n == 1 ? "" : "s")" + (minutes > 0 ? " · \(time) of reading" : "")
     }
 
     @ViewBuilder private func rowMenu(_ item: ReadingItem) -> some View {
         ForEach(ReadingItem.Location.allCases.filter { $0 != item.location }, id: \.self) { loc in
             Button("Move to \(loc.title)") { store.move(item.id, to: loc) }
         }
+        Divider()
         Button("Open original") { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } }
         Button("Copy link") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(item.url, forType: .string)
         }
-        if !item.hasContent { Button("Fetch article again") { store.refetch(item.id) } }
+        Button("Fetch the article again") { store.refetch(item.id) }
         Divider()
         Button("Delete", role: .destructive) { store.delete(item.id) }
     }
 
     private func addLink() {
+        guard !newLink.isEmpty else { return }
         store.addLink(newLink)
         newLink = ""
         adding = false
-        location = .inbox
+        section = .location(.inbox)
+    }
+
+    private func openFromHighlights(_ id: UUID) {
+        if let loc = store.item(id)?.location { section = .location(loc) }
+        DispatchQueue.main.async { selection.selected = id }
     }
 
     /// After archiving or moving, open the next one in the same list.
     private func selectNext(after id: UUID) {
-        let ids = store.items(in: location, matching: query).map(\.id)
-        selection.selected = ids.first { $0 != id }
+        let ids = list.map(\.id)
+        guard let i = ids.firstIndex(of: id) else { selection.selected = ids.first; return }
+        let rest = ids.filter { $0 != id }
+        selection.selected = rest.isEmpty ? nil : rest[min(i, rest.count - 1)]
     }
 }
+
+// MARK: - Rows
 
 private struct ReadingRow: View {
     let item: ReadingItem
     let fetching: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(item.title)
-                .font(.system(size: 13, weight: item.openedAt == nil ? .semibold : .regular))
-                .lineLimit(2)
-            Text(meta)
+        HStack(alignment: .top, spacing: 12) {
+            Cover(item: item)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(2)
+                    .foregroundStyle(item.location == .archive ? .secondary : .primary)
+                if let excerpt = item.summary, !excerpt.isEmpty {
+                    Text(excerpt)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                HStack(spacing: 6) {
+                    if item.openedAt == nil {
+                        Circle().fill(Color.accentColor).frame(width: 6, height: 6)
+                            .accessibilityLabel("Unread")
+                    }
+                    Text(meta)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    trailing
+                }
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-            if item.progress > 0.02 {
-                ProgressView(value: item.progress)
-                    .progressViewStyle(.linear)
-                    .tint(.secondary)
-                    .controlSize(.mini)
             }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 6)
+        .help(item.wasFocus == true && item.label != nil ? "Saved during \(item.label!)" : "")
     }
 
     private var meta: String {
         var parts = [item.siteName ?? item.host]
-        if let a = item.author, !a.isEmpty { parts.append(a) }
+        if let a = item.author, !a.isEmpty, a.count < 40 { parts.append(a) }
         if let m = item.readingMinutes { parts.append("\(m) min") }
-        if fetching { parts.append("fetching…") } else if item.contentError != nil { parts.append("no text") }
-        if item.wasFocus == true, let l = item.label { parts.append("saved during \(l)") }
-        if !item.highlights.isEmpty { parts.append("\(item.highlights.count) highlight\(item.highlights.count == 1 ? "" : "s")") }
-        parts.append(item.savedAt.formatted(.relative(presentation: .named)))
         return parts.joined(separator: " · ")
+    }
+
+    @ViewBuilder private var trailing: some View {
+        if fetching {
+            ProgressView().controlSize(.mini)
+        } else if item.contentError != nil && !item.hasContent {
+            Image(systemName: "exclamationmark.triangle").help(item.contentError ?? "")
+        } else if item.progress >= 0.97 {
+            Text("Finished")
+        } else if item.progress > 0.02 {
+            ProgressRing(value: item.progress).frame(width: 12, height: 12)
+                .help("\(Int(item.progress * 100))% read")
+        } else {
+            Text(item.savedAt.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)))
+        }
     }
 }
 
+private struct ProgressRing: View {
+    let value: Double
+    var body: some View {
+        ZStack {
+            Circle().stroke(.secondary.opacity(0.3), lineWidth: 2)
+            Circle().trim(from: 0, to: value).stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+    }
+}
+
+/// Lead image, else a Books-like cover with the site's initial.
+private struct Cover: View {
+    let item: ReadingItem
+
+    var body: some View {
+        ZStack {
+            placeholder
+            if let s = item.imageURL, let url = URL(string: s) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image { image.resizable().scaledToFill() }
+                }
+            }
+        }
+        .frame(width: 64, height: 64)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.primary.opacity(0.08)))
+    }
+
+    private var placeholder: some View {
+        let name = item.siteName ?? item.host
+        let hue = Double(name.unicodeScalars.reduce(0) { ($0 * 31 + Int($1.value)) % 360 }) / 360
+        return ZStack {
+            LinearGradient(colors: [Color(hue: hue, saturation: 0.35, brightness: 0.85),
+                                    Color(hue: hue, saturation: 0.45, brightness: 0.65)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            Text(String(name.prefix(1)).uppercased())
+                .font(.system(size: 26, weight: .semibold, design: .serif))
+                .foregroundStyle(.white.opacity(0.95))
+        }
+    }
+}
+
+// MARK: - All highlights
+
+private struct AllHighlightsList: View {
+    let query: String
+    let open: (UUID) -> Void
+    @ObservedObject private var store = ReaderStore.shared
+
+    private var groups: [ReadingItem] {
+        let q = query.lowercased()
+        return store.items
+            .filter { !$0.highlights.isEmpty }
+            .filter { q.isEmpty || $0.title.lowercased().contains(q) || $0.highlights.contains { $0.text.lowercased().contains(q) } }
+            .sorted { ($0.highlights.map(\.createdAt).max() ?? .distantPast) > ($1.highlights.map(\.createdAt).max() ?? .distantPast) }
+    }
+
+    var body: some View {
+        if groups.isEmpty {
+            ContentUnavailableView("No highlights yet", systemImage: "highlighter",
+                                   description: Text("Select text while reading and press H."))
+        } else {
+            List {
+                ForEach(groups) { item in
+                    Section {
+                        ForEach(item.highlights) { h in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(h.text)
+                                    .font(.system(size: 13, design: .serif))
+                                    .padding(.leading, 10)
+                                    .overlay(alignment: .leading) {
+                                        RoundedRectangle(cornerRadius: 1.5).fill(Color.yellow).frame(width: 3)
+                                    }
+                                if let note = h.note {
+                                    Text(note).font(.system(size: 12)).foregroundStyle(.secondary).padding(.leading, 10)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                            .onTapGesture { open(item.id) }
+                        }
+                    } header: {
+                        Text(item.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                    }
+                }
+            }
+            .listStyle(.inset)
+            .navigationTitle("Highlights")
+        }
+    }
+}
+
+// MARK: - Reader
+
 private struct ArticleDetail: View {
     let item: ReadingItem
+    let style: ReaderStyle
     @Binding var showHighlights: Bool
     let next: (UUID) -> Void
     @ObservedObject private var store = ReaderStore.shared
     @StateObject private var bridge = ReaderBridge()
+    @State private var showStyle = false
+    @AppStorage("reader.theme") private var theme = ReaderStyle.Theme.auto.rawValue
+    @AppStorage("reader.font") private var font = ReaderStyle.Font.newYork.rawValue
+    @AppStorage("reader.size") private var size = 19
+    @AppStorage("reader.width") private var width = ReaderStyle.Width.medium.rawValue
 
     var body: some View {
-        HStack(spacing: 0) {
-            Group {
-                if item.hasContent, let html = store.articleHTML(item.id) {
-                    ArticleWebView(item: item, body: html, bridge: bridge)
-                } else if store.fetching.contains(item.id) {
-                    ProgressView("Getting the article…").frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ContentUnavailableView {
-                        Label(item.contentError ?? "No article text yet", systemImage: "doc.text.magnifyingglass")
-                    } description: {
-                        Text(item.title)
-                    } actions: {
-                        Button("Open original") { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } }
-                        Button("Try again") { store.refetch(item.id) }
-                    }
+        ZStack(alignment: .top) {
+            Color(nsColor: style.background).ignoresSafeArea()
+            content
+            if item.hasContent {
+                GeometryReader { g in
+                    Rectangle().fill(Color.accentColor.opacity(0.7))
+                        .frame(width: g.size.width * item.progress, height: 2)
                 }
-            }
-            .frame(maxWidth: .infinity)
-            if showHighlights {
-                Divider()
-                HighlightsPane(item: item, bridge: bridge)
-                    .frame(width: 280)
+                .frame(height: 2)
             }
         }
-        .toolbar {
-            ToolbarItemGroup {
-                ForEach(ReadingItem.Location.allCases.filter { $0 != item.location }, id: \.self) { loc in
-                    Button { move(to: loc) } label: {
-                        Label(loc.title, systemImage: loc == .archive ? "archivebox" : loc == .later ? "clock" : "tray")
-                    }
-                    .help(loc == .archive ? "Archive (E)" : loc == .later ? "Later (L)" : "Back to Inbox")
-                }
-                Button { bridge.highlightSelection() } label: { Label("Highlight", systemImage: "highlighter") }
-                    .help("Highlight the selected text (H)")
-                    .disabled(!item.hasContent)
-                Button { showHighlights.toggle() } label: {
-                    Label("Highlights", systemImage: "list.bullet.rectangle")
-                }
-                .help("Show highlights and notes")
-                Button { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } } label: {
-                    Label("Open original", systemImage: "safari")
-                }
-                .help("Open the original page (O)")
-            }
+        .inspector(isPresented: $showHighlights) {
+            HighlightsPane(item: item, bridge: bridge)
+                .inspectorColumnWidth(min: 240, ideal: 280, max: 360)
         }
+        .toolbar { toolbar }
         .navigationTitle(item.title)
-        .navigationSubtitle(item.siteName ?? item.host)
+        .navigationSubtitle(subtitle)
         .onAppear {
             store.markOpened(item.id)
+            if !item.hasContent || store.articleHTML(item.id) == nil { store.refetch(item.id) }
             bridge.onKey = { key in
                 switch key {
                 case "e": move(to: item.location == .archive ? .inbox : .archive)
@@ -260,43 +501,180 @@ private struct ArticleDetail: View {
                 }
             }
         }
+        .onChange(of: style) { _, s in bridge.apply(s) }
+    }
+
+    @ViewBuilder private var content: some View {
+        if item.hasContent, let html = store.articleHTML(item.id) {
+            ArticleWebView(item: item, body: html, style: style, bridge: bridge)
+        } else if store.fetching.contains(item.id) {
+            ProgressView("Getting the article…").frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ContentUnavailableView {
+                Label(item.contentError ?? "No article text yet", systemImage: "doc.text.magnifyingglass")
+            } description: {
+                Text("Focus couldn't get this page's text. The original is still there.")
+            } actions: {
+                Button("Open original") { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } }
+                    .buttonStyle(.borderedProminent)
+                Button("Try again") { store.refetch(item.id) }
+            }
+        }
+    }
+
+    private var subtitle: String {
+        var parts = [item.siteName ?? item.host]
+        if let m = item.readingMinutes {
+            let left = Int((Double(m) * (1 - item.progress)).rounded())
+            parts.append(item.progress >= 0.97 ? "Finished" : item.progress > 0.02 ? "\(max(1, left)) min left" : "\(m) min read")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button { showStyle.toggle() } label: { Label("Appearance", systemImage: "textformat.size") }
+                .help("Theme, typeface and text size")
+                .popover(isPresented: $showStyle, arrowEdge: .bottom) { stylePopover }
+            Button { bridge.highlightSelection() } label: { Label("Highlight", systemImage: "highlighter") }
+                .help("Highlight the selected text (H)")
+                .disabled(!item.hasContent)
+            Button { showHighlights.toggle() } label: { Label("Highlights", systemImage: "sidebar.right") }
+                .help("Highlights and notes")
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
+            if item.location != .later {
+                Button { move(to: .later) } label: { Label("Later", systemImage: "clock") }.help("Read later (L)")
+            }
+            if item.location == .archive {
+                Button { move(to: .inbox) } label: { Label("Back to Inbox", systemImage: "tray.and.arrow.up") }.help("Back to Inbox (E)")
+            } else {
+                Button { move(to: .archive) } label: { Label("Archive", systemImage: "archivebox") }.help("Archive (E)")
+            }
+            Button { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } } label: {
+                Label("Open original", systemImage: "safari")
+            }
+            .help("Open the original page (O)")
+        }
+    }
+
+    private var stylePopover: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 0) {
+                Button { size = max(14, size - 1) } label: {
+                    Text("A").font(.system(size: 13)).frame(maxWidth: .infinity, minHeight: 32)
+                }
+                .help("Smaller text")
+                Divider().frame(height: 20)
+                Button { size = min(30, size + 1) } label: {
+                    Text("A").font(.system(size: 20)).frame(maxWidth: .infinity, minHeight: 32)
+                }
+                .help("Larger text")
+            }
+            .buttonStyle(.plain)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary.opacity(0.6)))
+
+            HStack(spacing: 14) {
+                ForEach(ReaderStyle.Theme.allCases, id: \.self) { t in
+                    Button { theme = t.rawValue } label: { ThemeSwatch(theme: t, selected: theme == t.rawValue) }
+                        .buttonStyle(.plain)
+                        .help(t.rawValue.capitalized)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 2) {
+                ForEach(ReaderStyle.Font.allCases, id: \.self) { f in
+                    Button { font = f.rawValue } label: {
+                        HStack {
+                            Text(f.name).font(f.swiftUI)
+                            Spacer()
+                            if font == f.rawValue { Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)) }
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 30)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Picker("Width", selection: $width) {
+                Text("Narrow").tag(ReaderStyle.Width.narrow.rawValue)
+                Text("Medium").tag(ReaderStyle.Width.medium.rawValue)
+                Text("Wide").tag(ReaderStyle.Width.wide.rawValue)
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(16)
+        .frame(width: 260)
     }
 
     private func move(to loc: ReadingItem.Location) {
         let id = item.id
-        store.move(id, to: loc)
         next(id)
+        store.move(id, to: loc)
+    }
+}
+
+private struct ThemeSwatch: View {
+    let theme: ReaderStyle.Theme
+    let selected: Bool
+
+    var body: some View {
+        VStack(spacing: 5) {
+            ZStack {
+                Circle().fill(fill)
+                if theme == .auto {
+                    Circle().trim(from: 0.25, to: 0.75).fill(Color(white: 0.11)).rotationEffect(.degrees(90))
+                }
+                Text("Aa").font(.system(size: 12, weight: .medium, design: .serif)).foregroundStyle(ink)
+            }
+            .frame(width: 40, height: 40)
+            .overlay(Circle().strokeBorder(selected ? Color.accentColor : .primary.opacity(0.15), lineWidth: selected ? 2.5 : 1))
+            Text(theme.rawValue.capitalized).font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+
+    private var fill: Color {
+        switch theme {
+        case .auto, .white: .white
+        case .sepia: Color(red: 0.973, green: 0.945, blue: 0.890)
+        case .night: Color(white: 0.11)
+        }
+    }
+
+    private var ink: Color {
+        switch theme {
+        case .night: Color(white: 0.9)
+        case .sepia: Color(red: 0.29, green: 0.23, blue: 0.16)
+        case .auto: .gray
+        case .white: .black
+        }
     }
 }
 
 private struct HighlightsPane: View {
     let item: ReadingItem
     let bridge: ReaderBridge
-    @ObservedObject private var store = ReaderStore.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Highlights")
-                .font(.system(size: 13, weight: .semibold))
-                .padding(12)
-            Divider()
+        Group {
             if item.highlights.isEmpty {
-                Text("Select text and press H to highlight it.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .padding(12)
-                Spacer()
+                ContentUnavailableView("No highlights", systemImage: "highlighter",
+                                       description: Text("Select text and press H."))
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 18) {
                         ForEach(item.highlights) { h in
                             HighlightCard(itemID: item.id, highlight: h, bridge: bridge)
                         }
                     }
-                    .padding(12)
+                    .padding(16)
                 }
             }
         }
+        .navigationTitle("Highlights")
     }
 }
 
@@ -307,29 +685,29 @@ private struct HighlightCard: View {
     @State private var note: String = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(highlight.text)
-                .font(.system(size: 12, design: .serif))
-                .padding(.leading, 8)
-                .overlay(alignment: .leading) { Rectangle().fill(.yellow).frame(width: 3) }
+                .font(.system(size: 13, design: .serif))
+                .padding(.leading, 10)
+                .overlay(alignment: .leading) { RoundedRectangle(cornerRadius: 1.5).fill(Color.yellow).frame(width: 3) }
+                .contentShape(Rectangle())
                 .onTapGesture { bridge.scrollTo(highlight.id) }
+                .help("Show in the article")
             TextField("Add a note", text: $note, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .onSubmit { ReaderStore.shared.setNote(itemID, highlight: highlight.id, note: note) }
+                .font(.system(size: 12))
                 .onChange(of: note) { _, v in ReaderStore.shared.setNote(itemID, highlight: highlight.id, note: v) }
             HStack {
                 Text(highlight.createdAt.formatted(date: .abbreviated, time: .omitted))
-                    .font(.system(size: 10)).foregroundStyle(.tertiary)
                 Spacer()
                 Button("Remove") {
                     bridge.unmark(highlight.id)
                     ReaderStore.shared.removeHighlight(itemID, highlight: highlight.id)
                 }
                 .buttonStyle(.borderless)
-                .font(.system(size: 10))
             }
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
         }
         .onAppear { note = highlight.note ?? "" }
     }
@@ -346,6 +724,11 @@ final class ReaderBridge: ObservableObject {
     func scrollTo(_ id: UUID) { run("focusReader.scrollToMark('\(id.uuidString)')") }
     func unmark(_ id: UUID) { run("focusReader.unmark('\(id.uuidString)')") }
 
+    func apply(_ style: ReaderStyle) {
+        webView?.underPageBackgroundColor = style.background
+        run("focusReader.setStyle(\(style.json))")
+    }
+
     private func run(_ js: String) {
         webView?.evaluateJavaScript(js, in: nil, in: .defaultClient, completionHandler: nil)
     }
@@ -354,6 +737,7 @@ final class ReaderBridge: ObservableObject {
 private struct ArticleWebView: NSViewRepresentable {
     let item: ReadingItem
     let body: String
+    let style: ReaderStyle
     let bridge: ReaderBridge
 
     func makeCoordinator() -> Coordinator { Coordinator(itemID: item.id, bridge: bridge) }
@@ -370,7 +754,7 @@ private struct ArticleWebView: NSViewRepresentable {
                                        injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
         let web = WKWebView(frame: .zero, configuration: config)
         web.navigationDelegate = context.coordinator
-        web.setValue(false, forKey: "drawsBackground")
+        web.underPageBackgroundColor = style.background
         bridge.webView = web
         web.loadHTMLString(page, baseURL: URL(string: item.url))
         return web
@@ -387,17 +771,27 @@ private struct ArticleWebView: NSViewRepresentable {
             $0.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
                 .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\"", with: "&quot;")
         }
-        var meta = [esc(item.siteName ?? item.host)]
-        if let a = item.author, !a.isEmpty { meta.append(esc(a)) }
-        if let p = item.publishedAt { meta.append(p.formatted(date: .abbreviated, time: .omitted)) }
-        if let m = item.readingMinutes { meta.append("\(m) min read") }
+        var byline: [String] = []
+        if let a = item.author, !a.isEmpty { byline.append(esc(a)) }
+        if let p = item.publishedAt { byline.append(p.formatted(date: .long, time: .omitted)) }
+        let minutes = item.readingMinutes.map { "\($0) min read" } ?? ""
+        let px = ["narrow": 600, "medium": 690, "wide": 800][style.width.rawValue] ?? 690
         return """
-        <!doctype html><html><head><meta charset="utf-8">
-        <style>\(Self.css)</style></head><body>
+        <!doctype html><html data-theme="\(style.theme.rawValue)" style="--font: \(esc(style.font.css)); --size: \(style.size)px; --width: \(px)px">
+        <head><meta charset="utf-8"><style>\(Self.css)</style></head><body>
         <article>
-        <header><h1>\(esc(item.title))</h1><p class="meta">\(meta.joined(separator: " · "))</p></header>
+        <header>
+          <p class="site">\(esc(item.siteName ?? item.host))</p>
+          <h1>\(esc(item.title))</h1>
+          \(byline.isEmpty ? "" : "<p class=\"byline\">\(byline.joined(separator: " · "))</p>")
+          \(minutes.isEmpty ? "" : "<p class=\"minutes\">\(minutes)</p>")
+        </header>
         <div id="focus-body">\(body)</div>
-        <p class="end"><a href="\(esc(item.url))">Original page</a></p>
+        <footer class="end">
+          <div class="fin">Finished?</div>
+          <button id="focus-archive">Archive <kbd>E</kbd></button>
+          <a href="\(esc(item.url))">Original page</a>
+        </footer>
         </article></body></html>
         """
     }
@@ -409,20 +803,18 @@ private struct ArticleWebView: NSViewRepresentable {
 
         func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let o = message.body as? [String: Any], let type = o["type"] as? String else { return }
-            do {
-                let store = ReaderStore.shared
-                switch type {
-                case "progress":
-                    if let v = o["value"] as? Double { store.setProgress(itemID, v) }
-                case "highlight":
-                    if let text = o["text"] as? String, let h = store.addHighlight(itemID, text: text) {
-                        bridge.webView?.evaluateJavaScript("focusReader.markPending('\(h.id.uuidString)')",
-                                                           in: nil, in: .defaultClient, completionHandler: nil)
-                    }
-                case "key":
-                    if let k = o["key"] as? String { bridge.onKey?(k) }
-                default: break
+            let store = ReaderStore.shared
+            switch type {
+            case "progress":
+                if let v = o["value"] as? Double { store.setProgress(itemID, v) }
+            case "highlight":
+                if let text = o["text"] as? String, let h = store.addHighlight(itemID, text: text) {
+                    bridge.webView?.evaluateJavaScript("focusReader.markPending('\(h.id.uuidString)')",
+                                                       in: nil, in: .defaultClient, completionHandler: nil)
                 }
+            case "key":
+                if let k = o["key"] as? String { bridge.onKey?(k) }
+            default: break
             }
         }
 
@@ -438,26 +830,39 @@ private struct ArticleWebView: NSViewRepresentable {
     }
 
     private static let css = """
-    :root { color-scheme: light dark; --fg: #1d1d1f; --muted: #6e6e73; --link: #0a5bd6; --mark: rgba(255, 214, 10, .45); --rule: rgba(0,0,0,.1); --code: rgba(0,0,0,.05); }
-    @media (prefers-color-scheme: dark) { :root { --fg: #e8e6e1; --muted: #9a9a9f; --link: #6cb4ff; --mark: rgba(255, 214, 10, .32); --rule: rgba(255,255,255,.14); --code: rgba(255,255,255,.07); } }
-    html { background: transparent; }
-    body { margin: 0; padding: 56px 32px 120px; color: var(--fg); font: 19px/1.62 "New York", ui-serif, Georgia, serif; -webkit-font-smoothing: antialiased; }
-    article { max-width: 680px; margin: 0 auto; }
-    header h1 { font: 700 34px/1.18 "New York", ui-serif, Georgia, serif; margin: 0 0 10px; letter-spacing: -.01em; }
-    .meta { font: 13px/1.4 -apple-system, system-ui, sans-serif; color: var(--muted); margin: 0 0 36px; }
-    h2, h3, h4 { font-family: -apple-system, system-ui, sans-serif; line-height: 1.3; margin: 1.8em 0 .6em; }
-    h2 { font-size: 24px; } h3 { font-size: 20px; } h4 { font-size: 17px; }
-    p, ul, ol, blockquote, pre, figure, table { margin: 0 0 1.1em; }
+    :root { --bg: #ffffff; --fg: #1b1c21; --muted: #6e6e73; --link: #0a5bd6; --mark: rgba(255, 204, 0, .38); --rule: rgba(0,0,0,.1); --code: rgba(0,0,0,.05); --btn: rgba(0,0,0,.06); }
+    :root[data-theme=sepia] { --bg: #f8f1e3; --fg: #4a3b2a; --muted: #8a7660; --link: #8a4b14; --mark: rgba(230, 170, 40, .4); --rule: rgba(74,59,42,.15); --code: rgba(74,59,42,.07); --btn: rgba(74,59,42,.08); }
+    :root[data-theme=night] { --bg: #1c1c1e; --fg: #e6e3dd; --muted: #9a9a9f; --link: #7cb8ff; --mark: rgba(255, 204, 0, .3); --rule: rgba(255,255,255,.12); --code: rgba(255,255,255,.07); --btn: rgba(255,255,255,.08); }
+    @media (prefers-color-scheme: dark) { :root[data-theme=auto] { --bg: #1c1c1e; --fg: #e6e3dd; --muted: #9a9a9f; --link: #7cb8ff; --mark: rgba(255, 204, 0, .3); --rule: rgba(255,255,255,.12); --code: rgba(255,255,255,.07); --btn: rgba(255,255,255,.08); } }
+    html { background: var(--bg); transition: background .25s; }
+    body { margin: 0; padding: 72px 40px 140px; color: var(--fg); font-family: var(--font); font-size: var(--size); line-height: 1.65; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; hanging-punctuation: first; }
+    article { max-width: var(--width); margin: 0 auto; }
+    header { margin-bottom: 44px; }
+    .site { font: 600 12px/1.3 -apple-system, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
+    header h1 { font-family: var(--font); font-size: calc(var(--size) * 1.85); line-height: 1.15; font-weight: 700; margin: 0 0 16px; letter-spacing: -.012em; text-wrap: balance; }
+    .byline { font: 15px/1.4 -apple-system, system-ui, sans-serif; color: var(--fg); margin: 0 0 4px; }
+    .minutes { font: 13px/1.4 -apple-system, system-ui, sans-serif; color: var(--muted); margin: 0; }
+    #focus-body h1, h2, h3, h4 { font-family: var(--font); line-height: 1.3; margin: 1.8em 0 .6em; text-wrap: balance; }
+    #focus-body h1 { font-size: 1.45em; } h2 { font-size: 1.3em; } h3 { font-size: 1.12em; } h4 { font-size: 1em; }
+    p, ul, ol, blockquote, pre, figure, table { margin: 0 0 1.15em; }
+    p { text-wrap: pretty; }
+    li { margin-bottom: .35em; }
     a { color: var(--link); text-decoration: none; } a:hover { text-decoration: underline; }
-    img, video { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 1.2em auto; }
-    figure { margin-left: 0; margin-right: 0; } figcaption { font: 13px/1.45 -apple-system, system-ui, sans-serif; color: var(--muted); margin-top: -.4em; }
-    blockquote { border-left: 3px solid var(--rule); margin-left: 0; padding-left: 18px; color: var(--muted); }
-    pre, code { font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 5px; }
-    code { padding: 1px 4px; } pre { padding: 12px 14px; overflow-x: auto; } pre code { background: none; padding: 0; }
-    table { border-collapse: collapse; font-size: 16px; display: block; overflow-x: auto; } td, th { border: 1px solid var(--rule); padding: 6px 9px; }
-    hr { border: 0; border-top: 1px solid var(--rule); margin: 2em 0; }
-    mark.focus-hl { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1px; }
-    .end { font: 13px -apple-system, system-ui, sans-serif; margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule); }
+    img, video { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 1.6em auto; }
+    figure { margin-left: 0; margin-right: 0; } figcaption { font: 13px/1.45 -apple-system, system-ui, sans-serif; color: var(--muted); margin-top: -.8em; text-align: center; }
+    blockquote { border-left: 3px solid var(--rule); margin-left: 0; padding-left: 20px; font-style: italic; color: var(--muted); }
+    pre, code { font: .8em/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 6px; }
+    code { padding: 1px 5px; } pre { padding: 14px 16px; overflow-x: auto; } pre code { background: none; padding: 0; font-size: 1em; }
+    table { border-collapse: collapse; font-size: .85em; display: block; overflow-x: auto; } td, th { border: 1px solid var(--rule); padding: 6px 10px; }
+    hr { border: 0; text-align: center; margin: 2.4em 0; } hr::after { content: "· · ·"; color: var(--muted); letter-spacing: .5em; }
+    ::selection { background: var(--mark); }
+    mark.focus-hl { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 1px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+    .end { margin-top: 72px; padding-top: 28px; border-top: 1px solid var(--rule); text-align: center; font: 13px -apple-system, system-ui, sans-serif; color: var(--muted); }
+    .end .fin { font-family: var(--font); font-size: 17px; color: var(--fg); margin-bottom: 14px; }
+    .end button { font: 600 14px -apple-system, system-ui, sans-serif; color: var(--fg); background: var(--btn); border: 0; border-radius: 999px; padding: 9px 18px; cursor: pointer; }
+    .end button:hover { filter: brightness(.95); }
+    .end kbd { font: 11px ui-monospace, Menlo, monospace; color: var(--muted); margin-left: 6px; }
+    .end a { display: block; margin-top: 16px; color: var(--muted); }
     """
 
     private static let readerJS = #"""
@@ -469,14 +874,15 @@ private struct ArticleWebView: NSViewRepresentable {
 
       // Wraps every text-node piece of `range` in <mark data-id>.
       function wrap(range, id) {
-        const walker = document.createTreeWalker(range.commonAncestorContainer.nodeType === 3 ? range.commonAncestorContainer.parentNode : range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
+        const top = range.commonAncestorContainer.nodeType === 3 ? range.commonAncestorContainer.parentNode : range.commonAncestorContainer;
+        const walker = document.createTreeWalker(top, NodeFilter.SHOW_TEXT);
         const nodes = [];
         while (walker.nextNode()) if (range.intersectsNode(walker.currentNode)) nodes.push(walker.currentNode);
         for (let node of nodes) {
           let start = node === range.startContainer ? range.startOffset : 0;
           let end = node === range.endContainer ? range.endOffset : node.length;
           if (end <= start || !node.data.slice(start, end).trim()) continue;
-          if (start > 0) node = node.splitText(start), end -= start;
+          if (start > 0) { node = node.splitText(start); end -= start; }
           if (end < node.length) node.splitText(end);
           const m = document.createElement('mark');
           m.className = 'focus-hl';
@@ -543,7 +949,19 @@ private struct ArticleWebView: NSViewRepresentable {
           }
           root.normalize();
         },
+        setStyle(s) {
+          const at = scrollY / maxScroll();
+          const el = document.documentElement;
+          el.dataset.theme = s.theme;
+          el.style.setProperty('--font', s.font);
+          el.style.setProperty('--size', s.size + 'px');
+          el.style.setProperty('--width', s.width + 'px');
+          requestAnimationFrame(() => scrollTo(0, at * maxScroll()));
+        },
       };
+
+      const archive = document.getElementById('focus-archive');
+      if (archive) archive.addEventListener('click', () => post({ type: 'key', key: 'e' }));
 
       const restore = () => { if (boot.progress > 0.01 && boot.progress < 0.99) scrollTo(0, boot.progress * maxScroll()); };
       restore();
@@ -551,15 +969,15 @@ private struct ArticleWebView: NSViewRepresentable {
       let t = null;
       addEventListener('scroll', () => {
         clearTimeout(t);
-        t = setTimeout(() => post({ type: 'progress', value: Math.min(1, scrollY / maxScroll()) }), 600);
+        t = setTimeout(() => post({ type: 'progress', value: Math.min(1, scrollY / maxScroll()) }), 500);
       }, { passive: true });
 
       addEventListener('keydown', (e) => {
         if (e.metaKey || e.ctrlKey || e.altKey) return;
         const k = e.key.toLowerCase();
         if (k === 'h') { focusReader.highlightSelection(); e.preventDefault(); }
-        else if (k === 'j') scrollBy({ top: 120, behavior: 'smooth' });
-        else if (k === 'k') scrollBy({ top: -120, behavior: 'smooth' });
+        else if (k === 'j') scrollBy({ top: 140, behavior: 'smooth' });
+        else if (k === 'k') scrollBy({ top: -140, behavior: 'smooth' });
         else if (['e', 'l', 'o'].includes(k)) { post({ type: 'key', key: k }); e.preventDefault(); }
       });
     })();
