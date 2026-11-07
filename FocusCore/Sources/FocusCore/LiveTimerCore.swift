@@ -317,6 +317,11 @@ public struct LiveTimerCore: Codable, Equatable, Sendable {
             // An old build re-announcing a block from before ours.
             return nil
         }
+        if incoming.legacy, block == nil, incoming.phase != .idle, let theirs = incoming.start,
+           let ended = lastEnded?.start, abs(theirs.timeIntervalSince(ended)) <= 3 {
+            // An old build announcing the block we ended as still running (10/16).
+            return nil
+        }
         var fx: [LiveEffect] = []
         if let b = block, !Self.same(b, incoming), let s = Self.unclaimed(b, by: incoming, now: now) {
             fx.append(.save(s))

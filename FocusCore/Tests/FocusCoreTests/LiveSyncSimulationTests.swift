@@ -689,6 +689,33 @@ final class LiveSyncSimulationTests: XCTestCase {
         XCTAssertEqual(core.block?.label, "Math")
     }
 
+    /// 10/16: the Mac stopped Exercise at 11:13 PM; at 8:29 AM an old-build
+    /// iPad announced Math running from Exercise's start, and the idle Mac
+    /// took it (the start wasn't older than the block it had ended).
+    func testLegacyResurrectionOfStoppedBlockIgnored() {
+        var core = LiveTimerCore(deviceID: "mac")
+        let exercise = start
+        _ = core.switchTo("Exercise", at: exercise, workSeconds: 0, now: exercise)
+        _ = core.stop(at: exercise.addingTimeInterval(4 * 3600), now: exercise.addingTimeInterval(4 * 3600))
+        XCTAssertNil(core.block)
+        let now = exercise.addingTimeInterval(13 * 3600)
+        for offset in [0.0, 2.0, -2.0] {
+            let resurrected = LiveState(phase: .work, blockID: nil, start: exercise.addingTimeInterval(offset),
+                                        label: "Math", breakKinds: [], totalSeconds: 90000, remainingSeconds: 90000 - 13 * 3600,
+                                        isRunning: true, sentAt: now,
+                                        created: LiveStamp(at: now, device: "ipad"), updated: LiveStamp(at: now, device: "ipad"),
+                                        ended: nil, legacy: true)
+            XCTAssertNil(core.reconcile(resurrected, now: now), "offset \(offset)")
+            XCTAssertNil(core.block)
+        }
+        let fresh = LiveState(phase: .work, blockID: nil, start: now, label: "Reading", breakKinds: [],
+                              totalSeconds: 86400, remainingSeconds: 86400, isRunning: true, sentAt: now,
+                              created: LiveStamp(at: now, device: "ipad"), updated: LiveStamp(at: now, device: "ipad"),
+                              ended: nil, legacy: true)
+        XCTAssertNotNil(core.reconcile(fresh, now: now))
+        XCTAssertEqual(core.block?.label, "Reading")
+    }
+
     /// First launch of this build: each device restores its old checkpoint.
     /// The iPad's is LeetCode from five days ago; the Mac's is today's Chores,
     /// which the phone also had. Nobody logs the stale LeetCode, and the two
