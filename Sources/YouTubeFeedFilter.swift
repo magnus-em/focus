@@ -17,6 +17,7 @@ actor YouTubeFeedFilter {
     private var dirty = false
     private var modelBusy = false
     private var modelWaiters: [CheckedContinuation<Void, Never>] = []
+    private var modelPausedUntil = Date.distantPast
 
     private var verdictsURL: URL { dir.appendingPathComponent("verdicts.json") }
     private var rulesURL: URL { dir.appendingPathComponent("channels.json") }
@@ -79,11 +80,33 @@ actor YouTubeFeedFilter {
     private func runModel(_ batch: [YouTubeFeed.Video]) async -> [Bool]? {
         guard #available(macOS 26.0, *) else { return nil }
         while modelBusy { await withCheckedContinuation { modelWaiters.append($0) } }
+        guard Date() >= modelPausedUntil else { return nil }
         modelBusy = true
         defer {
             modelBusy = false
             if !modelWaiters.isEmpty { modelWaiters.removeFirst().resume() }
         }
-        return await YouTubeFeed.classify(batch)
+        // On 11/7 one respond(to:) never returned, and every later request queued behind it,
+        // so YouTube showed "Focus isn't reachable" until the app restarted.
+        let answers = await Self.within(20) { await YouTubeFeed.classify(batch) }
+        if answers == nil { modelPausedUntil = Date().addingTimeInterval(120) }
+        return answers
+    }
+
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var done = false
+        func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
+    }
+
+    private static func within<T: Sendable>(_ seconds: Double, _ work: @escaping @Sendable () async -> T?) async -> T? {
+        let once = Once()
+        return await withCheckedContinuation { c in
+            let task = Task { let r = await work(); if once.claim() { c.resume(returning: r) } }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                if once.claim() { task.cancel(); c.resume(returning: nil) }
+            }
+        }
     }
 }
