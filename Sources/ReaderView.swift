@@ -152,8 +152,8 @@ struct ReaderView: View {
             Group {
                 if section == .highlights { AllHighlightsList(query: query, open: openFromHighlights) } else { articleList }
             }
-            .navigationSplitViewColumnWidth(min: 360, ideal: 400, max: 520)
             .searchable(text: $query, placement: .sidebar, prompt: "Search")
+            .navigationSplitViewColumnWidth(min: 360, ideal: 400, max: 520)
         } detail: {
             if let item = current {
                 ArticleDetail(item: item, style: style, showHighlights: $showHighlights, next: selectNext)
@@ -329,7 +329,7 @@ private struct ReadingRow: View {
                     }
                     Text(meta)
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(.tail)
                     Spacer(minLength: 4)
                     trailing
                         .fixedSize()
@@ -343,9 +343,7 @@ private struct ReadingRow: View {
     }
 
     private var meta: String {
-        var parts = [item.siteName ?? item.host]
-        if let m = item.readingMinutes { parts.append("\(m) min") }
-        return parts.joined(separator: " · ")
+        item.siteName ?? item.host
     }
 
     private var age: String {
@@ -370,7 +368,8 @@ private struct ReadingRow: View {
             ProgressRing(value: item.progress).frame(width: 12, height: 12)
                 .help("\(Int(item.progress * 100))% read")
         } else {
-            Text(age).help(item.savedAt.formatted(date: .abbreviated, time: .shortened))
+            Text(item.readingMinutes.map { "\($0) min · \(age)" } ?? age)
+                .help("Saved " + item.savedAt.formatted(date: .abbreviated, time: .shortened))
         }
     }
 }
