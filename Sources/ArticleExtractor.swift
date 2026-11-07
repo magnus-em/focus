@@ -99,6 +99,7 @@ final class ArticleExtractor: NSObject, WKNavigationDelegate {
         for tag in ["script", "style", "iframe", "noscript"] {
             s = s.replacingOccurrences(of: "<\(tag)\\b[^>]*>[\\s\\S]*?</\(tag)>", with: "", options: [.regularExpression, .caseInsensitive])
         }
+        s = s.replacingOccurrences(of: "<figure>\\s*<p class=\"rw-outer-content\">[\\s\\S]*?</figure>", with: "", options: [.regularExpression, .caseInsensitive])
         return s.replacingOccurrences(of: "\\son[a-z]+\\s*=\\s*(\"[^\"]*\"|'[^']*')", with: "", options: [.regularExpression, .caseInsensitive])
     }
 
@@ -189,10 +190,26 @@ final class ArticleExtractor: NSObject, WKNavigationDelegate {
     if (!best) return JSON.stringify({});
 
     const root = best.cloneNode(true);
+    // Captions and image blocks keep their meaning once class names are stripped.
+    const retag = (el, tag) => {
+      const n = doc.createElement(tag);
+      while (el.firstChild) n.appendChild(el.firstChild);
+      el.replaceWith(n);
+      return n;
+    };
+    const CAPTION = /(^|[\s_-])(thecap|caption|captiontext|wp-caption-text|figcaption|image-credit|imgcap-text)([\s_-]|$)/i;
+    const FIGURE = /(^|[\s_-])(imgcap|wp-caption|image-block|figure|media-image|article-image)([\s_-]|$)/i;
+    const cls = (el) => (typeof el.className === 'string' ? el.className : '');
+    for (const el of [...root.querySelectorAll('div, p, span')]) {
+      if (CAPTION.test(cls(el)) && !el.querySelector('img') && textLen(el) > 0 && textLen(el) < 1600) retag(el, 'figcaption');
+    }
+    for (const el of [...root.querySelectorAll('div, span, p')]) {
+      if (el.querySelector('img') && (FIGURE.test(cls(el)) || el.querySelector(':scope > figcaption')) && textLen(el) < 2400) retag(el, 'figure');
+    }
     for (const el of root.querySelectorAll('*')) {
       if (!el.isConnected) continue;
       const tag = el.tagName;
-      if (/^(DIV|SECTION|UL|OL|TABLE|HEADER|FIGURE|ASIDE|SPAN|P)$/.test(tag)) {
+      if (/^(DIV|SECTION|UL|OL|TABLE|HEADER|ASIDE|SPAN|P)$/.test(tag)) {
         const s = `${typeof el.className === 'string' ? el.className : ''} ${el.id || ''}`;
         const t = textLen(el);
         const imgs = el.querySelectorAll('img').length;
@@ -205,6 +222,10 @@ final class ArticleExtractor: NSObject, WKNavigationDelegate {
       const src = img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || img.getAttribute('data-original') || img.getAttribute('src');
       if (!src || src.startsWith('data:image/gif') || /pixel|spacer|1x1/.test(src)) { img.remove(); continue; }
       try { img.setAttribute('src', new URL(src, doc.baseURI).href); } catch { img.remove(); continue; }
+      // Percentage widths are layout intent (two images side by side); pixel sizes aren't kept.
+      const w = (img.getAttribute('width') || '').trim();
+      const pct = /%$/.test(w) ? w : /%$/.test(img.style.maxWidth) ? img.style.maxWidth : /%$/.test(img.style.width) ? img.style.width : '';
+      if (pct && parseFloat(pct) > 0 && parseFloat(pct) < 100) img.setAttribute('width', pct); else img.removeAttribute('width');
       const set = img.getAttribute('data-srcset') || img.getAttribute('srcset');
       if (set) img.setAttribute('srcset', set.split(',').map((part) => {
         const [u, d] = part.trim().split(/\s+/);
@@ -215,7 +236,7 @@ final class ArticleExtractor: NSObject, WKNavigationDelegate {
     for (const a of root.querySelectorAll('a[href]')) {
       try { a.setAttribute('href', new URL(a.getAttribute('href'), doc.baseURI).href); } catch {}
     }
-    const KEEP = new Set(['href', 'src', 'srcset', 'alt', 'title', 'colspan', 'rowspan', 'start', 'datetime']);
+    const KEEP = new Set(['href', 'src', 'srcset', 'alt', 'title', 'colspan', 'rowspan', 'start', 'datetime', 'width']);
     for (const el of [root, ...root.querySelectorAll('*')]) {
       for (const attr of [...el.attributes]) if (!KEEP.has(attr.name)) el.removeAttribute(attr.name);
       if (el.tagName === 'A' && /^javascript:/i.test(el.getAttribute('href') || '')) el.removeAttribute('href');

@@ -753,6 +753,9 @@ private struct ArticleWebView: NSViewRepresentable {
         let highlights = item.highlights.map { ["id": $0.id.uuidString, "text": $0.text] }
         let boot: [String: Any] = ["progress": item.progress, "highlights": highlights]
         let bootJSON = (try? JSONSerialization.data(withJSONObject: boot)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        if Self.hasMath(body), let math = Self.mathScript {
+            ucc.addUserScript(WKUserScript(source: math, injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
+        }
         ucc.addUserScript(WKUserScript(source: "window.focusBoot = \(bootJSON);\n" + Self.readerJS,
                                        injectionTime: .atDocumentEnd, forMainFrameOnly: true, in: .defaultClient))
         let web = WKWebView(frame: .zero, configuration: config)
@@ -768,6 +771,29 @@ private struct ArticleWebView: NSViewRepresentable {
     static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
         nsView.configuration.userContentController.removeAllScriptMessageHandlers()
     }
+
+    static func hasMath(_ html: String) -> Bool {
+        html.contains("\\(") || html.contains("\\[") || html.contains("$$")
+    }
+
+    /// KaTeX from the app bundle, rendering LaTeX as MathML (WebKit draws it natively,
+    /// so the KaTeX font files aren't needed). Pages like Karpathy's blog use MathJax,
+    /// which never runs here, so their math arrives as \( … \) source.
+    static let mathScript: String? = {
+        guard let dir = Bundle.focusResources?.url(forResource: "katex", withExtension: nil)
+                ?? Bundle.main.url(forResource: "katex", withExtension: nil),
+              let katex = try? String(contentsOf: dir.appendingPathComponent("katex.min.js"), encoding: .utf8),
+              let auto = try? String(contentsOf: dir.appendingPathComponent("auto-render.min.js"), encoding: .utf8) else { return nil }
+        let run = #"""
+        try {
+          renderMathInElement(document.getElementById('focus-body') || document.body, {
+            delimiters: [{left: '$$', right: '$$', display: true}, {left: '\\[', right: '\\]', display: true}, {left: '\\(', right: '\\)', display: false}],
+            output: 'mathml', throwOnError: false, ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+          });
+        } catch {}
+        """#
+        return katex + "\n" + auto + "\n" + run
+    }()
 
     private var page: String {
         let esc: (String) -> String = {
@@ -846,13 +872,16 @@ private struct ArticleWebView: NSViewRepresentable {
     .byline { font: 15px/1.4 -apple-system, system-ui, sans-serif; color: var(--fg); margin: 0 0 4px; }
     .minutes { font: 13px/1.4 -apple-system, system-ui, sans-serif; color: var(--muted); margin: 0; }
     #focus-body h1, h2, h3, h4 { font-family: var(--font); line-height: 1.3; margin: 1.8em 0 .6em; text-wrap: balance; }
-    #focus-body h1 { font-size: 1.45em; } h2 { font-size: 1.3em; } h3 { font-size: 1.12em; } h4 { font-size: 1em; }
+    #focus-body h1 { font-size: 1.6em; } h2 { font-size: 1.45em; } h3 { font-size: 1.2em; } h4 { font-size: 1.05em; }
     p, ul, ol, blockquote, pre, figure, table { margin: 0 0 1.15em; }
     p { text-wrap: pretty; }
     li { margin-bottom: .35em; }
     a { color: var(--link); text-decoration: none; } a:hover { text-decoration: underline; }
     img, video { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 1.6em auto; }
-    figure { margin-left: 0; margin-right: 0; } figcaption { font: 13px/1.45 -apple-system, system-ui, sans-serif; color: var(--muted); margin-top: -.8em; text-align: center; }
+    figure { margin: 1.8em 0; text-align: center; } figure img { margin: 0 auto; }
+    img[width$="%"] { display: inline-block; margin: .4em .2%; vertical-align: top; }
+    math { font-size: 1.05em; } math[display=block] { margin: 1em 0; overflow-x: auto; }
+    figcaption { font: 14px/1.5 -apple-system, system-ui, sans-serif; color: var(--muted); margin: .7em auto 0; max-width: 92%; text-align: center; text-wrap: pretty; }
     blockquote { border-left: 3px solid var(--rule); margin-left: 0; padding-left: 20px; font-style: italic; color: var(--muted); }
     pre, code { font: .8em/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 6px; }
     code { padding: 1px 5px; } pre { padding: 14px 16px; overflow-x: auto; } pre code { background: none; padding: 0; font-size: 1em; }

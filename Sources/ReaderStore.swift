@@ -38,6 +38,7 @@ final class ReaderStore: ObservableObject {
     private var articlesDir: URL { dir.appendingPathComponent("articles", isDirectory: true) }
     private var fetchQueue: [UUID] = []
     private var fetchRunning = false
+    private var refreshingImports = false
     private var persistWork: DispatchWorkItem?
 
     init() {
@@ -51,6 +52,10 @@ final class ReaderStore: ObservableObject {
             items[i].hasContent = false
         }
         migrateOldSaves()
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 20_000_000_000)
+            self?.refreshImportedArticles()
+        }
     }
 
     var inboxCount: Int { items.filter { $0.location == .inbox }.count }
@@ -209,6 +214,15 @@ final class ReaderStore: ObservableObject {
     }
 
     private func fetchArticle(_ id: UUID, url: URL) async -> String? {
+        switch await download(url) {
+        case .success(let article): storeArticle(id, article: article); return nil
+        case .failure(let error): return error.message
+        }
+    }
+
+    private struct FetchError: Error { var message: String }
+
+    private func download(_ url: URL) async -> Result<ArticleExtractor.Article, FetchError> {
         var req = URLRequest(url: url)
         req.timeoutInterval = 20
         req.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
@@ -217,16 +231,43 @@ final class ReaderStore: ObservableObject {
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
             let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            guard (200..<300).contains(code) else { return "The site said \(code)" }
+            guard (200..<300).contains(code) else { return .failure(FetchError(message: "The site said \(code)")) }
             let type = (resp as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
-            guard type.isEmpty || type.contains("html") else { return "Not an article page" }
+            guard type.isEmpty || type.contains("html") else { return .failure(FetchError(message: "Not an article page")) }
             let html = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
             guard let article = await ArticleExtractor.shared.extract(html: html, baseURL: resp.url ?? url),
-                  article.words >= 80 else { return "Couldn't find the article text" }
-            storeArticle(id, article: article)
-            return nil
+                  article.words >= 80 else { return .failure(FetchError(message: "Couldn't find the article text")) }
+            return .success(article)
         } catch {
-            return "Couldn't reach the site"
+            return .failure(FetchError(message: "Couldn't reach the site"))
+        }
+    }
+
+    /// Readwise's cleaned copies drop image captions, some images and LaTeX (10/7:
+    /// Karpathy's RNN post lost 5 of 12 images and every caption). When the site
+    /// serves the article itself, our own extraction replaces Readwise's if it has
+    /// at least 90% of the words and as many images, so paywalled pieces keep theirs.
+    func refreshImportedArticles() {
+        guard !refreshingImports else { return }
+        let key = "reader.refreshedFromSite"
+        var done = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+        let todo = items.filter { $0.source == "readwise" && $0.hasContent && !done.contains($0.id.uuidString) }.map(\.id)
+        guard !todo.isEmpty else { return }
+        refreshingImports = true
+        Task {
+            for id in todo {
+                if let item = item(id), let url = URL(string: item.url), let old = articleHTML(id),
+                   case .success(let fresh) = await download(url) {
+                    let images = { (h: String) in h.components(separatedBy: "<img").count - 1 }
+                    let oldWords = ArticleExtractor.wordCount(old)
+                    if Double(fresh.words) >= Double(oldWords) * 0.9, images(fresh.html) >= images(old) {
+                        storeArticle(id, article: fresh)
+                    }
+                }
+                done.insert(id.uuidString)
+                UserDefaults.standard.set(Array(done), forKey: key)
+            }
+            refreshingImports = false
         }
     }
 
@@ -283,6 +324,7 @@ final class ReaderStore: ObservableObject {
             let (added, updated, highlights) = merge(docs)
             importStatus = "Imported from Readwise: \(added) new, \(updated) already here, \(highlights) highlights."
             fetchMissing()
+            refreshImportedArticles()
         }
     }
 
