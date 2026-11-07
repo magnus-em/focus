@@ -21,6 +21,7 @@ const YOUTUBE_DEFAULT = {
   hideEndScreens: true,
   disableAutoplay: true,
   hideComments: false,
+  filter: 'always',
 };
 
 const local = chrome.storage.local;
@@ -124,8 +125,9 @@ function isBlocked(url, state) {
 
 function normalizeYouTube(value = {}) {
   const mode = ['off', 'focus', 'always'].includes(value.mode) ? value.mode : YOUTUBE_DEFAULT.mode;
-  const result = { ...YOUTUBE_DEFAULT, mode };
-  for (const key of Object.keys(YOUTUBE_DEFAULT).filter((key) => key !== 'mode')) {
+  const filter = ['off', 'focus', 'always'].includes(value.filter) ? value.filter : YOUTUBE_DEFAULT.filter;
+  const result = { ...YOUTUBE_DEFAULT, mode, filter };
+  for (const key of Object.keys(YOUTUBE_DEFAULT).filter((key) => key !== 'mode' && key !== 'filter')) {
     if (typeof value[key] === 'boolean') result[key] = value[key];
   }
   return result;
@@ -137,19 +139,52 @@ function isYouTubeActive(settings, state) {
   return !!(state?.isFocus ?? state?.blocking);
 }
 
+function isYouTubeFilterActive(settings, state) {
+  if (settings.filter === 'always') return true;
+  if (settings.filter !== 'focus') return false;
+  return !!(state?.isFocus ?? state?.blocking);
+}
+
 async function syncYouTube(state, force = false) {
   const stored = await local.get('youtubeFocus');
   const settings = normalizeYouTube(stored.youtubeFocus);
   const active = isYouTubeActive(settings, state);
-  const old = await session.get('youtubeFocusActive');
-  if (old.youtubeFocusActive !== active) await session.set({ youtubeFocusActive: active });
-  if (force || old.youtubeFocusActive !== active) {
+  const filter = isYouTubeFilterActive(settings, state);
+  const old = await session.get(['youtubeFocusActive', 'youtubeFilterActive']);
+  const changed = old.youtubeFocusActive !== active || old.youtubeFilterActive !== filter;
+  if (changed) await session.set({ youtubeFocusActive: active, youtubeFilterActive: filter });
+  if (force || changed) {
     const tabs = await chrome.tabs.query({ url: ['*://www.youtube.com/*', '*://m.youtube.com/*'] });
     await Promise.all(tabs.map((tab) => chrome.tabs.sendMessage(tab.id, {
-      type: 'youtubeFocusChanged', settings, active,
+      type: 'youtubeFocusChanged', settings, active, filter,
     }).catch(() => {})));
   }
-  return { settings, active };
+  return { settings, active, filter };
+}
+
+// The app labels each video (its cache, the user's channel rules, then the
+// on-device model); content scripts can't reach it because the bridge only
+// accepts the extension's origin.
+async function classifyVideos(videos) {
+  try {
+    const r = await fetch(API + '/youtube', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videos: (videos || []).slice(0, 60) }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!r.ok) return null;
+    return (await r.json()).verdicts || {};
+  } catch { return null; }
+}
+
+async function setYouTubeChannel(channel, allow) {
+  try {
+    const r = await fetch(API + '/youtube/channel', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel, allow }), signal: AbortSignal.timeout(5_000),
+    });
+    return { ok: r.ok };
+  } catch { return { ok: false }; }
 }
 
 async function setYouTube(value) {
@@ -737,6 +772,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       }
       case 'setYouTube':
         return setYouTube(msg.settings || {});
+      case 'ytClassify':
+        return classifyVideos(msg.videos);
+      case 'ytChannel':
+        return setYouTubeChannel(String(msg.channel || ''), typeof msg.allow === 'boolean' ? msg.allow : null);
       case 'popup': {
         const state = await refreshState(true);
         const { queue = [] } = await local.get('queue');

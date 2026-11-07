@@ -3,10 +3,11 @@
   globalThis.focusYouTubeLoaded = true;
 
   const DEFAULT = { mode: 'focus', hideHome: true, hideRelated: true, hideShorts: true,
-    hideEndScreens: true, disableAutoplay: true, hideComments: false };
+    hideEndScreens: true, disableAutoplay: true, hideComments: false, filter: 'always' };
   const attributes = ['hideHome', 'hideRelated', 'hideShorts', 'hideEndScreens', 'hideComments'];
   let settings = DEFAULT;
   let active = false;
+  let filterActive = false;
   let timers = [];
 
   function page() {
@@ -55,6 +56,167 @@
     }
   }
 
+
+  // MARK: Educational filter: YouTube's own picks, minus everything that isn't
+  // science, math, tech or AI. Focus.app decides; unknown tiles stay hidden.
+  const verdicts = new Map();
+  const queued = new Map();
+  let peek = false;
+  let unreachable = false;
+  let inFlight = false;
+  let observer = null;
+  let scanTimer = 0;
+  let flushTimer = 0;
+
+  const TILE = {
+    home: 'ytd-browse[page-subtype="home"] ytd-rich-item-renderer',
+    watch: '#related yt-lockup-view-model, #related ytd-compact-video-renderer',
+  };
+  const SECTIONS = 'ytd-browse[page-subtype="home"] ytd-rich-section-renderer';
+
+  function filtering() {
+    if (!filterActive) return null;
+    const p = page();
+    if (p === 'home' && !(active && settings.hideHome)) return 'home';
+    if (p === 'watch' && !(active && settings.hideRelated)) return 'watch';
+    return null;
+  }
+
+  function tileInfo(el) {
+    const link = el.querySelector('a[href*="/watch?v="], a[href*="/shorts/"]');
+    if (!link) return null;
+    const href = link.getAttribute('href') || '';
+    const id = href.startsWith('/shorts/') ? 'shorts:' + href.split('/')[2]
+      : new URLSearchParams(href.split('?')[1] || '').get('v');
+    const title = (el.querySelector('h3[title]')?.getAttribute('title')
+      || el.querySelector('#video-title')?.textContent || '').trim();
+    const avatar = el.querySelector('[aria-label^="Go to channel "]')?.getAttribute('aria-label')?.slice(14);
+    const channel = (avatar || el.querySelector('a[href^="/@"], ytd-channel-name a, ytd-channel-name #text')?.textContent
+      || el.querySelector('.ytContentMetadataViewModelMetadataRow')?.textContent || '').trim();
+    return id && title ? { id, title, channel } : null;
+  }
+
+  function button(el, info, keep) {
+    let b = el.querySelector(':scope > .focus-edu-btn');
+    const label = keep ? 'Hide this channel' : 'Always show this channel';
+    if (b && b.dataset.keep === String(keep)) return;
+    b?.remove();
+    b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'focus-edu-btn';
+    b.dataset.keep = String(keep);
+    b.textContent = keep ? 'Hide channel' : 'Show channel';
+    b.title = label;
+    b.setAttribute('aria-label', `${label}: ${info.channel}`);
+    b.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setChannel(info.channel, !keep);
+    };
+    el.append(b);
+  }
+
+  function setChannel(channel, allow) {
+    if (!channel) return;
+    chrome.runtime.sendMessage({ type: 'ytChannel', channel, allow }).catch(() => {});
+    for (const [id, v] of verdicts) if (v.channel === channel) verdicts.set(id, { ...v, keep: allow, source: 'you' });
+    for (const el of document.querySelectorAll('[data-focus-edu-id]')) el.removeAttribute('data-focus-edu-id');
+    scan();
+  }
+
+  function apply(el, info) {
+    const v = verdicts.get(info.id);
+    const state = v ? (v.keep ? 'keep' : 'hide') : 'pending';
+    el.setAttribute('data-focus-edu', state);
+    el.setAttribute('data-focus-edu-id', info.id);
+    if (v && info.channel) button(el, info, v.keep);
+    else el.querySelector(':scope > .focus-edu-btn')?.remove();
+  }
+
+  function scan() {
+    const where = filtering();
+    const root = document.documentElement;
+    root.toggleAttribute('data-focus-edu', !!where);
+    root.toggleAttribute('data-focus-edu-peek', !!where && peek);
+    if (!where) return status(null);
+    for (const el of document.querySelectorAll(SECTIONS)) el.setAttribute('data-focus-edu', 'hide');
+    let shown = 0, hidden = 0, pending = 0;
+    for (const el of document.querySelectorAll(TILE[where])) {
+      if (where === 'watch' && el.parentElement?.closest('ytd-compact-video-renderer, yt-lockup-view-model')) continue;
+      const info = tileInfo(el);
+      if (!info) { el.setAttribute('data-focus-edu', el.querySelector('ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer') ? 'hide' : 'pending'); continue; }
+      if (el.getAttribute('data-focus-edu-id') !== info.id || el.getAttribute('data-focus-edu') === 'pending') apply(el, info);
+      const v = verdicts.get(info.id);
+      if (!v) { pending++; if (!queued.has(info.id)) queued.set(info.id, info); }
+      else if (v.keep) shown++; else hidden++;
+    }
+    status(where, shown, hidden, pending);
+    if (queued.size) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 120); }
+  }
+
+  async function flush() {
+    if (inFlight || !queued.size || !filtering()) return;
+    inFlight = true;
+    const batch = [...queued.values()].slice(0, 16);
+    let result = null;
+    try { result = await chrome.runtime.sendMessage({ type: 'ytClassify', videos: batch }); } catch {}
+    inFlight = false;
+    unreachable = !result;
+    if (result) {
+      for (const info of batch) {
+        queued.delete(info.id);
+        const v = result[info.id];
+        if (v) verdicts.set(info.id, { keep: !!v.keep, source: v.source, channel: info.channel });
+      }
+    }
+    scan();
+    if (result && queued.size) flush();
+    else if (!result) setTimeout(flush, 10_000);
+  }
+
+  function status(where, shown = 0, hidden = 0, pending = 0) {
+    let bar = document.getElementById('focus-edu-status');
+    if (!where) { bar?.remove(); return; }
+    const host = where === 'home'
+      ? document.querySelector('ytd-browse[page-subtype="home"] ytd-rich-grid-renderer')
+      : document.querySelector('#related');
+    if (!host) return;
+    if (!bar || bar.parentElement !== host) {
+      bar?.remove();
+      bar = document.createElement('div');
+      bar.id = 'focus-edu-status';
+      bar.setAttribute('role', 'status');
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.onclick = () => { peek = !peek; scan(); };
+      bar.append(document.createElement('span'), toggle);
+      host.prepend(bar);
+    }
+    const parts = [`${shown} educational`];
+    if (hidden) parts.push(`${hidden} hidden`);
+    if (pending) parts.push(unreachable ? `${pending} waiting for Focus` : `checking ${pending}`);
+    const text = (unreachable ? 'Focus isn’t reachable · ' : 'Educational only · ') + parts.join(' · ');
+    const span = bar.querySelector('span');
+    if (span.textContent !== text) span.textContent = text;
+    const b = bar.querySelector('button');
+    const label = peek ? 'Hide filtered' : 'Show filtered';
+    if (b.textContent !== label) b.textContent = label;
+    b.hidden = !hidden && !peek;
+  }
+
+  function watchFeed() {
+    if (filterActive && !observer && document.body) {
+      observer = new MutationObserver(() => {
+        if (scanTimer) return;
+        scanTimer = setTimeout(() => { scanTimer = 0; scan(); }, 250);
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    } else if (!filterActive && observer) {
+      observer.disconnect();
+      observer = null;
+    }
+  }
+
   function render() {
     const root = document.documentElement;
     if (!root) return;
@@ -64,6 +226,8 @@
     ensureHomeMessage();
     ensureShortsBlock();
     turnOffAutoplay();
+    watchFeed();
+    scan();
   }
 
   function schedule() {
@@ -75,6 +239,7 @@
     if (message?.type !== 'youtubeFocusChanged') return;
     settings = { ...DEFAULT, ...message.settings };
     active = !!message.active;
+    filterActive = !!message.filter;
     schedule();
   });
   chrome.storage.onChanged.addListener((changes, area) => {
@@ -90,6 +255,7 @@
   chrome.runtime.sendMessage({ type: 'youtubeState' }).then((state) => {
     settings = { ...DEFAULT, ...state?.settings };
     active = !!state?.active;
+    filterActive = !!state?.filter;
     schedule();
   }).catch(() => schedule());
   schedule();

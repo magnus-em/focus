@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Focus Blocker",
-  "version": "1.3.0",
-  "description": "Blocks distracting sites, removes YouTube recommendations during focus, darkens bright pages, saves pages to read later, and reports browsing time to Focus.",
+  "version": "1.4.0",
+  "description": "Blocks distracting sites, filters YouTube recommendations to educational videos, darkens bright pages, saves pages to read later, and reports browsing time to Focus.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoGbtA8zDmVZ6Rbr6YhgJx9C+PvaRkIG+sqZOPugtlh3hkrZauFNigv0anRXXL7TZQa9dQxw8vNxJg2X3rHVGPTQeACt+V9WV/uFwv8L1wookI6PGfnD2NDh8RR5Zzb4cxbocjn7dy27tQpTfAafGrdwehNvJfEujTTa/L6fmSpnTQGRbczZ9nYXT8ZNf2aP8fF/xRS3UcC+J2g10+oAIiAi7Z+nPlrOVE+OEhWEsz/pNAmAlOBeyaaRuZ/FbhFMNVmEsK/VivU+5FhL3OoQp4auTATff1ki20HMTsupOWzZKLfkm8lvjV6XUoSSrd227xZGjpzPeShtsz9DTUDalawIDAQAB",
   "permissions": ["declarativeNetRequest", "storage", "tabs", "alarms", "idle", "webNavigation", "scripting", "contextMenus"],
   "host_permissions": ["<all_urls>"],

@@ -111,3 +111,60 @@ html[data-focus-youtube-active][data-focus-youtube-hide-shorts][data-focus-youtu
   #focus-youtube-home-message p,
   #focus-youtube-shorts-block p { color: var(--yt-spec-text-secondary, #aaa); }
 }
+
+html[data-focus-edu] [data-focus-edu="pending"],
+html[data-focus-edu]:not([data-focus-edu-peek]) [data-focus-edu="hide"] {
+  display: none !important;
+}
+
+html[data-focus-edu][data-focus-edu-peek] ytd-rich-section-renderer[data-focus-edu="hide"] {
+  display: none !important;
+}
+
+html[data-focus-edu] [data-focus-edu] { position: relative; }
+
+.focus-edu-btn {
+  display: none;
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  left: 8px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.8);
+  color: #fff;
+  font: 500 12px/18px Roboto, Arial, sans-serif;
+  cursor: pointer;
+}
+
+html[data-focus-edu] [data-focus-edu]:hover > .focus-edu-btn,
+html[data-focus-edu] .focus-edu-btn:focus-visible { display: block; }
+html[data-focus-edu][data-focus-edu-peek] [data-focus-edu="hide"] { opacity: 1; }
+html[data-focus-edu][data-focus-edu-peek] [data-focus-edu="hide"] > :not(.focus-edu-btn) { opacity: 0.4; }
+html[data-focus-edu][data-focus-edu-peek] [data-focus-edu="hide"] > .focus-edu-btn { display: block; }
+
+#focus-edu-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 12px;
+  padding: 8px 4px;
+  color: var(--yt-spec-text-secondary, #606060);
+  font: 400 13px/18px Roboto, Arial, sans-serif;
+}
+
+#focus-edu-status button {
+  flex: none;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--yt-spec-badge-chip-background, rgba(0, 0, 0, 0.05));
+  color: var(--yt-spec-text-primary, #0f0f0f);
+  font: 500 13px/18px Roboto, Arial, sans-serif;
+  cursor: pointer;
+}
+#focus-edu-status button[hidden] { display: none; }

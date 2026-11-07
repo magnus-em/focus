@@ -10,6 +10,8 @@ import Combine
 ///   POST /tab     → `{ "url", "title" }` the focused tab, for the screen watcher
 ///   POST /dark    → `DarkPages` changed from the extension's popup
 ///   POST /reader  → `{ "url", "title", "author", "html", "source" }` save a page to Focus's reading list
+///   POST /youtube → `{ "videos": [{ "id", "title", "channel" }] }` → `{ "verdicts": { id: { "keep", "source" } } }`
+///   POST /youtube/channel → `{ "channel", "allow": true | false | null }` always show / always hide / forget
 ///
 /// Only browsers attach an `Origin`, and a web page can't forge one, so any
 /// request whose Origin isn't the extension is refused. Local processes are
@@ -272,6 +274,29 @@ final class BrowserBridge: ObservableObject {
             Task { @MainActor in
                 self.lastContact = Date()
                 self.onLeetCodeHistory?(body)
+                self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
+            }
+        case ("POST", "/youtube"):
+            let obj = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any]
+            let videos = (obj?["videos"] as? [[String: Any]] ?? []).compactMap { v -> YouTubeFeed.Video? in
+                guard let id = v["id"] as? String, !id.isEmpty, let title = v["title"] as? String, !title.isEmpty else { return nil }
+                return YouTubeFeed.Video(id: String(id.prefix(64)), title: String(title.prefix(300)),
+                                         channel: String((v["channel"] as? String ?? "").prefix(120)))
+            }
+            Task {
+                let verdicts = await YouTubeFeedFilter.shared.classify(videos)
+                let out = verdicts.mapValues { ["keep": $0.keep, "source": $0.source.rawValue] as [String: Any] }
+                let body = try? JSONSerialization.data(withJSONObject: ["verdicts": out])
+                self.queue.async { self.respond(conn, status: "200 OK", json: body) }
+            }
+        case ("POST", "/youtube/channel"):
+            let obj = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any]
+            guard let channel = obj?["channel"] as? String, !channel.isEmpty else {
+                return respond(conn, status: "400 Bad Request", json: Data(#"{"error":"channel"}"#.utf8))
+            }
+            let allow = obj?["allow"] as? Bool
+            Task {
+                await YouTubeFeedFilter.shared.setChannel(channel, allow: allow)
                 self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
             }
         case ("POST", "/events"):

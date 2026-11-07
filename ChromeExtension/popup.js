@@ -25,7 +25,7 @@ const toInput = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(
 const fromInput = (v) => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
 const DARK_DEFAULT = { mode: 'night', from: 19 * 60, to: 7 * 60, brightness: 100, contrast: 100 };
 const YOUTUBE_DEFAULT = { mode: 'focus', hideHome: true, hideRelated: true, hideShorts: true,
-  hideEndScreens: true, disableAutoplay: true, hideComments: false };
+  hideEndScreens: true, disableAutoplay: true, hideComments: false, filter: 'always' };
 const $ = (id) => document.getElementById(id);
 let dark = DARK_DEFAULT;
 let youtube = YOUTUBE_DEFAULT;
@@ -136,6 +136,13 @@ function renderYouTube(active = false) {
   $('youtubeWhen').textContent = youtube.mode === 'off' ? 'YouTube is unchanged'
     : youtube.mode === 'always' ? 'Distractions stay hidden even when Focus is idle'
       : active ? 'Recommendations are hidden for this focus block' : 'Turns on with your next focus block';
+  for (const button of $('youtubeFilter').children) {
+    const selected = button.dataset.filter === youtube.filter;
+    button.classList.toggle('on', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  }
+  $('youtubeFilterWhen').textContent = youtube.filter === 'off' ? 'Home and related videos are YouTube\u2019s full picks'
+    : 'Home and related show only science, math, tech and AI videos' + (youtube.filter === 'focus' ? ' during focus' : '');
   $('youtubeSettings').classList.toggle('disabled', youtube.mode === 'off');
   for (const input of document.querySelectorAll('[data-youtube]')) {
     input.checked = !!youtube[input.dataset.youtube];
@@ -153,6 +160,7 @@ async function showYouTube() {
 }
 
 for (const button of $('youtubeMode').children) button.onclick = () => saveYouTube({ mode: button.dataset.mode });
+for (const button of $('youtubeFilter').children) button.onclick = () => saveYouTube({ filter: button.dataset.filter });
 for (const input of document.querySelectorAll('[data-youtube]')) {
   input.onchange = () => saveYouTube({ [input.dataset.youtube]: input.checked });
 }

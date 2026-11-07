@@ -67,7 +67,18 @@ test('YouTube settings use focus-safe defaults and ignore malformed values', () 
     hideEndScreens: true,
     disableAutoplay: true,
     hideComments: true,
+    filter: 'always',
   });
+  assert.equal(w.run("normalizeYouTube({filter:'focus'}).filter"), 'focus');
+  assert.equal(w.run("normalizeYouTube({filter:'sometimes'}).filter"), 'always');
+});
+
+test('the educational filter runs always by default and can follow focus', () => {
+  const w = worker();
+  assert.equal(w.run("isYouTubeFilterActive({filter:'always'}, {isFocus:false})"), true);
+  assert.equal(w.run("isYouTubeFilterActive({filter:'focus'}, {isFocus:false})"), false);
+  assert.equal(w.run("isYouTubeFilterActive({filter:'focus'}, {isFocus:true})"), true);
+  assert.equal(w.run("isYouTubeFilterActive({filter:'off'}, {isFocus:true})"), false);
 });
 
 test('During focus follows isFocus, while Off and Always are explicit', () => {
@@ -87,7 +98,7 @@ test('saving settings persists them and updates every open YouTube tab', async (
   assert.equal(w.local.youtubeFocus.hideRelated, false);
   assert.equal(w.sent.length, 2);
   assert.deepEqual(w.sent.map(({ id }) => id), [7, 8]);
-  assert.ok(w.sent.every(({ message }) => message.type === 'youtubeFocusChanged' && message.active));
+  assert.ok(w.sent.every(({ message }) => message.type === 'youtubeFocusChanged' && message.active && message.filter));
 });
 
 test('manifest installs the YouTube guard at document start', () => {
