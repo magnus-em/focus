@@ -72,7 +72,6 @@
     home: 'ytd-browse[page-subtype="home"] ytd-rich-item-renderer',
     watch: '#related yt-lockup-view-model, #related ytd-compact-video-renderer',
   };
-  const SECTIONS = 'ytd-browse[page-subtype="home"] ytd-rich-section-renderer';
 
   function filtering() {
     if (!filterActive) return null;
@@ -124,10 +123,14 @@
     scan();
   }
 
+  function stateOf(id) {
+    const v = verdicts.get(id);
+    return v ? (v.keep ? 'keep' : 'hide') : 'pending';
+  }
+
   function apply(el, info) {
     const v = verdicts.get(info.id);
-    const state = v ? (v.keep ? 'keep' : 'hide') : 'pending';
-    el.setAttribute('data-focus-edu', state);
+    el.setAttribute('data-focus-edu', stateOf(info.id));
     el.setAttribute('data-focus-edu-id', info.id);
     if (v && info.channel) button(el, info, v.keep);
     else el.querySelector(':scope > .focus-edu-btn')?.remove();
@@ -136,20 +139,21 @@
   function scan() {
     const where = filtering();
     const root = document.documentElement;
-    root.toggleAttribute('data-focus-edu', !!where);
+    if (where) { if (root.getAttribute('data-focus-edu') !== where) root.setAttribute('data-focus-edu', where); }
+    else root.removeAttribute('data-focus-edu');
     root.toggleAttribute('data-focus-edu-peek', !!where && peek);
-    if (!where) return status(null);
-    for (const el of document.querySelectorAll(SECTIONS)) el.setAttribute('data-focus-edu', 'hide');
+    if (!where) { root.removeAttribute('data-focus-edu-busy'); return status(null); }
     let shown = 0, hidden = 0, pending = 0;
     for (const el of document.querySelectorAll(TILE[where])) {
       if (where === 'watch' && el.parentElement?.closest('ytd-compact-video-renderer, yt-lockup-view-model')) continue;
       const info = tileInfo(el);
-      if (!info) { el.setAttribute('data-focus-edu', el.querySelector('ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer') ? 'hide' : 'pending'); continue; }
-      if (el.getAttribute('data-focus-edu-id') !== info.id || el.getAttribute('data-focus-edu') === 'pending') apply(el, info);
+      if (!info) { pending += el.querySelector('ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer') ? 0 : 1; continue; }
+      if (el.getAttribute('data-focus-edu-id') !== info.id || el.getAttribute('data-focus-edu') !== stateOf(info.id)) apply(el, info);
       const v = verdicts.get(info.id);
       if (!v) { pending++; if (!queued.has(info.id)) queued.set(info.id, info); }
       else if (v.keep) shown++; else hidden++;
     }
+    root.toggleAttribute('data-focus-edu-busy', queued.size > 0 || inFlight);
     status(where, shown, hidden, pending);
     if (queued.size) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 120); }
   }

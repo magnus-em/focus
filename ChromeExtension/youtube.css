@@ -112,12 +112,23 @@ html[data-focus-youtube-active][data-focus-youtube-hide-shorts][data-focus-youtu
   #focus-youtube-shorts-block p { color: var(--yt-spec-text-secondary, #aaa); }
 }
 
-html[data-focus-edu] [data-focus-edu="pending"],
-html[data-focus-edu]:not([data-focus-edu-peek]) [data-focus-edu="hide"] {
+/* Tiles are hidden until Focus approves them: YouTube renders new tiles before
+   the script can mark them, and an unmarked tile used to show for a moment. */
+html[data-focus-edu="home"] ytd-browse[page-subtype="home"] ytd-rich-item-renderer:not([data-focus-edu="keep"]),
+html[data-focus-edu="home"] ytd-browse[page-subtype="home"] ytd-rich-section-renderer,
+html[data-focus-edu="watch"] #related :is(yt-lockup-view-model, ytd-compact-video-renderer):not(:is(yt-lockup-view-model, ytd-compact-video-renderer) *):not([data-focus-edu="keep"]),
+html[data-focus-edu="watch"] #related ytd-reel-shelf-renderer {
   display: none !important;
 }
 
-html[data-focus-edu][data-focus-edu-peek] ytd-rich-section-renderer[data-focus-edu="hide"] {
+html[data-focus-edu][data-focus-edu-peek] ytd-rich-item-renderer[data-focus-edu="hide"],
+html[data-focus-edu][data-focus-edu-peek] #related [data-focus-edu="hide"] {
+  display: block !important;
+}
+
+/* While tiles are being checked, YouTube must not load the next page: the
+   hidden tiles keep the feed short, so it would fetch page after page. */
+html[data-focus-edu-busy] ytd-continuation-item-renderer {
   display: none !important;
 }
 
