@@ -143,39 +143,39 @@
     else root.removeAttribute('data-focus-edu');
     root.toggleAttribute('data-focus-edu-peek', !!where && peek);
     if (!where) { root.removeAttribute('data-focus-edu-busy'); return status(null); }
-    let shown = 0, hidden = 0, pending = 0;
+    let shown = 0, hidden = 0, pending = 0, added = false;
     for (const el of document.querySelectorAll(TILE[where])) {
       if (where === 'watch' && el.parentElement?.closest('ytd-compact-video-renderer, yt-lockup-view-model')) continue;
       const info = tileInfo(el);
       if (!info) { pending += el.querySelector('ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer') ? 0 : 1; continue; }
       if (el.getAttribute('data-focus-edu-id') !== info.id || el.getAttribute('data-focus-edu') !== stateOf(info.id)) apply(el, info);
       const v = verdicts.get(info.id);
-      if (!v) { pending++; if (!queued.has(info.id)) queued.set(info.id, info); }
+      if (!v) { pending++; if (!queued.has(info.id)) { queued.set(info.id, info); added = true; } }
       else if (v.keep) shown++; else hidden++;
     }
     root.toggleAttribute('data-focus-edu-busy', queued.size > 0 || inFlight);
     status(where, shown, hidden, pending);
-    if (queued.size) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 120); }
+    if (added) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 120); }
   }
 
   async function flush() {
     if (inFlight || !queued.size || !filtering()) return;
     inFlight = true;
-    const batch = [...queued.values()].slice(0, 16);
+    const batch = [...queued.values()].slice(0, 60);
     let result = null;
     try { result = await chrome.runtime.sendMessage({ type: 'ytClassify', videos: batch }); } catch {}
     inFlight = false;
     unreachable = !result;
     if (result) {
       for (const info of batch) {
-        queued.delete(info.id);
         const v = result[info.id];
-        if (v) verdicts.set(info.id, { keep: !!v.keep, source: v.source, channel: info.channel });
+        if (!v) continue;
+        queued.delete(info.id);
+        verdicts.set(info.id, { keep: !!v.keep, source: v.source, channel: info.channel });
       }
     }
     scan();
-    if (result && queued.size) flush();
-    else if (!result) setTimeout(flush, 10_000);
+    if (queued.size) setTimeout(flush, result ? 1500 : 10_000);
   }
 
   function status(where, shown = 0, hidden = 0, pending = 0) {

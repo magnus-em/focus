@@ -15,9 +15,9 @@ actor YouTubeFeedFilter {
     private var rules: [String: Bool] = [:]
     private var loaded = false
     private var dirty = false
-    private var modelBusy = false
-    private var modelWaiters: [CheckedContinuation<Void, Never>] = []
-    private var modelPausedUntil = Date.distantPast
+    private var working: Set<String> = []
+    private var pending: [YouTubeFeed.Video] = []
+    private var draining = false
 
     private var verdictsURL: URL { dir.appendingPathComponent("verdicts.json") }
     private var rulesURL: URL { dir.appendingPathComponent("channels.json") }
@@ -50,47 +50,49 @@ actor YouTubeFeedFilter {
         save()
     }
 
-    func classify(_ videos: [YouTubeFeed.Video]) async -> [String: YouTubeFeed.Verdict] {
+    /// Answers at once from rules and the cache; videos it doesn't know yet go to the model in the
+    /// background and are missing from the reply, so the extension asks again. The model can take
+    /// ~40 s to wake up (11/7), longer than the extension waits.
+    func classify(_ videos: [YouTubeFeed.Video]) -> [String: YouTubeFeed.Verdict] {
         load()
         var out: [String: YouTubeFeed.Verdict] = [:]
-        var ask: [YouTubeFeed.Video] = []
         for v in videos.prefix(60) where out[v.id] == nil {
             if let quick = YouTubeFeed.quick(v, rules: rules) {
                 out[v.id] = quick
-            } else if let cached = verdicts[v.id], cached.verdict.source != .fallback {
+            } else if let cached = verdicts[v.id],
+                      cached.verdict.source != .fallback || Date().timeIntervalSince(cached.at) < 3600 {
                 out[v.id] = cached.verdict
-            } else if !ask.contains(where: { $0.id == v.id }) {
-                ask.append(v)
+            } else if !working.contains(v.id), pending.count < 300 {
+                working.insert(v.id)
+                pending.append(v)
             }
         }
-        for start in stride(from: 0, to: ask.count, by: 8) {
-            let batch = Array(ask[start..<min(start + 8, ask.count)])
+        if !pending.isEmpty, !draining {
+            draining = true
+            Task { await drain() }
+        }
+        return out
+    }
+
+    private func drain() async {
+        while !pending.isEmpty {
+            let batch = Array(pending.prefix(8))
+            pending.removeFirst(batch.count)
             let answers = await runModel(batch)
             for (i, v) in batch.enumerated() {
                 let verdict = answers.map { YouTubeFeed.Verdict(keep: $0[i], source: .model) } ?? YouTubeFeed.fallback(v)
-                out[v.id] = verdict
                 verdicts[v.id] = Entry(verdict: verdict, channel: v.channel, at: Date())
-                dirty = true
+                working.remove(v.id)
             }
+            dirty = true
+            save()
         }
-        save()
-        return out
+        draining = false
     }
 
     private func runModel(_ batch: [YouTubeFeed.Video]) async -> [Bool]? {
         guard #available(macOS 26.0, *) else { return nil }
-        while modelBusy { await withCheckedContinuation { modelWaiters.append($0) } }
-        guard Date() >= modelPausedUntil else { return nil }
-        modelBusy = true
-        defer {
-            modelBusy = false
-            if !modelWaiters.isEmpty { modelWaiters.removeFirst().resume() }
-        }
-        // On 11/7 one respond(to:) never returned, and every later request queued behind it,
-        // so YouTube showed "Focus isn't reachable" until the app restarted.
-        let answers = await Self.within(20) { await YouTubeFeed.classify(batch) }
-        if answers == nil { modelPausedUntil = Date().addingTimeInterval(120) }
-        return answers
+        return await Self.within(90) { await YouTubeFeed.classify(batch) }
     }
 
     private final class Once: @unchecked Sendable {
