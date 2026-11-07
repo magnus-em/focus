@@ -880,7 +880,7 @@ private struct ArticleWebView: NSViewRepresentable {
     img, video { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 1.6em auto; }
     figure { margin: 1.8em 0; text-align: center; } figure img { margin: 0 auto; }
     img[width$="%"] { display: inline-block; margin: .4em .2%; vertical-align: top; }
-    math { font-size: 1.05em; } math[display=block] { margin: 1em 0; overflow-x: auto; }
+    math { font-family: "STIX Two Math", math; font-size: 1.05em; } math[display=block] { margin: 1em 0; overflow-x: auto; }
     figcaption { font: 14px/1.5 -apple-system, system-ui, sans-serif; color: var(--muted); margin: .7em auto 0; max-width: 92%; text-align: center; text-wrap: pretty; }
     blockquote { border-left: 3px solid var(--rule); margin-left: 0; padding-left: 20px; font-style: italic; color: var(--muted); }
     pre, code { font: .8em/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 6px; }
