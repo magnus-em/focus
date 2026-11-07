@@ -65,6 +65,31 @@ final class ScreenClassificationPolicyTests: XCTestCase {
             text: "probs = {\"H\": 0.5}\ndef sample(table):\n    return random.choice(table)"))
         XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "game.py",
             text: "class Layer:\n    def draw(self): pass"))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "micro.ipynb - JupyterLab",
+            text: "testnet = MLP (3, [4,4,1])\nfor n in nodes:\nn.grad = 0\nsquared_error.backward()\nn.data -= 0.01 * n.grad"))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "micro.ipynb — ml",
+            text: "for child in v._prev:\nedges.add((child, v))\nlabel=\"{ %s | data %.4f | grad %.4f }\" % (n.label, n.data, n.grad)\nif n._op:"))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "language.ipynb — ml",
+            text: "words = open('names.txt', 'r').read().splitlines()\nchars = ['<S>'] + list(word) + ['<E>']"))
+        XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "app.py",
+            text: "user = User(name)\nnode.grad = 'A'\nwidget.backward()"))
+    }
+
+    func testVideoSidebarDoesNotMakeAI() {
+        XCTAssertNotEqual(ScreenClassificationPolicy.evaluate(category: "Leisure", app: "Google Chrome",
+            title: "(677) Meta VR Glasses: What V…OULD Have Been! - YouTube 🔊",
+            text: "Self-Driving\nRecently uploaded\nThe spelled-out intro to language modeling: building makemore", source: .model).category, "AI")
+    }
+
+    func testLanguageTestAndMailAreNotMath() {
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome",
+            title: "2026-2027 German Placement Test | Lingco Classroom", text: "Fill in the verb. (3 questions)", source: .model).category)
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Math", app: "Google Chrome",
+            title: "Placement Exams, 11/2-11/6 - ma…yale.edu - Yale University Mail", text: "Math (Calculus), Chemistry", source: .model).category)
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "Google Chrome",
+            title: "Inbox (2,136) - melbournemagnus@gmail.com - Gmail", text: "", source: .model).category, "Admin")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Preview",
+            title: "MATH 244 pset 7.pdf", text: "Theorem 2. Proof by induction", source: .model).category, "Math")
     }
 
     func testTransformerCourseVideoOverridesLeisureAndOldHeldLabels() {

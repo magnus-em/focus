@@ -41,7 +41,8 @@ public enum ScreenClassificationPolicy {
         // 10/21: the model repeatedly called 3Blue1Brown's "Attention in transformers ·
         // Deep Learning Chapter 6" video Leisure, even with the attention equation visible.
         // 11/3: the X home feed was AI in four snapshots because posts in it named ML terms.
-        if !isSocialFeed(title: title), supportsMLStudy(title: title, text: text) {
+        // 11/6: a Tesla FSD video was AI because the recommendations beside it listed "building makemore".
+        if !isSocialFeed(title: title), supportsMLStudy(title: title, text: isVideo(title: title) ? "" : text) {
             return Decision(category: "AI", reason: "Visible ML/deep-learning study or research material", uncertain: false)
         }
         if category == "Reading", isVideo(title: title) {
@@ -105,6 +106,14 @@ public enum ScreenClassificationPolicy {
             // (von_oswald_review.md beside paper PDFs), was SWE: "Code editor interface visible."
             if category == "SWE", isCodeEditor(app: app), !editsSourceFile(title: title) {
                 return Decision(category: nil, reason: "A code editor without a source file open does not show coding", uncertain: true)
+            }
+            // 11/6: a German placement test on Lingco was Math for 9 min ("a test title and instructions")
+            // while HW ran, and a Yale Mail thread about placement exams was Math from "Math (Calculus)" in a list.
+            if category == "Math", isLanguageCourse(title: title), !showsMathWork(text) {
+                return Decision(category: nil, reason: "A language course or test is not math", uncertain: true)
+            }
+            if let category, !["Admin", "Recruiting", "Leisure", "Social"].contains(category), isMailThread(app: app, title: title) {
+                return Decision(category: nil, reason: "An email mentioning a subject is not work on it", uncertain: true)
             }
             // 10/30: a Quanta biology article ("See Inside Cells Like Never Before") was Math from the
             // site's Mathematics nav link; popular-science magazines are reading, never coursework.
@@ -232,6 +241,24 @@ public enum ScreenClassificationPolicy {
             || title.hasSuffix("instagram") || title.hasSuffix(" / x")
             // 11/4: the LinkedIn home feed was Admin for 4 min and drew a card over Leisure (kept).
             || title.range(of: #"(^|\) )feed \| linkedin$"#, options: .regularExpression) != nil
+    }
+
+    public static func isMailThread(app: String, title: String) -> Bool {
+        let title = normalized(String(title.prefix(240)))
+        return ["mail", "outlook"].contains(normalized(app))
+            || ["- gmail", "university mail", "- outlook", "- mail"].contains(where: title.hasSuffix)
+    }
+
+    private static func isLanguageCourse(title: String) -> Bool {
+        let words = Set(normalized(String(title.prefix(240))).components(separatedBy: CharacterSet.alphanumerics.inverted))
+        return ["german", "french", "spanish", "italian", "chinese", "mandarin", "japanese", "korean", "latin",
+                "portuguese", "russian", "arabic", "hebrew", "greek", "gman", "fren", "span"].contains(where: words.contains)
+    }
+
+    private static func showsMathWork(_ text: String) -> Bool {
+        let body = normalized(String(text.prefix(2400)))
+        let marks = ["theorem", "proof", "equation", "integral", "derivative", "matrix", "lemma", "solve for", "∑", "∫", "≤", "≥"]
+        return marks.filter(body.contains).count >= 2
     }
 
     public static func isVideo(title: String) -> Bool {
@@ -441,6 +468,13 @@ public enum ScreenClassificationPolicy {
         let codeWords = Set(body.components(separatedBy: CharacterSet.alphanumerics.inverted))
         let autograd = body.contains(".grad") && codeWords.contains("backward")
         let networkClass = ["class neuron", "class mlp", "class layer"].filter(body.contains).count
+            + (body.range(of: #"\b(?:mlp|neuron) ?\("#, options: .regularExpression) != nil ? 1 : 0)
+        // 11/6: micrograd's training loop (MLP(3, [4,4,1]), n.grad = 0, backward) and its draw_dot
+        // graph code (n.grad, v._prev, n._op) were SWE for 38 min while AI ran; three cards, all kept.
+        let valueGraph = body.contains(".grad") && body.contains("_prev") && body.contains("._op")
+        // makemore's bigram counts: names.txt split into <S>/<E>-padded character pairs.
+        let bigrams = body.contains("names.txt") && (body.contains("<s>") || body.contains("<e>") || containsWordBeginning("bigram", in: body))
+        if valueGraph || bigrams { return true }
         let activation = ["tanh", "relu", "sigmoid", "softmax", "logits"].contains(where: codeWords.contains)
         if autograd && (activation || networkClass > 0) || networkClass >= 2 { return true }
         let hasStudyEvidence = study.contains { containsWordBeginning($0, in: title + " " + body) }
