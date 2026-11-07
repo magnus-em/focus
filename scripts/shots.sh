@@ -2,15 +2,16 @@
 # Screenshots every main screen of the running Focus.app, light and dark, into
 # .shots/<label>/ (gitignored) so changes can be looked at before shipping.
 #   scripts/shots.sh [label] [view ...]   default label: now, views: all
-# Windows open on a virtual display off the corner of your screens (see
-# DesignGallery.swift), so this runs while you work. SHOTS_VIRTUAL=0 uses your
-# real screen instead, and then only while the Mac is idle.
+# Windows open under the desktop picture on your own screen (see
+# DesignGallery.swift): invisible, nothing on your screens changes, so this runs
+# while you work. SHOTS_VIRTUAL=1 uses the old virtual display instead, only
+# while the Mac is idle: adding/removing a display blanks every monitor briefly.
 set -e
 idle() { ioreg -c IOHIDSystem | awk '/HIDIdleTime/ {print int($NF/1000000000); exit}'; }
-virtual=${SHOTS_VIRTUAL:-1}
+virtual=${SHOTS_VIRTUAL:-0}
 need=${SHOTS_IDLE:-120}
 waitForView=${SHOTS_WAIT:-3}
-if (( ! virtual )) && (( $(idle) < need )); then echo "Mac in use (idle $(idle)s < ${need}s); not taking screenshots." >&2; exit 2; fi
+if (( virtual )) && (( $(idle) < need )); then echo "Mac in use (idle $(idle)s < ${need}s); not taking screenshots." >&2; exit 2; fi
 locked=$(swift -e 'import CoreGraphics
 print((CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Int ?? 0)' 2>/dev/null)
 if [[ $locked == 1 ]]; then echo "Mac is locked; windows can't be captured until it's unlocked." >&2; exit 4; fi
@@ -27,7 +28,7 @@ for w in l where (w["kCGWindowName"] as? String) == CommandLine.arguments[1] { p
 trap 'open -g "focus://gallery-close?display=0"' EXIT
 for v in $views; do
   for mode in light dark; do
-    if (( ! virtual )) && (( $(idle) < 3 )); then echo "You're back; stopped." >&2; exit 3; fi
+    if (( virtual )) && (( $(idle) < 3 )); then echo "You're back; stopped." >&2; exit 3; fi
     open -g "focus://gallery?view=$v&dark=$([[ $mode == dark ]] && echo 1 || echo 0)&virtual=$virtual"
     sleep "$waitForView"
     id=$(winid "Gallery $v $mode")

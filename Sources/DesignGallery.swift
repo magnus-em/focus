@@ -7,10 +7,12 @@ import VirtualDisplay
 /// snapshot renderers) for `scripts/shots.sh` to screenshot.
 /// `focus://gallery-close[?display=0]`.
 ///
-/// With `virtual=1` the window goes on a display that exists only in
-/// WindowServer, placed diagonally off the corner of your real screens, so
-/// screenshots can be taken while you work. Glass renders there because it's
-/// a real display; windows behind the desktop on your own screen don't.
+/// By default the window sits on your screen one level below the desktop
+/// picture: never visible, still composited, so glass renders and
+/// `screencapture -l` reads it (checked 11/7 with a glass-over-stripes probe).
+/// `virtual=1` uses a display that exists only in WindowServer instead, but
+/// adding and removing a display reconfigures every screen and blanks the
+/// user's monitors for a moment each time (11/7), so shots.sh no longer does.
 @MainActor
 enum DesignGallery {
     private static var windows: [NSWindow] = []
@@ -26,8 +28,8 @@ enum DesignGallery {
         w.ignoresMouseEvents = true
         windows.append(w)
         guard virtual else {
+            w.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1)
             w.center()
-            // Only from scripts/shots.sh while you're away from the Mac.
             w.orderFrontRegardless()
             return
         }
