@@ -59,6 +59,7 @@ public enum YouTubeFeed {
         "#shorts", "reaction", "reacts to", "prank", "official music video", "official video", "lyric video",
         "full match", "highlights", "mukbang", "asmr", "vlog", "unboxing", "tier list", "gameplay",
         "let's play", "trailer", "podcast clip", "funny moments", "try not to laugh", "drama", "exposed",
+        "charged with", "arrested", "murder", "shooting", "deadly crash", "breaking news", "full set", "live set",
     ]
 
     static func has(_ marks: [String], _ text: String) -> Bool {
