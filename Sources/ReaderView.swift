@@ -365,22 +365,13 @@ private struct ReadingRow: View {
         } else if item.progress >= 0.97 {
             Text("Finished")
         } else if item.progress > 0.02 {
-            ProgressRing(value: item.progress).frame(width: 12, height: 12)
+            Text(item.readingMinutes.map { "\(max(1, Int((Double($0) * (1 - item.progress)).rounded()))) min left" }
+                 ?? "\(Int(item.progress * 100))% read")
+                .foregroundStyle(Color.accentColor)
                 .help("\(Int(item.progress * 100))% read")
         } else {
             Text(item.readingMinutes.map { "\($0) min · \(age)" } ?? age)
                 .help("Saved " + item.savedAt.formatted(date: .abbreviated, time: .shortened))
-        }
-    }
-}
-
-private struct ProgressRing: View {
-    let value: Double
-    var body: some View {
-        ZStack {
-            Circle().stroke(.secondary.opacity(0.3), lineWidth: 2)
-            Circle().trim(from: 0, to: value).stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .rotationEffect(.degrees(-90))
         }
     }
 }
