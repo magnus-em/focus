@@ -776,23 +776,33 @@ private struct ArticleWebView: NSViewRepresentable {
         html.contains("\\(") || html.contains("\\[") || html.contains("$$")
     }
 
-    /// KaTeX from the app bundle, rendering LaTeX as MathML (WebKit draws it natively,
-    /// so the KaTeX font files aren't needed). Pages like Karpathy's blog use MathJax,
-    /// which never runs here, so their math arrives as \( … \) source.
+    /// KaTeX from the app bundle. Pages like Karpathy's blog use MathJax, which never
+    /// runs here, so their math arrives as \( … \) source. KaTeX's HTML output with its
+    /// own fonts (inlined, since the page can't read the app bundle): WebKit's MathML
+    /// layout drew "tanh(" with the parenthesis on top of the h.
     static let mathScript: String? = {
         guard let dir = Bundle.focusResources?.url(forResource: "katex", withExtension: nil)
                 ?? Bundle.main.url(forResource: "katex", withExtension: nil),
               let katex = try? String(contentsOf: dir.appendingPathComponent("katex.min.js"), encoding: .utf8),
-              let auto = try? String(contentsOf: dir.appendingPathComponent("auto-render.min.js"), encoding: .utf8) else { return nil }
+              let auto = try? String(contentsOf: dir.appendingPathComponent("auto-render.min.js"), encoding: .utf8),
+              var css = try? String(contentsOf: dir.appendingPathComponent("katex.min.css"), encoding: .utf8) else { return nil }
+        let fonts = dir.appendingPathComponent("fonts")
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: fonts.path)) ?? [] where name.hasSuffix(".woff2") {
+            guard let data = try? Data(contentsOf: fonts.appendingPathComponent(name)) else { continue }
+            css = css.replacingOccurrences(of: "url(fonts/\(name))", with: "url(data:font/woff2;base64,\(data.base64EncodedString()))")
+        }
+        css += " .katex { font-size: 1.1em; } .katex-display { margin: 1em 0; overflow-x: auto; overflow-y: hidden; }"
+        let cssJSON = (try? JSONSerialization.data(withJSONObject: [css])).flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+        let style = "{ const st = document.createElement('style'); st.textContent = \(cssJSON)[0]; document.head.appendChild(st); }\n"
         let run = #"""
         try {
           renderMathInElement(document.getElementById('focus-body') || document.body, {
             delimiters: [{left: '$$', right: '$$', display: true}, {left: '\\[', right: '\\]', display: true}, {left: '\\(', right: '\\)', display: false}],
-            output: 'mathml', throwOnError: false, ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+            throwOnError: false, ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
           });
         } catch {}
         """#
-        return katex + "\n" + auto + "\n" + run
+        return style + katex + "\n" + auto + "\n" + run
     }()
 
     private var page: String {
@@ -880,7 +890,6 @@ private struct ArticleWebView: NSViewRepresentable {
     img, video { max-width: 100%; height: auto; border-radius: 8px; display: block; margin: 1.6em auto; }
     figure { margin: 1.8em 0; text-align: center; } figure img { margin: 0 auto; }
     img[width$="%"] { display: inline-block; margin: .4em .2%; vertical-align: top; }
-    math { font-family: "STIX Two Math", math; font-size: 1.05em; } math[display=block] { margin: 1em 0; overflow-x: auto; }
     figcaption { font: 14px/1.5 -apple-system, system-ui, sans-serif; color: var(--muted); margin: .7em auto 0; max-width: 92%; text-align: center; text-wrap: pretty; }
     blockquote { border-left: 3px solid var(--rule); margin-left: 0; padding-left: 20px; font-style: italic; color: var(--muted); }
     pre, code { font: .8em/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 6px; }
