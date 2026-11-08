@@ -122,10 +122,9 @@ actor YouTubeFeedFilter {
             }
             if batched, batch.count > 1 {
                 // In a batch the 3B model lets through about half its keeps by mistake (11/7: Clash of
-                // Clans, Flappy Bird, "birds for some reason"); alone it gets them right. A refusal or
-                // error keeps the batch's answer.
-                for (i, v) in batch.enumerated() where answers[i] == true && !YouTubeFeed.soundsEducational(v.title) {
-                    if let alone = await runModel([v], limit: 20)?.first, !alone { answers[i] = false }
+                // Clans, Flappy Bird, "birds for some reason"). A refusal or error keeps the batch's answer.
+                for (i, v) in batch.enumerated() where answers[i] == true {
+                    if let sure = await confirm(v), !sure { answers[i] = false }
                 }
             }
             for (i, v) in batch.enumerated() {
@@ -156,6 +155,17 @@ actor YouTubeFeedFilter {
             lastModelError = "timed out after \(Int(limit)) s (\(batch.count) videos)"
             return nil
         }
+    }
+
+    private func confirm(_ video: YouTubeFeed.Video) async -> Bool? {
+        guard #available(macOS 26.0, *) else { return nil }
+        let result: Result<Bool, Error>? = await Self.within(20) {
+            do { return .success(try await YouTubeFeed.confirm(video)) } catch { return .failure(error) }
+        }
+        if case .success(let sure)? = result { return sure }
+        modelFailures += 1
+        if case .failure(let error)? = result { lastModelError = String(String(describing: error).prefix(300)) + " (second look)" }
+        return nil
     }
 
     private final class Once: @unchecked Sendable {
