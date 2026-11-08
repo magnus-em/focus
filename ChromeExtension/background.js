@@ -187,6 +187,17 @@ async function setYouTubeChannel(channel, allow) {
   } catch { return { ok: false }; }
 }
 
+async function setYouTubeVideo(video, keep) {
+  try {
+    const r = await fetch(API + '/youtube/video', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: String(video.id || ''), title: String(video.title || ''), channel: String(video.channel || ''), keep }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    return { ok: r.ok };
+  } catch { return { ok: false }; }
+}
+
 async function setYouTube(value) {
   const settings = normalizeYouTube(value);
   await local.set({ youtubeFocus: settings });
@@ -778,6 +789,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return classifyVideos([], msg.page);
       case 'ytChannel':
         return setYouTubeChannel(String(msg.channel || ''), typeof msg.allow === 'boolean' ? msg.allow : null);
+      case 'ytVideo':
+        return setYouTubeVideo(msg.video || {}, typeof msg.keep === 'boolean' ? msg.keep : null);
       case 'popup': {
         const state = await refreshState(true);
         const { queue = [] } = await local.get('queue');

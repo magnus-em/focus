@@ -13,6 +13,7 @@ import Combine
 ///   POST /youtube → `{ "videos": [{ "id", "title", "channel" }], "page"? }` → `{ "verdicts": { id: { "keep", "source" } } }`
 ///     (videos still being judged are left out; `page` is the extension's report, kept in Focus/youtube/page.json)
 ///   POST /youtube/channel → `{ "channel", "allow": true | false | null }` always show / always hide / forget
+///   POST /youtube/video → `{ "id", "title", "channel", "keep": true | false | null }` show / hide this one video / forget
 ///
 /// Only browsers attach an `Origin`, and a web page can't forge one, so any
 /// request whose Origin isn't the extension is refused. Local processes are
@@ -300,6 +301,18 @@ final class BrowserBridge: ObservableObject {
             let allow = obj?["allow"] as? Bool
             Task {
                 await YouTubeFeedFilter.shared.setChannel(channel, allow: allow)
+                self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
+            }
+        case ("POST", "/youtube/video"):
+            let obj = (try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any]
+            guard let id = obj?["id"] as? String, !id.isEmpty else {
+                return respond(conn, status: "400 Bad Request", json: Data(#"{"error":"id"}"#.utf8))
+            }
+            let video = YouTubeFeed.Video(id: String(id.prefix(64)), title: String((obj?["title"] as? String ?? "").prefix(300)),
+                                          channel: String((obj?["channel"] as? String ?? "").prefix(120)))
+            let keep = obj?["keep"] as? Bool
+            Task {
+                await YouTubeFeedFilter.shared.setVideo(video, keep: keep)
                 self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
             }
         case ("POST", "/events"):

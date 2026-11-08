@@ -59,6 +59,18 @@ actor YouTubeFeedFilter {
         save()
     }
 
+    /// The user's call on one video beats their channel rules and everything else; nil asks again.
+    func setVideo(_ video: YouTubeFeed.Video, keep: Bool?) {
+        load()
+        working.remove(video.id)
+        pending.removeAll { $0.id == video.id }
+        verdicts[video.id] = keep.map {
+            Entry(verdict: .init(keep: $0, source: .you), channel: video.channel, title: video.title, v: YouTubeFeed.version, at: Date())
+        }
+        dirty = true
+        save()
+    }
+
     func note(page: Data) {
         guard var out = (try? JSONSerialization.jsonObject(with: page)) as? [String: Any] else { return }
         out["at"] = ISO8601DateFormatter().string(from: Date())
@@ -78,7 +90,9 @@ actor YouTubeFeedFilter {
         load()
         var out: [String: YouTubeFeed.Verdict] = [:]
         for v in videos.prefix(60) where out[v.id] == nil {
-            if let quick = YouTubeFeed.quick(v, rules: rules) {
+            if let mine = verdicts[v.id], mine.verdict.source == .you {
+                out[v.id] = mine.verdict
+            } else if let quick = YouTubeFeed.quick(v, rules: rules) {
                 out[v.id] = quick
             } else if let cached = verdicts[v.id], fresh(cached) {
                 out[v.id] = cached.verdict

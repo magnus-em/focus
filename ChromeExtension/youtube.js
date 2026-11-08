@@ -109,24 +109,55 @@
     return id && title ? { id, title, channel } : null;
   }
 
-  function button(el, info, keep) {
-    let b = el.querySelector(':scope > .focus-edu-btn');
-    const label = keep ? 'Hide this channel' : 'Always show this channel';
-    if (b && b.dataset.keep === String(keep)) return;
-    b?.remove();
-    b = document.createElement('button');
+  const WHY = {
+    you: 'your choice',
+    title: 'title looks like entertainment',
+    model: 'AI: not educational',
+    fallback: 'keyword guess, AI unavailable',
+  };
+
+  function action(text, label, run) {
+    const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'focus-edu-btn';
-    b.dataset.keep = String(keep);
-    b.textContent = keep ? 'Hide channel' : 'Show channel';
+    b.textContent = text;
     b.title = label;
-    b.setAttribute('aria-label', `${label}: ${info.channel}`);
+    b.setAttribute('aria-label', label);
     b.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      setChannel(info.channel, !keep);
+      run();
     };
-    el.append(b);
+    return b;
+  }
+
+  function actions(el, info, v) {
+    const key = `${v.keep}:${v.source}:${info.channel}`;
+    let box = el.querySelector(':scope > .focus-edu-actions');
+    if (box?.dataset.key === key) return;
+    box?.remove();
+    box = document.createElement('div');
+    box.className = 'focus-edu-actions';
+    box.dataset.key = key;
+    box.addEventListener('click', (e) => e.stopPropagation());
+    if (!v.keep) {
+      const why = document.createElement('span');
+      why.className = 'focus-edu-why';
+      why.textContent = `Hidden · ${WHY[v.source] || 'not educational'}`;
+      box.append(why);
+    }
+    box.append(action(v.keep ? 'Hide video' : 'Show video',
+      v.keep ? `Hide this video: ${info.title}` : `Show this video: ${info.title}`, () => setVideo(info, !v.keep)));
+    if (info.channel) {
+      box.append(action(v.keep ? 'Hide channel' : 'Show channel',
+        v.keep ? `Always hide ${info.channel}` : `Always show ${info.channel}`, () => setChannel(info.channel, !v.keep)));
+    }
+    el.append(box);
+  }
+
+  function setVideo(info, keep) {
+    send({ type: 'ytVideo', video: info, keep }).catch(() => {});
+    verdicts.set(info.id, { keep, source: 'you', channel: info.channel });
+    scan();
   }
 
   function setChannel(channel, allow) {
@@ -146,8 +177,8 @@
     const v = verdicts.get(info.id);
     el.setAttribute('data-focus-edu', stateOf(info.id));
     el.setAttribute('data-focus-edu-id', info.id);
-    if (v && info.channel) button(el, info, v.keep);
-    else el.querySelector(':scope > .focus-edu-btn')?.remove();
+    if (v) actions(el, info, v);
+    else el.querySelector(':scope > .focus-edu-actions')?.remove();
   }
 
   function scan() {
@@ -162,7 +193,9 @@
       if (where === 'watch' && el.parentElement?.closest('ytd-compact-video-renderer, yt-lockup-view-model')) continue;
       const info = tileInfo(el);
       if (!info) { pending += el.querySelector('ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer') ? 0 : 1; continue; }
-      if (el.getAttribute('data-focus-edu-id') !== info.id || el.getAttribute('data-focus-edu') !== stateOf(info.id)) apply(el, info);
+      if (el.getAttribute('data-focus-edu-id') !== info.id || el.getAttribute('data-focus-edu') !== stateOf(info.id)
+        || (verdicts.has(info.id) && !el.querySelector(':scope > .focus-edu-actions'))) apply(el, info);
+      else if (verdicts.has(info.id)) actions(el, info, verdicts.get(info.id));
       const v = verdicts.get(info.id);
       if (!v) { pending++; if (!queued.has(info.id)) { queued.set(info.id, info); added = true; } }
       else if (v.keep) shown++; else hidden++;
@@ -239,13 +272,14 @@
       host.prepend(bar);
     }
     const parts = [`${shown} educational`];
-    if (hidden) parts.push(`${hidden} hidden`);
+    if (hidden) parts.push(peek ? `${hidden} hidden shown dimmed, each says why` : `${hidden} hidden`);
     if (pending) parts.push(unreachable ? `${pending} waiting for Focus` : `checking ${pending}`);
-    const text = (unreachable ? 'Focus isn’t reachable · ' : 'Educational only · ') + parts.join(' · ');
+    const lead = unreachable ? 'Focus isn’t reachable' : peek ? 'Reviewing hidden videos' : 'Educational only';
+    const text = `${lead} · ${parts.join(' · ')}`;
     const span = bar.querySelector('span');
     if (span.textContent !== text) span.textContent = text;
     const b = bar.querySelector('button');
-    const label = peek ? 'Hide filtered' : 'Show filtered';
+    const label = peek ? 'Done reviewing' : `Review ${hidden} hidden`;
     if (b.textContent !== label) b.textContent = label;
     b.hidden = !hidden && !peek;
   }

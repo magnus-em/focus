@@ -134,26 +134,37 @@ html[data-focus-edu-busy] ytd-continuation-item-renderer {
 
 html[data-focus-edu] [data-focus-edu] { position: relative; }
 
-.focus-edu-btn {
+.focus-edu-actions {
   display: none;
   position: absolute;
   z-index: 5;
   top: 8px;
   left: 8px;
+  right: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none;
+}
+.focus-edu-actions > * {
   padding: 4px 10px;
   border: 0;
   border-radius: 999px;
-  background: rgba(15, 15, 15, 0.8);
+  background: rgba(15, 15, 15, 0.82);
   color: #fff;
   font: 500 12px/18px Roboto, Arial, sans-serif;
-  cursor: pointer;
+  pointer-events: auto;
 }
+.focus-edu-actions > button { cursor: pointer; }
+.focus-edu-actions > button:hover { background: rgba(15, 15, 15, 0.95); }
+.focus-edu-actions > .focus-edu-why { background: #b3261e; }
 
-html[data-focus-edu] [data-focus-edu]:hover > .focus-edu-btn,
-html[data-focus-edu] .focus-edu-btn:focus-visible { display: block; }
-html[data-focus-edu][data-focus-edu-peek] [data-focus-edu="hide"] { opacity: 1; }
-html[data-focus-edu][data-focus-edu-peek] [data-focus-edu="hide"] > :not(.focus-edu-btn) { opacity: 0.4; }
-html[data-focus-edu][data-focus-edu-peek] [data-focus-edu="hide"] > .focus-edu-btn { display: block; }
+html[data-focus-edu] [data-focus-edu]:hover > .focus-edu-actions,
+html[data-focus-edu] .focus-edu-actions:focus-within { display: flex; }
+
+/* Review mode: hidden videos come back dimmed, each saying why it was hidden. */
+html[data-focus-edu][data-focus-edu-peek] [data-focus-edu="hide"] > :not(.focus-edu-actions) { opacity: 0.45; }
+html[data-focus-edu][data-focus-edu-peek] [data-focus-edu="hide"]:hover > :not(.focus-edu-actions) { opacity: 1; }
+html[data-focus-edu][data-focus-edu-peek] [data-focus-edu="hide"] > .focus-edu-actions { display: flex; }
 
 #focus-edu-status {
   display: flex;
