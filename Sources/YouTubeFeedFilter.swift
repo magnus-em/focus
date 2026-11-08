@@ -107,8 +107,10 @@ actor YouTubeFeedFilter {
             let batch = Array(pending.prefix(8))
             pending.removeFirst(batch.count)
             var answers: [Bool?] = Array(repeating: nil, count: batch.count)
+            var batched = false
             if let all = await runModel(batch, limit: 90) {
                 answers = all.map { $0 }
+                batched = true
             } else if batch.count > 1 {
                 // One title can trip the model's guardrails and fail the whole batch (11/7: eight
                 // videos at once fell back to keywords), so ask about each on its own.
@@ -116,6 +118,14 @@ actor YouTubeFeedFilter {
                 for (i, v) in batch.enumerated() where misses < 3 {
                     answers[i] = await runModel([v], limit: 20)?.first
                     if answers[i] == nil { misses += 1 }
+                }
+            }
+            if batched, batch.count > 1 {
+                // In a batch the 3B model lets through about half its keeps by mistake (11/7: Clash of
+                // Clans, Flappy Bird, "birds for some reason"); alone it gets them right. A refusal or
+                // error keeps the batch's answer.
+                for (i, v) in batch.enumerated() where answers[i] == true && !YouTubeFeed.soundsEducational(v.title) {
+                    if let alone = await runModel([v], limit: 20)?.first, !alone { answers[i] = false }
                 }
             }
             for (i, v) in batch.enumerated() {

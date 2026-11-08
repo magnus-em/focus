@@ -59,6 +59,7 @@ public enum YouTubeFeed {
         "deep learning", "machine learning", "physics", "mathematics", "calculus", "linear algebra",
         "probability", "statistics", "quantum", "compiler", "operating system", "data structure",
         "cs50", "mit 6.", "cs229", "cs231n", "cs224n", "paper review", "how does", "how do", "why does",
+        "explains", "explainer", "full course", "crash course", "neural net", "from first principles", "documentary",
     ]
     static let hideMarks = [
         "#shorts", "reaction", "reacts to", "prank", "official music video", "official video", "lyric video",
@@ -81,13 +82,16 @@ public enum YouTubeFeed {
         return nil
     }
 
+    /// Titles that say outright they teach something; the app skips its second look for these.
+    public static func soundsEducational(_ title: String) -> Bool { has(keepMarks, title) }
+
     /// Used only when the on-device model can't answer.
     public static func fallback(_ video: Video) -> Verdict {
         Verdict(keep: has(keepMarks, video.title), source: .fallback)
     }
 
     /// Bump when the instructions change so cached model verdicts are asked again.
-    public static let version = 2
+    public static let version = 3
 
     static let instructions = """
     You sort a student's YouTube recommendations. The student wants videos that teach or explore science, \

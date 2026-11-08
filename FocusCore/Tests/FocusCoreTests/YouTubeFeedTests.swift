@@ -30,4 +30,11 @@ final class YouTubeFeedTests: XCTestCase {
         let p = YouTubeFeed.prompt([video("A", "c1"), video("B", "c2")])
         XCTAssertEqual(p, "v1: \"A\" by c1\nv2: \"B\" by c2")
     }
+
+    func testEducationalTitleMarks() {
+        XCTAssertTrue(YouTubeFeed.soundsEducational("Karpathy Bigram explained in 10min"))
+        XCTAssertTrue(YouTubeFeed.soundsEducational("Linear Algebra Crash Course"))
+        XCTAssertFalse(YouTubeFeed.soundsEducational("Of course I cheated"))
+        XCTAssertFalse(YouTubeFeed.soundsEducational("Vector VS Thanos"))
+    }
 }
