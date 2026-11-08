@@ -2,6 +2,14 @@
   if (globalThis.focusYouTubeLoaded) return;
   globalThis.focusYouTubeLoaded = true;
 
+  // darkreader.js shares this world and wraps sendMessage, dropping its reply (dark-pre.js keeps the
+  // real ones). After 7 PM every answer from Focus came back empty and the feed said Focus wasn't reachable.
+  globalThis.focusRuntime ??= {
+    send: chrome.runtime.sendMessage.bind(chrome.runtime),
+    listen: chrome.runtime.onMessage.addListener.bind(chrome.runtime.onMessage),
+  };
+  const send = (message) => globalThis.focusRuntime.send(message);
+
   const DEFAULT = { mode: 'focus', hideHome: true, hideRelated: true, hideShorts: true,
     hideEndScreens: true, disableAutoplay: true, hideComments: false, filter: 'always' };
   const attributes = ['hideHome', 'hideRelated', 'hideShorts', 'hideEndScreens', 'hideComments'];
@@ -123,7 +131,7 @@
 
   function setChannel(channel, allow) {
     if (!channel) return;
-    chrome.runtime.sendMessage({ type: 'ytChannel', channel, allow }).catch(() => {});
+    send({ type: 'ytChannel', channel, allow }).catch(() => {});
     for (const [id, v] of verdicts) if (v.channel === channel) verdicts.set(id, { ...v, keep: allow, source: 'you' });
     for (const el of document.querySelectorAll('[data-focus-edu-id]')) el.removeAttribute('data-focus-edu-id');
     scan();
@@ -188,7 +196,7 @@
     reportTimer = setTimeout(() => {
       reportTimer = 0;
       lastReport = text;
-      chrome.runtime.sendMessage({ type: 'ytReport', page }).catch(() => {});
+      send({ type: 'ytReport', page }).catch(() => {});
     }, 2000);
   }
 
@@ -197,7 +205,7 @@
     inFlight = true;
     const batch = [...queued.values()].slice(0, 60);
     let result = null;
-    try { result = await chrome.runtime.sendMessage({ type: 'ytClassify', videos: batch }); } catch {}
+    try { result = await send({ type: 'ytClassify', videos: batch }); } catch {}
     inFlight = false;
     unreachable = !result;
     if (result) {
@@ -273,7 +281,7 @@
     timers = [0, 100, 500, 1500, 4000].map((delay) => setTimeout(render, delay));
   }
 
-  chrome.runtime.onMessage.addListener((message) => {
+  globalThis.focusRuntime.listen((message) => {
     if (message?.type !== 'youtubeFocusChanged') return;
     settings = { ...DEFAULT, ...message.settings };
     active = !!message.active;
@@ -290,7 +298,7 @@
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) schedule(); });
 
-  chrome.runtime.sendMessage({ type: 'youtubeState' }).then((state) => {
+  send({ type: 'youtubeState' }).then((state) => {
     settings = { ...DEFAULT, ...state?.settings };
     active = !!state?.active;
     filterActive = !!state?.filter;
