@@ -50,4 +50,7 @@ new_error = '''            } catch (error) {
                 messageListeners.forEach((cb) =>'''
 assert source.count(old_error) == 1
 source = source.replace(old_error, new_error)
+old_body = 'forEach(document.body.children, (el) => {'
+assert source.count(old_body) == 1
+source = source.replace(old_body, 'forEach(document.body?.children ?? [], (el) => {')
 bundle.write_bytes(source.replace('\n', '\r\n').encode())

@@ -67,6 +67,12 @@
   let observer = null;
   let scanTimer = 0;
   let flushTimer = 0;
+  let loads = 0;
+  let lastLoad = 0;
+  let loadPath = '';
+  let lastReport = '';
+  let reportTimer = 0;
+  const WANT = { home: 12, watch: 8 };
 
   const TILE = {
     home: 'ytd-browse[page-subtype="home"] ytd-rich-item-renderer',
@@ -153,9 +159,37 @@
       if (!v) { pending++; if (!queued.has(info.id)) { queued.set(info.id, info); added = true; } }
       else if (v.keep) shown++; else hidden++;
     }
-    root.toggleAttribute('data-focus-edu-busy', queued.size > 0 || inFlight);
+    const busy = queued.size > 0 || inFlight;
+    root.toggleAttribute('data-focus-edu-busy', busy);
     status(where, shown, hidden, pending);
+    loadMore(where, shown, busy);
+    report(where, shown, hidden, pending);
     if (added) { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 120); }
+  }
+
+  // With most tiles hidden the page can't scroll, and YouTube only loads more on scroll.
+  function loadMore(where, shown, busy) {
+    const path = location.pathname + location.search;
+    if (path !== loadPath) { loadPath = path; loads = 0; }
+    if (busy || document.hidden || shown >= WANT[where] || loads >= 12 || Date.now() - lastLoad < 3000) return;
+    if (!document.querySelector('ytd-continuation-item-renderer')) return;
+    loads++;
+    lastLoad = Date.now();
+    document.dispatchEvent(new CustomEvent('focus-edu-more', { detail: where }));
+    setTimeout(scan, 3100);
+  }
+
+  function report(where, shown, hidden, pending) {
+    const page = { where, shown, hidden, pending, queued: queued.size, inFlight, loads, unreachable,
+      continuation: !!document.querySelector('ytd-continuation-item-renderer'),
+      tiles: document.querySelectorAll(TILE[where]).length };
+    const text = JSON.stringify(page);
+    if (text === lastReport || reportTimer) return;
+    reportTimer = setTimeout(() => {
+      reportTimer = 0;
+      lastReport = text;
+      chrome.runtime.sendMessage({ type: 'ytReport', page }).catch(() => {});
+    }, 2000);
   }
 
   async function flush() {

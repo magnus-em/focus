@@ -10,3 +10,5 @@ After replacing `darkreader.js` with a fresh, unmodified 4.9.133 API bundle, run
 Regenerate site fixes with `python3 ChromeExtension/vendor/update-dark-fixes.py`. Runtime uses bundled data only.
 
 Run `node --test ChromeExtension/tests/dark.test.cjs`. With Playwright available and Chrome installed, `node ChromeExtension/tests/csp-browser.cjs` checks strict CSP, separate execution contexts, helper lifecycle and resource fallback in headless Chrome.
+
+A third adaptation: shadow-root discovery at DOM ready tolerates documents without a `<body>` (Chrome's new tab page threw `Cannot read properties of null (reading 'children')`, 11/7).

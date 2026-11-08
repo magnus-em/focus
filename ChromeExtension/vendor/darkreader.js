@@ -7676,7 +7676,7 @@
         document.addEventListener("__darkreader__isDefined", handleIsDefined);
         collectUndefinedElements(document);
         addDOMReadyListener(() => {
-            forEach(document.body.children, (el) => {
+            forEach(document.body?.children ?? [], (el) => {
                 if (el.shadowRoot && !observedRoots.has(el)) {
                     subscribeForShadowRootChanges(el);
                     deepObserve(el.shadowRoot);

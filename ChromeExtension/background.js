@@ -165,11 +165,11 @@ async function syncYouTube(state, force = false) {
 // The app labels each video (its cache, the user's channel rules, then the
 // on-device model); content scripts can't reach it because the bridge only
 // accepts the extension's origin.
-async function classifyVideos(videos) {
+async function classifyVideos(videos, page) {
   try {
     const r = await fetch(API + '/youtube', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ videos: (videos || []).slice(0, 60) }),
+      body: JSON.stringify({ videos: (videos || []).slice(0, 60), page }),
       signal: AbortSignal.timeout(60_000),
     });
     if (!r.ok) return null;
@@ -774,6 +774,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return setYouTube(msg.settings || {});
       case 'ytClassify':
         return classifyVideos(msg.videos);
+      case 'ytReport':
+        return classifyVideos([], msg.page);
       case 'ytChannel':
         return setYouTubeChannel(String(msg.channel || ''), typeof msg.allow === 'boolean' ? msg.allow : null);
       case 'popup': {

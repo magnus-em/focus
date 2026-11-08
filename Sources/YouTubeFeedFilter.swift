@@ -2,12 +2,19 @@ import Foundation
 import FocusCore
 
 /// App side of `YouTubeFeed`: remembers every verdict by video id
-/// (`Focus/youtube/verdicts.json`, newest 6000) and the user's channel rules
-/// (`Focus/youtube/channels.json`), and runs the model one batch at a time.
+/// (`Focus/youtube/verdicts.json`, newest 6000, with the title so the rules can be tuned on real feeds)
+/// and the user's channel rules (`Focus/youtube/channels.json`), and runs the model one batch at a time.
+/// `Focus/youtube/page.json` holds the extension's latest page report and the last model error.
 actor YouTubeFeedFilter {
     static let shared = YouTubeFeedFilter()
 
-    private struct Entry: Codable { var verdict: YouTubeFeed.Verdict; var channel: String; var at: Date }
+    private struct Entry: Codable {
+        var verdict: YouTubeFeed.Verdict
+        var channel: String
+        var title: String?
+        var v: Int?
+        var at: Date
+    }
 
     private let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Focus/youtube", isDirectory: true)
@@ -18,6 +25,8 @@ actor YouTubeFeedFilter {
     private var working: Set<String> = []
     private var pending: [YouTubeFeed.Video] = []
     private var draining = false
+    private var lastModelError: String?
+    private var modelFailures = 0
 
     private var verdictsURL: URL { dir.appendingPathComponent("verdicts.json") }
     private var rulesURL: URL { dir.appendingPathComponent("channels.json") }
@@ -50,6 +59,18 @@ actor YouTubeFeedFilter {
         save()
     }
 
+    func note(page: Data) {
+        guard var out = (try? JSONSerialization.jsonObject(with: page)) as? [String: Any] else { return }
+        out["at"] = ISO8601DateFormatter().string(from: Date())
+        out["modelQueue"] = pending.count
+        out["modelFailures"] = modelFailures
+        if let lastModelError { out["lastModelError"] = lastModelError }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let d = try? JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys]) {
+            try? d.write(to: dir.appendingPathComponent("page.json"), options: .atomic)
+        }
+    }
+
     /// Answers at once from rules and the cache; videos it doesn't know yet go to the model in the
     /// background and are missing from the reply, so the extension asks again. The model can take
     /// ~40 s to wake up (11/7), longer than the extension waits.
@@ -59,8 +80,7 @@ actor YouTubeFeedFilter {
         for v in videos.prefix(60) where out[v.id] == nil {
             if let quick = YouTubeFeed.quick(v, rules: rules) {
                 out[v.id] = quick
-            } else if let cached = verdicts[v.id],
-                      cached.verdict.source != .fallback || Date().timeIntervalSince(cached.at) < 3600 {
+            } else if let cached = verdicts[v.id], fresh(cached) {
                 out[v.id] = cached.verdict
             } else if !working.contains(v.id), pending.count < 300 {
                 working.insert(v.id)
@@ -74,14 +94,33 @@ actor YouTubeFeedFilter {
         return out
     }
 
+    private func fresh(_ e: Entry) -> Bool {
+        switch e.verdict.source {
+        case .model: e.v == YouTubeFeed.version
+        case .fallback: Date().timeIntervalSince(e.at) < 3600
+        default: false
+        }
+    }
+
     private func drain() async {
         while !pending.isEmpty {
             let batch = Array(pending.prefix(8))
             pending.removeFirst(batch.count)
-            let answers = await runModel(batch)
+            var answers: [Bool?] = Array(repeating: nil, count: batch.count)
+            if let all = await runModel(batch, limit: 90) {
+                answers = all.map { $0 }
+            } else if batch.count > 1 {
+                // One title can trip the model's guardrails and fail the whole batch (11/7: eight
+                // videos at once fell back to keywords), so ask about each on its own.
+                var misses = 0
+                for (i, v) in batch.enumerated() where misses < 3 {
+                    answers[i] = await runModel([v], limit: 20)?.first
+                    if answers[i] == nil { misses += 1 }
+                }
+            }
             for (i, v) in batch.enumerated() {
-                let verdict = answers.map { YouTubeFeed.Verdict(keep: $0[i], source: .model) } ?? YouTubeFeed.fallback(v)
-                verdicts[v.id] = Entry(verdict: verdict, channel: v.channel, at: Date())
+                let verdict = answers[i].map { YouTubeFeed.Verdict(keep: $0, source: .model) } ?? YouTubeFeed.fallback(v)
+                verdicts[v.id] = Entry(verdict: verdict, channel: v.channel, title: v.title, v: YouTubeFeed.version, at: Date())
                 working.remove(v.id)
             }
             dirty = true
@@ -90,9 +129,23 @@ actor YouTubeFeedFilter {
         draining = false
     }
 
-    private func runModel(_ batch: [YouTubeFeed.Video]) async -> [Bool]? {
+    private func runModel(_ batch: [YouTubeFeed.Video], limit: Double) async -> [Bool]? {
         guard #available(macOS 26.0, *) else { return nil }
-        return await Self.within(90) { await YouTubeFeed.classify(batch) }
+        let result: Result<[Bool], Error>? = await Self.within(limit) {
+            do { return .success(try await YouTubeFeed.classify(batch)) } catch { return .failure(error) }
+        }
+        switch result {
+        case .success(let answers)?:
+            return answers
+        case .failure(let error)?:
+            modelFailures += 1
+            lastModelError = String(String(describing: error).prefix(300)) + " (\(batch.count) videos)"
+            return nil
+        case nil:
+            modelFailures += 1
+            lastModelError = "timed out after \(Int(limit)) s (\(batch.count) videos)"
+            return nil
+        }
     }
 
     private final class Once: @unchecked Sendable {
@@ -101,7 +154,7 @@ actor YouTubeFeedFilter {
         func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
     }
 
-    private static func within<T: Sendable>(_ seconds: Double, _ work: @escaping @Sendable () async -> T?) async -> T? {
+    private static func within<T: Sendable>(_ seconds: Double, _ work: @escaping @Sendable () async -> T) async -> T? {
         let once = Once()
         return await withCheckedContinuation { c in
             let task = Task { let r = await work(); if once.claim() { c.resume(returning: r) } }

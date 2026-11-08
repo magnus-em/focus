@@ -10,7 +10,8 @@ import Combine
 ///   POST /tab     → `{ "url", "title" }` the focused tab, for the screen watcher
 ///   POST /dark    → `DarkPages` changed from the extension's popup
 ///   POST /reader  → `{ "url", "title", "author", "html", "source" }` save a page to Focus's reading list
-///   POST /youtube → `{ "videos": [{ "id", "title", "channel" }] }` → `{ "verdicts": { id: { "keep", "source" } } }`
+///   POST /youtube → `{ "videos": [{ "id", "title", "channel" }], "page"? }` → `{ "verdicts": { id: { "keep", "source" } } }`
+///     (videos still being judged are left out; `page` is the extension's report, kept in Focus/youtube/page.json)
 ///   POST /youtube/channel → `{ "channel", "allow": true | false | null }` always show / always hide / forget
 ///
 /// Only browsers attach an `Origin`, and a web page can't forge one, so any
@@ -283,7 +284,9 @@ final class BrowserBridge: ObservableObject {
                 return YouTubeFeed.Video(id: String(id.prefix(64)), title: String(title.prefix(300)),
                                          channel: String((v["channel"] as? String ?? "").prefix(120)))
             }
+            let page = (obj?["page"] as? [String: Any]).flatMap { try? JSONSerialization.data(withJSONObject: $0) }
             Task {
+                if let page { await YouTubeFeedFilter.shared.note(page: page) }
                 let verdicts = await YouTubeFeedFilter.shared.classify(videos)
                 let out = verdicts.mapValues { ["keep": $0.keep, "source": $0.source.rawValue] as [String: Any] }
                 let body = try? JSONSerialization.data(withJSONObject: ["verdicts": out])
