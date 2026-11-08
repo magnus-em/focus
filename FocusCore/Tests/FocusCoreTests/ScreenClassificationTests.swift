@@ -73,6 +73,16 @@ final class ScreenClassificationPolicyTests: XCTestCase {
             text: "words = open('names.txt', 'r').read().splitlines()\nchars = ['<S>'] + list(word) + ['<E>']"))
         XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "app.py",
             text: "user = User(name)\nnode.grad = 'A'\nwidget.backward()"))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "language.ipynb — ml",
+            text: "Jupyter Notebook\n1345 2480 97\nCount\nNext character\ndef generate():"))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "Extract value from scalar tensor",
+            text: "explaining what Keepdim is, broadcasting the tensors, like the sort of like rundown on Torch, PyTorch here."))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "ChatGPT",
+            text: "You built a character bigram model. Given the current character, what are the probabilities of the next character?"))
+        XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "hw3.ipynb — cpsc3231",
+            text: "import numpy as np\nnext character in the buffer"))
+        XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "Olympic torch relay route",
+            text: "The torch passes through 12 cities."))
     }
 
     func testVideoSidebarDoesNotMakeAI() {

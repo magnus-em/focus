@@ -475,6 +475,16 @@ public enum ScreenClassificationPolicy {
         // makemore's bigram counts: names.txt split into <S>/<E>-padded character pairs.
         let bigrams = body.contains("names.txt") && (body.contains("<s>") || body.contains("<e>") || containsWordBeginning("bigram", in: body))
         if valueGraph || bigrams { return true }
+        // 11/7: the same bigram model with "." tokens (a count heatmap, names.txt only in the sidebar) and a
+        // ChatGPT chat on keepdim/broadcasting for it were SWE/Math for 46 min while AI ran; seven cards, none taken.
+        let notebookInMLWorkspace = title.range(of: #"\.ipynb\b.*[—–-] ?(?:ml|dl|machine[- ]learning|deep[- ]learning)\b"#,
+                                                options: .regularExpression) != nil
+        let characterModel = ["bigram model", "bigram language model", "character-level language", "character level language"]
+            .contains(where: body.contains) || body.contains("next character") && body.contains("probabilit")
+        let torch = codeWords.contains("torch") || codeWords.contains("pytorch")
+        let tensorWork = ["keepdim", "broadcasting", "multinomial", "one_hot", "logits", "tensor", "names.txt"]
+            .contains { body.contains($0) || title.contains($0) }
+        if notebookInMLWorkspace || characterModel || torch && tensorWork { return true }
         let activation = ["tanh", "relu", "sigmoid", "softmax", "logits"].contains(where: codeWords.contains)
         if autograd && (activation || networkClass > 0) || networkClass >= 2 { return true }
         let hasStudyEvidence = study.contains { containsWordBeginning($0, in: title + " " + body) }
