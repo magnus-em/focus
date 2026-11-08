@@ -155,6 +155,7 @@ html[data-focus-edu] [data-focus-edu] { position: relative; }
   pointer-events: auto;
 }
 .focus-edu-actions > button { cursor: pointer; }
+html[data-focus-edu="watch"] .focus-edu-actions { right: auto; max-width: 160px; }
 .focus-edu-actions > button:hover { background: rgba(15, 15, 15, 0.95); }
 .focus-edu-actions > .focus-edu-why { background: #b3261e; }
 
