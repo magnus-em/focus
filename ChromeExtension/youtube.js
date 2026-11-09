@@ -257,11 +257,13 @@
   function status(where, shown = 0, hidden = 0, pending = 0) {
     let bar = document.getElementById('focus-edu-status');
     if (!where) { bar?.remove(); return; }
-    const host = where === 'home'
-      ? document.querySelector('ytd-browse[page-subtype="home"] ytd-rich-grid-renderer')
-      : document.querySelector('#related');
-    if (!host) return;
-    if (!bar || bar.parentElement !== host) {
+    // On Home the bar goes right above the videos: the top of the grid sits under YouTube's sticky
+    // topic chips when signed in, which hid it (11/8).
+    const anchor = where === 'home'
+      ? document.querySelector('ytd-browse[page-subtype="home"] ytd-rich-grid-renderer > #contents')
+      : [...(document.querySelector('#related')?.children || [])].find((c) => c.id !== 'focus-edu-status');
+    if (!anchor) return;
+    if (!bar || bar.nextElementSibling !== anchor) {
       bar?.remove();
       bar = document.createElement('div');
       bar.id = 'focus-edu-status';
@@ -270,7 +272,7 @@
       toggle.type = 'button';
       toggle.onclick = () => { peek = !peek; scan(); };
       bar.append(document.createElement('span'), toggle);
-      host.prepend(bar);
+      anchor.before(bar);
     }
     const parts = [`${shown} educational`];
     if (hidden) parts.push(peek ? `${hidden} hidden shown dimmed, each says why` : `${hidden} hidden`);
