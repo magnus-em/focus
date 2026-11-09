@@ -115,7 +115,7 @@ struct DayCalendarPage: View {
     // MARK: Top
 
     private var facts: some View {
-        HStack(alignment: .top, spacing: 24) {
+        HStack(alignment: .top, spacing: 20) {
             fact("Focus time", durationText(minutes: focusMinutes), goalLine,
                  color: focusMinutes >= goalHours * 60 ? .good : .primary)
             if let c = model.story?.courses.first {
@@ -145,7 +145,7 @@ struct DayCalendarPage: View {
                             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    .frame(maxWidth: 210, alignment: .leading)
+                    .frame(maxWidth: 200, alignment: .leading)
                 }
             }
         }
@@ -170,7 +170,7 @@ struct DayCalendarPage: View {
             Text(caption).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: 200, alignment: .leading)
+        .frame(maxWidth: 190, alignment: .leading)
     }
 
     /// The last two weeks of focus, one bar a day: the way back to "last Wednesday".
@@ -179,8 +179,8 @@ struct DayCalendarPage: View {
         let top = max(goal, strip.map(\.minutes).max() ?? 0, 60)
         let barHeight: CGFloat = 40
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Focus, last 14 days · the line is your \(goalHours.formatted())h goal")
-                .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+            Text("Focus, last 14 days").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                .help("The line on each bar is your \(goalHours.formatted())h goal; green bars met it")
             HStack(alignment: .bottom, spacing: 2) {
                 ForEach(strip) { d in
                     let selected = calendar.isDate(d.date, inSameDayAs: day)
@@ -200,7 +200,7 @@ struct DayCalendarPage: View {
                             Text(d.date.formatted(.dateTime.day()))
                                 .font(.system(size: 11)).monospacedDigit().foregroundStyle(Color.secondaryText)
                         }
-                        .frame(width: 22).padding(.vertical, 4)
+                        .frame(width: 20).padding(.vertical, 4)
                         .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(selected ? Color.primary.opacity(0.09) : .clear))
                         .contentShape(Rectangle())
@@ -552,6 +552,7 @@ struct DayCalendarPage: View {
         let h = max(y(b) - y(a) - 2, 2)
         let color = categoryColor(t.label)
         let selected = selection == .block(t)
+        let flags = fixes.filter { !isUntracked($0) && $0.end > t.start && $0.start < t.end }
         let budget = h >= 40 ? max(1, Int((h - 28) / 16)) : 0
         let notes = budget > 0 ? seen(t.start, t.end, title: t.label).prefix(6).map { DayStory.twelveHour($0.text) }.joined(separator: "\n") : ""
         return ZStack(alignment: .topLeading) {
@@ -562,9 +563,11 @@ struct DayCalendarPage: View {
                     Text(t.label).font(.system(size: 11, weight: .semibold))
                     Text(durationText(minutes: t.end.timeIntervalSince(t.start) / 60))
                         .font(.system(size: 11)).monospacedDigit().foregroundStyle(Color.secondaryText)
+                    Spacer(minLength: 8)
+                    flagBadge(flags)
                 }
                 .lineLimit(1)
-                .padding(.leading, 10)
+                .padding(.leading, 10).padding(.trailing, 8)
                 .frame(maxHeight: .infinity, alignment: .leading)
             } else if h >= 22 {
                 VStack(alignment: .leading, spacing: 2) {
@@ -573,6 +576,8 @@ struct DayCalendarPage: View {
                         Text("\(clock(t.start)) – \(t.running ? "now" : clock(t.end)) · \(durationText(minutes: t.end.timeIntervalSince(t.start) / 60))")
                             .font(.system(size: 12)).monospacedDigit().foregroundStyle(Color.secondaryText)
                             .lineLimit(1)
+                        Spacer(minLength: 8)
+                        flagBadge(flags)
                     }
                     if !notes.isEmpty {
                         Text(notes).font(.system(size: 12)).foregroundStyle(Color.primary.opacity(0.8))
@@ -620,28 +625,32 @@ struct DayCalendarPage: View {
         .opacity(a < b ? 1 : 0)
     }
 
-    /// A stretch to check: tinted across the log, a bar at its edge and what disagrees.
+    /// What a block's flags say, on its title line where nothing else is.
+    @ViewBuilder
+    private func flagBadge(_ flags: [DayStory.Fix]) -> some View {
+        if let f = flags.first {
+            Label(flags.count > 1 ? "\(flags.count) to check" : checkText(f), systemImage: "exclamationmark.circle.fill")
+                .font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.attention)
+                .lineLimit(1)
+        }
+    }
+
+    private func checkText(_ f: DayStory.Fix) -> String {
+        switch f.kind {
+        case .calendar(let event): return "Check: \(event) on your calendar"
+        case .screenDiffers(let seen): return "Check: the screen showed \(seen) \(clock(f.start))–\(clock(f.end))"
+        case .untracked: return "Check: nothing logged"
+        }
+    }
+
+    /// A stretch to check: tinted across the log with a bar at its edge.
     private func fixMarker(_ f: DayStory.Fix, width: CGFloat) -> some View {
         let r = visibleRange
         let a = max(f.start, r.start), b = min(f.end, r.end)
         let h = max(y(b) - y(a), 6)
-        let label: String
-        switch f.kind {
-        case .calendar(let event): label = "Check: \(event) on your calendar"
-        case .screenDiffers(let seen): label = "Check: the screen showed \(seen)"
-        case .untracked: label = "Check: nothing logged"
-        }
         return ZStack(alignment: .topTrailing) {
             Rectangle().fill(Color.attention.opacity(0.12))
             Rectangle().fill(Color.attention).frame(width: 3)
-            if h >= 20 {
-                Label(label, systemImage: "exclamationmark.circle.fill")
-                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.attention)
-                    .lineLimit(1)
-                    .padding(.horizontal, 8).padding(.vertical, 2)
-                    .background(Capsule().fill(Color(nsColor: .windowBackgroundColor).opacity(0.92)))
-                    .padding(.top, 3).padding(.trailing, 8)
-            }
         }
         .frame(width: width - 4, height: h)
         .offset(y: y(a))

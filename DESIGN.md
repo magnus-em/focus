@@ -25,6 +25,18 @@ older charts collapsed. Review and Trends are no longer tabs; the popover
 lost its Stats tab. Mocks and the three directions:
 https://claude.ai/artifact/TUGjQvhE5CH8LJ4oUzNPSH
 
+## Day page as a calendar (2026-11-09)
+
+The Day page defaults to **Calendar** (direction A of
+https://claude.ai/artifact/CM5d99dwu1i7WAb6hQc3CD); **Classic** (the day story
+above) stays one click away in the toolbar for comparison. What shows when:
+the numbers and the 14-day strip first; on a light past day, why, next to
+them; then the day itself, where it is fixed in place (drag a stretch, drag
+an edge, click a block, Review). Nothing needed to fix the log sits in a
+dropdown; only raw screen detail is collapsed, and its whole row opens it.
+Amber marks what to check, on the calendar where it happened. Undo floats
+with the timer bar so it's in reach wherever the change was made.
+
 ## Principles
 
 1. **One hero per surface.** Popover: what's running and for how long.
