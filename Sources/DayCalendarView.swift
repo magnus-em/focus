@@ -87,7 +87,6 @@ struct DayCalendarPage: View {
                     dayStrip
                 }
             }
-            if let why, why.light { whyCard(why) }
             ViewThatFits(in: .horizontal) {
                 HStack(alignment: .top, spacing: 28) {
                     mainColumn.frame(minWidth: 520, maxWidth: .infinity, alignment: .leading)
@@ -135,8 +134,8 @@ struct DayCalendarPage: View {
                                     .foregroundStyle(Color.attention)
                                 Text("Review").font(.system(size: 12, weight: .semibold))
                                     .padding(.horizontal, 12).frame(height: 28)
-                                    .foregroundStyle(Color(nsColor: .windowBackgroundColor))
-                                    .background(Capsule().fill(Color.primary))
+                                    .foregroundStyle(Color.attention)
+                                    .background(Capsule().fill(Color.attention.opacity(0.15)))
                             }
                             .contentShape(Rectangle())
                         }
@@ -159,10 +158,9 @@ struct DayCalendarPage: View {
     }
 
     private func studiedLine(_ c: DayStory.Course) -> String {
-        var parts: [String] = []
-        if let t = c.topics.first { parts.append(t) }
-        if let p = c.practiceShare, c.observations >= 5 { parts.append("\(Int((p * 100).rounded()))% hands-on") }
-        return parts.isEmpty ? "Seen on your screen" : parts.joined(separator: " · ")
+        var line = "On your screen" + (c.topics.first.map { ": \($0)" } ?? "")
+        if let p = c.practiceShare, c.observations >= 5 { line += " · \(Int((p * 100).rounded()))% coding or solving" }
+        return line
     }
 
     private func fact(_ label: String, _ value: String, _ caption: String, color: Color) -> some View {
@@ -181,7 +179,8 @@ struct DayCalendarPage: View {
         let top = max(goal, strip.map(\.minutes).max() ?? 0, 60)
         let barHeight: CGFloat = 40
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Focus, last 14 days").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+            Text("Focus, last 14 days · the line is your \(goalHours.formatted())h goal")
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
             HStack(alignment: .bottom, spacing: 2) {
                 ForEach(strip) { d in
                     let selected = calendar.isDate(d.date, inSameDayAs: day)
@@ -219,10 +218,14 @@ struct DayCalendarPage: View {
     private func whyCard(_ why: DayWhy.Report) -> some View {
         let title = why.focusMinutes < 1 ? "Why no focus" : "Why only \(durationText(minutes: why.focusMinutes)) of focus"
         let subtitle = why.usualMinutes.map {
-            "Compared with the \(why.comparedDays) tracked days before it, when your median was \(durationText(minutes: $0)). From your timer and screen."
-        } ?? "Too few tracked days before it to compare, so this is where the time went."
+            "Against your median of \(durationText(minutes: $0)) over the \(why.comparedDays) tracked days before it"
+        } ?? "Too few tracked days before it to compare, so this is where the time went"
         return VStack(alignment: .leading, spacing: 12) {
-            SectionTitle(title, subtitle: subtitle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 14, weight: .semibold))
+                Text(subtitle).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if why.reasons.isEmpty {
                 Text("Nothing in your log stands out against your usual days.")
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
@@ -234,6 +237,7 @@ struct DayCalendarPage: View {
                     Button { show(r) } label: { reasonRow(r) }
                         .buttonStyle(.plain)
                         .help("Mark it on the calendar")
+                        .accessibilityHint("Marks it on the calendar")
                 }
             }
         }
@@ -253,13 +257,16 @@ struct DayCalendarPage: View {
                     Text(d).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if !r.ranges.isEmpty {
+                    Label(highlight?.id == r.id ? "Marked on the calendar" : "Show on the calendar",
+                          systemImage: highlight?.id == r.id ? "checkmark" : "arrow.left")
+                        .font(.system(size: 11, weight: .medium)).foregroundStyle(Color.primary.opacity(0.75))
+                        .padding(.top, 2)
+                }
             }
-            Spacer(minLength: 8)
-            if !r.ranges.isEmpty {
-                Text(highlight?.id == r.id ? "Shown below" : "Show")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.accentColor)
-            }
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
     }
@@ -291,6 +298,7 @@ struct DayCalendarPage: View {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionTitle("Fix by typing", subtitle: "“9:12 to 9:40 was leisure”, or drag over any stretch of the calendar below")
                     fixByTyping
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.15)))
                 }
             }
             VStack(alignment: .leading, spacing: 10) {
@@ -411,6 +419,11 @@ struct DayCalendarPage: View {
             if let l = merged.last, x.start <= l.1 { merged[merged.count - 1].1 = max(l.1, x.end) } else { merged.append((x.start, x.end)) }
         }
         var out: [(Date, Date)] = []
+        // The screen saw you before anything was logged: that start of the day is unlogged too.
+        if let seen = model.lanes.screen.filter({ $0.category != nil && $0.end > dayStart }).map({ max($0.start, dayStart) }).min(),
+           (merged.first?.0 ?? limit).timeIntervalSince(seen) >= 600 {
+            out.append((seen, merged.first?.0 ?? limit))
+        }
         for (a, b) in zip(merged, merged.dropFirst()) where b.0.timeIntervalSince(a.1) >= 300 { out.append((a.1, b.0)) }
         if isToday, let last = merged.last, !t.contains(where: \.running), limit.timeIntervalSince(last.1) >= 300 {
             out.append((last.1, limit))
@@ -461,6 +474,7 @@ struct DayCalendarPage: View {
             ForEach(hours, id: \.self) { h in
                 Text(hourText(h))
                     .font(.system(size: 11)).monospacedDigit().foregroundStyle(Color.secondaryText)
+                    .opacity(isToday && abs(y(h) - y(Date())) < 14 ? 0 : 1)
                     .frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 8)
                     .offset(y: -7)
                     .frame(height: Self.hourHeight, alignment: .top)
@@ -538,7 +552,8 @@ struct DayCalendarPage: View {
         let h = max(y(b) - y(a) - 2, 2)
         let color = categoryColor(t.label)
         let selected = selection == .block(t)
-        let lines = h >= 40 ? seen(t.start, t.end, title: t.label).prefix(max(1, Int((h - 26) / 32))).map(\.text) : []
+        let budget = h >= 40 ? max(1, Int((h - 28) / 16)) : 0
+        let notes = budget > 0 ? seen(t.start, t.end, title: t.label).prefix(6).map { DayStory.twelveHour($0.text) }.joined(separator: "\n") : ""
         return ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6, style: .continuous).fill(color.opacity(0.18))
             Rectangle().fill(color).frame(width: 3)
@@ -559,9 +574,9 @@ struct DayCalendarPage: View {
                             .font(.system(size: 12)).monospacedDigit().foregroundStyle(Color.secondaryText)
                             .lineLimit(1)
                     }
-                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                        Text(DayStory.twelveHour(line)).font(.system(size: 12)).foregroundStyle(Color.primary.opacity(0.8))
-                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    if !notes.isEmpty {
+                        Text(notes).font(.system(size: 12)).foregroundStyle(Color.primary.opacity(0.8))
+                            .lineLimit(budget)
                     }
                 }
                 .padding(.leading, 10).padding(.trailing, 8).padding(.top, 4)
@@ -605,18 +620,31 @@ struct DayCalendarPage: View {
         .opacity(a < b ? 1 : 0)
     }
 
+    /// A stretch to check: tinted across the log, a bar at its edge and what disagrees.
     private func fixMarker(_ f: DayStory.Fix, width: CGFloat) -> some View {
         let r = visibleRange
         let a = max(f.start, r.start), b = min(f.end, r.end)
-        return ZStack(alignment: .top) {
-            Capsule().fill(Color.attention).frame(width: 4)
-            Image(systemName: "exclamationmark.circle.fill").font(.system(size: 12))
-                .foregroundStyle(Color.attention)
-                .background(Circle().fill(Color(nsColor: .windowBackgroundColor)))
-                .offset(y: -6)
+        let h = max(y(b) - y(a), 6)
+        let label: String
+        switch f.kind {
+        case .calendar(let event): label = "Check: \(event) on your calendar"
+        case .screenDiffers(let seen): label = "Check: the screen showed \(seen)"
+        case .untracked: label = "Check: nothing logged"
         }
-        .frame(width: 14, height: max(y(b) - y(a), 6))
-        .offset(x: width - 18, y: y(a))
+        return ZStack(alignment: .topTrailing) {
+            Rectangle().fill(Color.attention.opacity(0.12))
+            Rectangle().fill(Color.attention).frame(width: 3)
+            if h >= 20 {
+                Label(label, systemImage: "exclamationmark.circle.fill")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Color.attention)
+                    .lineLimit(1)
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(Capsule().fill(Color(nsColor: .windowBackgroundColor).opacity(0.92)))
+                    .padding(.top, 3).padding(.trailing, 8)
+            }
+        }
+        .frame(width: width - 4, height: h)
+        .offset(y: y(a))
         .opacity(b > a ? 1 : 0)
         .allowsHitTesting(false)
     }
@@ -681,7 +709,8 @@ struct DayCalendarPage: View {
                 let a = max(e.start, r.start), b = min(e.end, r.end)
                 if b > a {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(e.title).font(.system(size: 12, weight: .medium)).lineLimit(2)
+                        Text(e.title).font(.system(size: 12, weight: .medium))
+                            .lineLimit(max(1, Int((y(b) - y(a) - 26) / 15)))
                         if y(b) - y(a) >= 40 {
                             Text("\(clock(e.start)) – \(clock(e.end))").font(.system(size: 11)).monospacedDigit()
                                 .foregroundStyle(Color.secondaryText)
@@ -730,8 +759,8 @@ struct DayCalendarPage: View {
         for t in visibleTracked where !t.running {
             let top = y(max(t.start, r.start)), bottom = y(min(t.end, r.end))
             guard bottom - top >= 10 else { continue }
-            if t.start >= r.start, abs(py - top) <= 5 { hits.append((t, true, top)) }
-            if t.end <= min(r.end, limit), abs(py - bottom) <= 5 { hits.append((t, false, bottom)) }
+            if t.start >= r.start, abs(py - top) <= 6 { hits.append((t, true, top)) }
+            if t.end <= min(r.end, limit), abs(py - bottom) <= 6 { hits.append((t, false, bottom)) }
         }
         let inside = hits.filter { $0.top ? py >= $0.edge : py <= $0.edge }
         return (inside.isEmpty ? hits : inside).min { abs(py - $0.edge) < abs(py - $1.edge) }.map { ($0.block, $0.top) }
@@ -1070,11 +1099,16 @@ struct DayCalendarPage: View {
 
     private var side: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if let why, why.light { whyCard(why) }
             if let story = model.story, let headline = story.headline {
                 card {
-                    Text(story.headlineAsOf.map { "Focus's summary · written \(clock($0))" } ?? "Focus's summary")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
-                    Text(DayStory.twelveHour(headline)).font(.system(size: 14))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Focus's summary").font(.system(size: 14, weight: .semibold))
+                        Text(story.headlineAsOf.map { "Written at \(clock($0)) from your timer and screen" }
+                             ?? "From your timer and screen")
+                            .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    }
+                    Text(DayStory.twelveHour(headline)).font(.system(size: 13))
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 }
             }
@@ -1160,7 +1194,7 @@ struct DayCalendarPage: View {
                 Text("Where you struggled").font(.system(size: 12, weight: .semibold)).padding(.top, 2)
                 ForEach(c.shaky.prefix(3), id: \.self) { s in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("•").foregroundStyle(Color.attention)
+                        Text("•").foregroundStyle(Color.secondaryText)
                         Text(s).fixedSize(horizontal: false, vertical: true)
                     }
                     .font(.system(size: 12))

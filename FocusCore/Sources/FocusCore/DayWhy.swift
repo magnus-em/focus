@@ -86,6 +86,9 @@ public enum DayWhy {
             let top = topPlaces(windows, in: ranges)
             return top.isEmpty ? nil : top.map { "\($0.name) \(durationText(minutes: $0.minutes))" }.joined(separator: ", ")
         }
+        func sitesLine(_ ranges: [DateInterval]) -> String? {
+            places(ranges).map { "Apps and sites: \($0)." }
+        }
 
         if enough {
             if let first = today.firstFocus, let usual = median(history.compactMap(\.firstFocus)), first - usual >= 90 {
@@ -100,8 +103,14 @@ public enum DayWhy {
             }
             let usualSleep = median(history.map(\.sleep)) ?? 0
             if usualSleep > 0, today.sleep - usualSleep >= 90 {
-                reasons.append(Reason(kind: .sleep, title: "Slept \(durationText(minutes: today.sleep))",
-                                      detail: "Usually \(durationText(minutes: usualSleep)).",
+                // Counted from 6 PM the evening before, so it isn't the after-midnight Sleep in the day's totals.
+                let afterMidnight = today.byLabel["Sleep"] ?? 0
+                var detail = "Usually \(durationText(minutes: usualSleep))."
+                if today.sleep - afterMidnight >= 30 {
+                    detail += " \(durationText(minutes: afterMidnight)) of it after midnight."
+                }
+                reasons.append(Reason(kind: .sleep, title: "Slept \(durationText(minutes: today.sleep)) the night before",
+                                      detail: detail,
                                       minutes: today.sleep - usualSleep, category: "Sleep", ranges: today.sleepRanges))
             }
         }
@@ -117,7 +126,7 @@ public enum DayWhy {
             guard usual == nil ? minutes >= 60 : extra >= 45 else { continue }
             var detail = usual.map { $0 < 5 ? "Usually almost none." : "About \(durationText(minutes: $0)) on an average day." } ?? ""
             if let line = screenLine(ranges, label: label) { detail += (detail.isEmpty ? "" : " ") + line }
-            if let seen = places(ranges) { detail += (detail.isEmpty ? "" : " ") + "On screen: \(seen)." }
+            if let sites = sitesLine(ranges) { detail += (detail.isEmpty ? "" : " ") + sites }
             reasons.append(Reason(kind: .category, title: "\(label == "Break" ? "Breaks" : label): \(durationText(minutes: minutes))",
                                   detail: detail.isEmpty ? nil : detail, minutes: extra, category: label, ranges: ranges))
         }
@@ -133,7 +142,7 @@ public enum DayWhy {
                 detail += (detail.isEmpty ? "" : " ") + "You were away from your Mac for most of it."
             } else {
                 if let line = screenLine(today.gaps, label: nil) { detail += (detail.isEmpty ? "" : " ") + line }
-                if let seen = places(today.gaps) { detail += (detail.isEmpty ? "" : " ") + "On screen: \(seen)." }
+                if let sites = sitesLine(today.gaps) { detail += (detail.isEmpty ? "" : " ") + sites }
             }
             reasons.append(Reason(kind: .untracked, title: "Nothing logged for \(durationText(minutes: today.untracked))",
                                   detail: detail.isEmpty ? nil : detail, minutes: today.untracked - usualGap,
@@ -164,7 +173,7 @@ public enum DayWhy {
             let ranges = drift.values.flatMap(\.ranges)
             reasons.append(Reason(kind: .drift,
                                   title: "During focus, the screen showed \(top.key) for \(durationText(minutes: top.value.minutes))",
-                                  detail: places(ranges).map { "On screen: \($0)." },
+                                  detail: sitesLine(ranges),
                                   minutes: driftMinutes, category: top.key, ranges: ranges))
         }
 

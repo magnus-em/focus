@@ -44,11 +44,12 @@ final class DayWhyTests: XCTestCase {
         XCTAssertEqual(r.comparedDays, 10)
         let leisure = r.reasons.first { $0.kind == .category && $0.category == "Leisure" }
         XCTAssertEqual(leisure?.title, "Leisure: 4h")
-        XCTAssertEqual(leisure?.detail, "About 3h on an average day. On screen: YouTube 2h, X 1h.")
+        XCTAssertEqual(leisure?.detail, "About 3h on an average day. Apps and sites: YouTube 2h, X 1h.")
         let late = r.reasons.first { $0.kind == .lateStart }
         XCTAssertEqual(late?.title, "Focus started at 4 PM")
         XCTAssertEqual(late?.detail, "Usually around 9 AM. You woke at 11:30 AM, usually 8 AM.")
-        XCTAssertEqual(r.reasons.first { $0.kind == .sleep }?.title, "Slept 12h 30m")
+        XCTAssertEqual(r.reasons.first { $0.kind == .sleep }?.title, "Slept 12h 30m the night before")
+        XCTAssertEqual(r.reasons.first { $0.kind == .sleep }?.detail, "Usually 9h. 11h 30m of it after midnight.")
         XCTAssertEqual(r.reasons.map(\.kind), [.lateStart, .sleep, .category])
     }
 

@@ -627,7 +627,16 @@ public enum DayStory {
     }
 
     static func codes(_ text: String, prefixes: [String: String]) -> [String] {
-        StudyRecall.courseCodes(in: text, prefixes: prefixes)
+        var out: [String] = []
+        for c in StudyRecall.courseCodes(in: text, prefixes: prefixes).map(roster) where !out.contains(c) { out.append(c) }
+        return out
+    }
+
+    /// "CS 7770" is the roster's CPSC 7770: one name and one color for one course (11/9).
+    static func roster(_ code: String) -> String {
+        let parts = code.split(separator: " ")
+        guard parts.count == 2, parts[0] == "CS" || parts[0] == "CPSC" else { return code }
+        return CoachCourse.known.first { $0.code == "CPSC \(parts[1])" }?.code ?? code
     }
 
     /// Codes that name one course across a week ("CPSC 323" one day, "CPSC 3231"

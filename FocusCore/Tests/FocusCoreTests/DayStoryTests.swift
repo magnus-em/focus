@@ -268,6 +268,11 @@ final class DayStoryTests: XCTestCase {
         XCTAssertEqual(s.blocks.first?.moments.first?.text, "Two pointers")
     }
 
+    func testCSAndCPSCNameOneRosterCourse() {
+        XCTAssertEqual(DayStory.codes("CS 7770 memory-layer notes", prefixes: [:]), ["CPSC 7770"])
+        XCTAssertEqual(DayStory.codes("CS 101", prefixes: [:]), ["CS 101"], "a course outside the roster stays as written")
+    }
+
     /// 11/8: rows the coach called "Study" showed as Study instead of the tracked AI.
     func testACoachCategoryTheUserDoesntHaveTakesTheTrackedLabel() {
         let content = CoachDay.Content(headline: "h", timeline: [entry("09:00", "10:00", "Study", "Bigram model in the notebook."),

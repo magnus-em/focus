@@ -506,7 +506,7 @@ struct DashboardView: View {
                 HStack(spacing: 2) {
                     layoutButton("calendar", title: "Calendar", symbol: "calendar.day.timeline.left",
                                  help: "Your day on an hour grid: drag to fix it")
-                    layoutButton("classic", title: "Classic", symbol: "text.alignleft",
+                    layoutButton("classic", title: "Classic", symbol: "doc.text",
                                  help: "The earlier Day page, to compare")
                 }
                 .padding(4)
