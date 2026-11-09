@@ -104,7 +104,7 @@ public enum StudyRecall {
     public static func courseCodes(in text: String, prefixes: [String: String] = [:]) -> [String] {
         var found: [String] = []
         func add(_ letters: String, _ number: String) {
-            let enrolled = CoachCourse.known.contains { $0.code == "\(letters) \(number)" }
+            let enrolled = CoachCourse.known.contains { $0.code.hasSuffix(" \(number)") }
             let n = !enrolled && number.count == 4 && number.hasSuffix("0") ? String(number.prefix(3)) : number
             let code = "\(letters) \(n)"
             if !found.contains(code) { found.append(code) }

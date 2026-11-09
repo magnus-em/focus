@@ -193,12 +193,18 @@ struct DashboardView: View {
     @State private var reviewTargetForDashboard: DayRecord? = nil
     /// "calendar" (the hour grid, 11/9) or "classic" (the story page it replaced), so the two can be compared.
     @AppStorage("dayPageLayout") private var dayLayout = "calendar"
+    /// The gallery's pick, which shouldn't change the user's.
+    @State private var layoutOverride: String?
+    private var layout: String { layoutOverride ?? dayLayout }
+    private let initialScroll: String?
     @State private var dayWhy: DayWhy.Report?
     @State private var stripDays: [DayStripDay] = []
 
     init(sessionStore: SessionStore, problemStore: ProblemStore, homeworkStore: HomeworkStore,
          settings: AppSettings, dayStore: DayStore, timerManager: TimerManager, browserStore: BrowserStore,
-         initialDestination: String = "Today", initialDay: Date? = nil, initialLayout: String? = nil) {
+         initialDestination: String = "Today", initialDay: Date? = nil, initialLayout: String? = nil,
+         initialScroll: String? = nil) {
+        self.initialScroll = initialScroll
         self.sessionStore = sessionStore
         self.problemStore = problemStore
         self.homeworkStore = homeworkStore
@@ -208,7 +214,7 @@ struct DashboardView: View {
         self.browserStore = browserStore
         _destination = State(initialValue: DashboardDestination(name: initialDestination) ?? .day)
         if let initialDay { _selectedDay = State(initialValue: Calendar.current.startOfDay(for: initialDay)) }
-        if let initialLayout { UserDefaults.standard.set(initialLayout, forKey: "dayPageLayout") }
+        _layoutOverride = State(initialValue: initialLayout)
         _liveState = StateObject(wrappedValue: DashboardLiveState(timer: timerManager))
     }
 
@@ -393,7 +399,7 @@ struct DashboardView: View {
                 .padding(.bottom, 20)
             HStack(spacing: 0) {
                 rightPanel
-                if showTrackedLog && (dayLayout == "classic" || destination == .week) {
+                if showTrackedLog && (layout == "classic" || destination == .week) {
                     Divider()
                     leftPanel.frame(width: 280)
                         .background(Color(nsColor: .controlBackgroundColor).opacity(0.65))
@@ -467,7 +473,9 @@ struct DashboardView: View {
                 Text(destination == .week ? (Calendar.current.isDateInToday(weekEndDay) ? "This week" : "Week")
                      : isSelectedDayToday ? "Today" : selectedDay.formatted(.dateTime.weekday(.wide)))
                     .font(.system(size: 26, weight: .semibold))
-                Text(destination == .week ? "\(weekRangeText), 7 days" : selectedDay.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                Text(destination == .week ? "\(weekRangeText), 7 days"
+                     : isSelectedDayToday ? selectedDay.formatted(.dateTime.weekday(.wide).month(.wide).day())
+                     : selectedDay.formatted(.dateTime.month(.wide).day().year()))
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
             }
             Spacer(minLength: 16)
@@ -507,7 +515,7 @@ struct DashboardView: View {
             HStack(spacing: 0) {
                 dayNavButton(systemImage: "chevron.left") { shiftSelectedDay(by: -1) }
                 dayNavButton(systemImage: "chevron.right", disabled: isSelectedDayToday) { shiftSelectedDay(by: 1) }
-                if dayLayout == "classic" || destination == .week {
+                if layout == "classic" || destination == .week {
                     Divider().frame(height: 20).padding(.horizontal, 4)
                     Button { showTrackedLog.toggle() } label: {
                         Label("Tracked log", systemImage: "sidebar.right")
@@ -601,16 +609,16 @@ struct DashboardView: View {
     }
 
     private func layoutButton(_ value: String, title: String, symbol: String, help: String) -> some View {
-        Button { dayLayout = value } label: {
+        Button { dayLayout = value; layoutOverride = nil } label: {
             Label(title, systemImage: symbol)
                 .font(.system(size: 13, weight: .medium))
                 .padding(.horizontal, 10).frame(height: 36)
-                .background { if dayLayout == value { Capsule().fill(Color.primary.opacity(0.1)) } }
+                .background { if layout == value { Capsule().fill(Color.primary.opacity(0.1)) } }
         }
         .buttonStyle(.plain)
-        .foregroundStyle(dayLayout == value ? Color.primary : Color.secondaryText)
+        .foregroundStyle(layout == value ? Color.primary : Color.secondaryText)
         .help(help)
-        .accessibilityAddTraits(dayLayout == value ? .isSelected : [])
+        .accessibilityAddTraits(layout == value ? .isSelected : [])
     }
 
     private func dayNavButton(systemImage: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
@@ -686,6 +694,10 @@ struct DashboardView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
+            .onAppear {
+                guard let initialScroll else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { proxy.scrollTo(initialScroll, anchor: .top) }
+            }
         }
         .contentMargins(.bottom, liveState.snapshot.isActive ? 90 : 0, for: .scrollContent)
         .overlay(alignment: .bottom) {
@@ -727,7 +739,7 @@ struct DashboardView: View {
 
     @ViewBuilder
     private func dayContent(_ proxy: ScrollViewProxy) -> some View {
-        if dayLayout == "classic" {
+        if layout == "classic" {
             classicDayContent
         } else {
             DayCalendarPage(

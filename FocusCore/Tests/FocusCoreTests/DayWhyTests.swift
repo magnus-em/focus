@@ -44,7 +44,7 @@ final class DayWhyTests: XCTestCase {
         XCTAssertEqual(r.comparedDays, 10)
         let leisure = r.reasons.first { $0.kind == .category && $0.category == "Leisure" }
         XCTAssertEqual(leisure?.title, "Leisure: 4h")
-        XCTAssertEqual(leisure?.detail, "Usually 3h. On screen: YouTube 2h, X 1h.")
+        XCTAssertEqual(leisure?.detail, "About 3h on an average day. On screen: YouTube 2h, X 1h.")
         let late = r.reasons.first { $0.kind == .lateStart }
         XCTAssertEqual(late?.title, "Focus started at 4 PM")
         XCTAssertEqual(late?.detail, "Usually around 9 AM. You woke at 11:30 AM, usually 8 AM.")
@@ -83,6 +83,15 @@ final class DayWhyTests: XCTestCase {
         let today = DayWhy.report(day: at(11, 12), now: at(11, 10), tracked: history + usual(11), focus: focus,
                                   goalMinutes: 240, calendar: calendar)
         XCTAssertFalse(today.light)
+    }
+
+    /// Class on four days in ten has a median of zero; "usually none" read wrong on 11/4.
+    func testCategoriesCompareWithAnAverageDay() {
+        let classes = [2, 3, 5, 6].map { d in DayStory.Tracked(start: at(d, 16), end: at(d, 18), label: "Class") }
+        let day = usual(11).filter { $0.start != at(11, 13) } + [.init(start: at(11, 13), end: at(11, 16), label: "Class")]
+        let r = DayWhy.report(day: at(11, 12), now: at(12, 9), tracked: history + classes + day, focus: focus,
+                              goalMinutes: 360, calendar: calendar)
+        XCTAssertEqual(r.reasons.first { $0.category == "Class" }?.detail, "About 48m on an average day.")
     }
 
     func testWithoutEnoughHistoryItListsTheBigNonFocusBlocks() {

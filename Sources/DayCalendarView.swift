@@ -116,7 +116,7 @@ struct DayCalendarPage: View {
     // MARK: Top
 
     private var facts: some View {
-        HStack(alignment: .top, spacing: 32) {
+        HStack(alignment: .top, spacing: 24) {
             fact("Focus time", durationText(minutes: focusMinutes), goalLine,
                  color: focusMinutes >= goalHours * 60 ? .good : .primary)
             if let c = model.story?.courses.first {
@@ -146,7 +146,7 @@ struct DayCalendarPage: View {
                             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    .frame(maxWidth: 240, alignment: .leading)
+                    .frame(maxWidth: 210, alignment: .leading)
                 }
             }
         }
@@ -172,7 +172,7 @@ struct DayCalendarPage: View {
             Text(caption).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: 220, alignment: .leading)
+        .frame(maxWidth: 200, alignment: .leading)
     }
 
     /// The last two weeks of focus, one bar a day: the way back to "last Wednesday".
@@ -201,7 +201,7 @@ struct DayCalendarPage: View {
                             Text(d.date.formatted(.dateTime.day()))
                                 .font(.system(size: 11)).monospacedDigit().foregroundStyle(Color.secondaryText)
                         }
-                        .frame(width: 26).padding(.vertical, 4)
+                        .frame(width: 22).padding(.vertical, 4)
                         .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(selected ? Color.primary.opacity(0.09) : .clear))
                         .contentShape(Rectangle())
@@ -299,6 +299,7 @@ struct DayCalendarPage: View {
                 columnHeaders
                 calendarGrid
             }
+            .id("day-calendar")
         }
     }
 
@@ -395,9 +396,11 @@ struct DayCalendarPage: View {
         return min(Date(timeIntervalSince1970: (d.timeIntervalSince1970 / 300).rounded() * 300), limit)
     }
 
+    /// The folded night has its own row above the grid.
     private var visibleTracked: [DayStory.Tracked] {
         let r = visibleRange
-        return model.lanes.tracked.filter { $0.end > r.start && $0.start < r.end }.sorted { $0.start < $1.start }
+        let folded = showNight ? nil : night
+        return model.lanes.tracked.filter { $0.end > r.start && $0.start < r.end && $0 != folded }.sorted { $0.start < $1.start }
     }
 
     /// Untracked stretches of 5 minutes or more between your first and last block (and up to now today).
@@ -539,7 +542,16 @@ struct DayCalendarPage: View {
         return ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 6, style: .continuous).fill(color.opacity(0.18))
             Rectangle().fill(color).frame(width: 3)
-            if h >= 16 {
+            if h >= 12 && h < 22 {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(t.label).font(.system(size: 11, weight: .semibold))
+                    Text(durationText(minutes: t.end.timeIntervalSince(t.start) / 60))
+                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(Color.secondaryText)
+                }
+                .lineLimit(1)
+                .padding(.leading, 10)
+                .frame(maxHeight: .infinity, alignment: .leading)
+            } else if h >= 22 {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(t.label).font(.system(size: 13, weight: .semibold))
@@ -552,8 +564,8 @@ struct DayCalendarPage: View {
                             .lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .padding(.leading, 10).padding(.trailing, 8).padding(.top, h >= 24 ? 4 : 0)
-                .frame(maxHeight: h, alignment: h >= 24 ? .topLeading : .leading)
+                .padding(.leading, 10).padding(.trailing, 8).padding(.top, 4)
+                .frame(maxHeight: h, alignment: .topLeading)
                 .clipped()
             }
         }
@@ -1171,12 +1183,15 @@ struct DayCalendarPage: View {
 
     // MARK: Helpers
 
-    /// What the coach saw starting inside [a, b), each line once.
+    /// What the coach saw centred inside [a, b), each line once, so a line
+    /// that straddles two blocks shows under one of them.
     private func seen(_ a: Date, _ b: Date, title: String?) -> [DayStory.Moment] {
         guard let story = model.story else { return [] }
         var out: [DayStory.Moment] = []
         for block in story.blocks {
-            for m in block.moments + block.interruptions where m.start >= a.addingTimeInterval(-60) && m.start < b {
+            for m in block.moments + block.interruptions {
+                let mid = m.start.addingTimeInterval(m.end.timeIntervalSince(m.start) / 2)
+                guard mid >= a, mid < b else { continue }
                 let text = m.text.trimmingCharacters(in: .whitespaces)
                 guard !text.isEmpty, !out.contains(where: { $0.text == text }) else { continue }
                 if let title, DayStory.restates(text, title: title) { continue }

@@ -94,14 +94,16 @@ public enum DayWhy {
             }
         }
 
+        // An average day, not the median: Class or Exercise on two days in
+        // five has a median of zero, and "usually none" read wrong (11/9).
         let labels = Set(today.byLabel.keys).subtracting(focus).subtracting(["Sleep"])
         for label in labels.sorted() {
             let minutes = today.byLabel[label] ?? 0
             let ranges = today.ranges[label] ?? []
-            let usual = enough ? median(history.map { $0.byLabel[label] ?? 0 }) ?? 0 : nil
+            let usual = enough ? history.reduce(0.0) { $0 + ($1.byLabel[label] ?? 0) } / Double(history.count) : nil
             let extra = minutes - (usual ?? 0)
             guard usual == nil ? minutes >= 60 : extra >= 45 else { continue }
-            var detail = usual.map { $0 < 1 ? "Usually none." : "Usually \(durationText(minutes: $0))." } ?? ""
+            var detail = usual.map { $0 < 5 ? "Usually almost none." : "About \(durationText(minutes: $0)) on an average day." } ?? ""
             if let seen = places(ranges) { detail += (detail.isEmpty ? "" : " ") + "On screen: \(seen)." }
             reasons.append(Reason(kind: .category, title: "\(label == "Break" ? "Breaks" : label): \(durationText(minutes: minutes))",
                                   detail: detail.isEmpty ? nil : detail, minutes: extra, category: label, ranges: ranges))
