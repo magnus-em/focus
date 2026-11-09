@@ -10,7 +10,7 @@ import Combine
 ///   POST /tab     → `{ "url", "title" }` the focused tab, for the screen watcher
 ///   POST /dark    → `DarkPages` changed from the extension's popup
 ///   POST /reader  → `{ "url", "title", "author", "html", "source" }` save a page to Focus's reading list
-///   POST /youtube → `{ "videos": [{ "id", "title", "channel" }], "page"? }` → `{ "verdicts": { id: { "keep", "source" } } }`
+///   POST /youtube → `{ "videos": [{ "id", "title", "channel" }], "page"? }` → `{ "verdicts": { id: { "keep", "source", "why"? } } }`
 ///     (videos still being judged are left out; `page` is the extension's report, kept in Focus/youtube/page.json)
 ///   POST /youtube/channel → `{ "channel", "allow": true | false | null }` always show / always hide / forget
 ///   POST /youtube/video → `{ "id", "title", "channel", "keep": true | false | null }` show / hide this one video / forget
@@ -289,7 +289,11 @@ final class BrowserBridge: ObservableObject {
             Task {
                 if let page { await YouTubeFeedFilter.shared.note(page: page) }
                 let verdicts = await YouTubeFeedFilter.shared.classify(videos)
-                let out = verdicts.mapValues { ["keep": $0.keep, "source": $0.source.rawValue] as [String: Any] }
+                let out = verdicts.mapValues { v -> [String: Any] in
+                    var d: [String: Any] = ["keep": v.keep, "source": v.source.rawValue]
+                    if let why = v.why { d["why"] = why }
+                    return d
+                }
                 let body = try? JSONSerialization.data(withJSONObject: ["verdicts": out])
                 self.queue.async { self.respond(conn, status: "200 OK", json: body) }
             }

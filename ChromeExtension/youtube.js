@@ -65,8 +65,8 @@
   }
 
 
-  // MARK: Educational filter: YouTube's own picks, minus everything that isn't
-  // science, math, tech or AI. Focus.app decides; unknown tiles stay hidden.
+  // MARK: Feed filter: YouTube's own picks, minus what isn't good for you (politics, news, drama,
+  // empty entertainment). Focus.app decides; unknown tiles stay hidden.
   const verdicts = new Map();
   const queued = new Map();
   let peek = false;
@@ -112,10 +112,17 @@
 
   const WHY = {
     you: 'your choice',
-    title: 'title looks like entertainment',
-    model: 'AI: not educational',
+    known: 'channel',
+    title: 'title',
+    model: 'on-device AI',
+    cloud: 'AI',
     fallback: 'keyword guess, AI unavailable',
   };
+
+  function whyText(v) {
+    if (v.source === 'you' || !v.why) return WHY[v.source] || 'not worth your time';
+    return v.source === 'fallback' ? WHY.fallback : `${v.why} (${WHY[v.source] || v.source})`;
+  }
 
   function action(text, label, run) {
     const b = document.createElement('button');
@@ -132,7 +139,7 @@
   }
 
   function actions(el, info, v) {
-    const key = `${v.keep}:${v.source}:${info.channel}`;
+    const key = `${v.keep}:${v.source}:${v.why || ''}:${info.channel}`;
     let box = el.querySelector(':scope > .focus-edu-actions');
     if (box?.dataset.key === key) return;
     box?.remove();
@@ -143,7 +150,7 @@
     if (!v.keep) {
       const why = document.createElement('span');
       why.className = 'focus-edu-why';
-      why.textContent = `Hidden · ${WHY[v.source] || 'not educational'}`;
+      why.textContent = `Hidden · ${whyText(v)}`;
       box.append(why);
     }
     box.append(action(v.keep ? 'Hide video' : 'Show video',
@@ -247,7 +254,7 @@
         const v = result[info.id];
         if (!v) continue;
         queued.delete(info.id);
-        verdicts.set(info.id, { keep: !!v.keep, source: v.source, channel: info.channel });
+        verdicts.set(info.id, { keep: !!v.keep, source: v.source, why: v.why, channel: info.channel });
       }
     }
     scan();
@@ -274,10 +281,10 @@
       bar.append(document.createElement('span'), toggle);
       anchor.before(bar);
     }
-    const parts = [`${shown} educational`];
+    const parts = [`${shown} shown`];
     if (hidden) parts.push(peek ? `${hidden} hidden shown dimmed, each says why` : `${hidden} hidden`);
     if (pending) parts.push(unreachable ? `${pending} waiting for Focus` : `checking ${pending}`);
-    const lead = unreachable ? 'Focus isn’t reachable' : peek ? 'Reviewing hidden videos' : 'Educational only';
+    const lead = unreachable ? 'Focus isn’t reachable' : peek ? 'Reviewing hidden videos' : 'Filtered for you';
     const text = `${lead} · ${parts.join(' · ')}`;
     const span = bar.querySelector('span');
     if (span.textContent !== text) span.textContent = text;

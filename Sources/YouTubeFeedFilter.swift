@@ -3,7 +3,8 @@ import FocusCore
 
 /// App side of `YouTubeFeed`: remembers every verdict by video id
 /// (`Focus/youtube/verdicts.json`, newest 6000, with the title so the rules can be tuned on real feeds)
-/// and the user's channel rules (`Focus/youtube/channels.json`), and runs the model one batch at a time.
+/// and the user's channel rules (`Focus/youtube/channels.json`). Unknown videos go to Grok 40 at a time
+/// when Cloud AI is on (inside the shared daily cap), else to the on-device model one at a time.
 /// `Focus/youtube/page.json` holds the extension's latest page report and the last model error.
 actor YouTubeFeedFilter {
     static let shared = YouTubeFeedFilter()
@@ -27,6 +28,10 @@ actor YouTubeFeedFilter {
     private var draining = false
     private var lastModelError: String?
     private var modelFailures = 0
+    private var cloudDownUntil = Date.distantPast
+    private var localDownUntil = Date.distantPast
+    private var localMisses = 0
+    private var localWarm = false
 
     private var verdictsURL: URL { dir.appendingPathComponent("verdicts.json") }
     private var rulesURL: URL { dir.appendingPathComponent("channels.json") }
@@ -76,6 +81,7 @@ actor YouTubeFeedFilter {
         out["at"] = ISO8601DateFormatter().string(from: Date())
         out["modelQueue"] = pending.count
         out["modelFailures"] = modelFailures
+        out["cloud"] = cloudUsable
         if let lastModelError { out["lastModelError"] = lastModelError }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         if let d = try? JSONSerialization.data(withJSONObject: out, options: [.prettyPrinted, .sortedKeys]) {
@@ -108,78 +114,91 @@ actor YouTubeFeedFilter {
         return out
     }
 
+    /// On-device verdicts are asked again once the cloud is back: it's right far more often.
     private func fresh(_ e: Entry) -> Bool {
         switch e.verdict.source {
-        case .model: e.v == YouTubeFeed.version
+        case .cloud: e.v == YouTubeFeed.version
+        case .model: e.v == YouTubeFeed.version && !cloudUsable
         case .fallback: Date().timeIntervalSince(e.at) < 3600
         default: false
         }
     }
 
+    private var cloudUsable: Bool { Coach.enabled && Date() >= cloudDownUntil }
+
     private func drain() async {
         while !pending.isEmpty {
-            let batch = Array(pending.prefix(8))
-            pending.removeFirst(batch.count)
-            var answers: [Bool?] = Array(repeating: nil, count: batch.count)
-            var batched = false
-            if let all = await runModel(batch, limit: 90) {
-                answers = all.map { $0 }
-                batched = true
-            } else if batch.count > 1 {
-                // One title can trip the model's guardrails and fail the whole batch (11/7: eight
-                // videos at once fell back to keywords), so ask about each on its own.
-                var misses = 0
-                for (i, v) in batch.enumerated() where misses < 3 {
-                    answers[i] = await runModel([v], limit: 20)?.first
-                    if answers[i] == nil { misses += 1 }
+            if cloudUsable, let client = Coach.client {
+                let batch = Array(pending.prefix(40))
+                pending.removeFirst(batch.count)
+                if let answers = await runCloud(batch, client: client) {
+                    for (v, answer) in zip(batch, answers) {
+                        let verdict: YouTubeFeed.Verdict
+                        if let answer { verdict = answer } else { verdict = await local(v) }
+                        record(v, verdict)
+                    }
+                    continue
                 }
+                pending.insert(contentsOf: batch.filter { working.contains($0.id) }, at: 0)
             }
-            if batched, batch.count > 1 {
-                // In a batch the 3B model lets through about half its keeps by mistake (11/7: Clash of
-                // Clans, Flappy Bird, "birds for some reason"). A refusal or error keeps the batch's answer.
-                for (i, v) in batch.enumerated() where answers[i] == true {
-                    if let sure = await confirm(v), !sure { answers[i] = false }
-                }
-            }
-            for (i, v) in batch.enumerated() {
-                let verdict = answers[i].map { YouTubeFeed.Verdict(keep: $0, source: .model) } ?? YouTubeFeed.fallback(v)
-                verdicts[v.id] = Entry(verdict: verdict, channel: v.channel, title: v.title, v: YouTubeFeed.version, at: Date())
-                working.remove(v.id)
-            }
-            dirty = true
-            save()
+            let v = pending.removeFirst()
+            record(v, await local(v))
         }
         draining = false
     }
 
-    private func runModel(_ batch: [YouTubeFeed.Video], limit: Double) async -> [Bool]? {
-        guard #available(macOS 26.0, *) else { return nil }
-        let result: Result<[Bool], Error>? = await Self.within(limit) {
-            do { return .success(try await YouTubeFeed.classify(batch)) } catch { return .failure(error) }
-        }
-        switch result {
-        case .success(let answers)?:
+    private func record(_ v: YouTubeFeed.Video, _ verdict: YouTubeFeed.Verdict) {
+        guard working.contains(v.id) else { return }
+        verdicts[v.id] = Entry(verdict: verdict, channel: v.channel, title: v.title, v: YouTubeFeed.version, at: Date())
+        working.remove(v.id)
+        dirty = true
+        save()
+    }
+
+    private func runCloud(_ batch: [YouTubeFeed.Video], client: XAIClient) async -> [YouTubeFeed.Verdict?]? {
+        let model = XAIClient.Model.fast
+        let system = YouTubeFeed.cloudSystem, text = YouTubeFeed.cloudPrompt(batch)
+        let maxOut = 200 + 25 * batch.count
+        let estimate = XAIClient.estimateUSD(model: model, text: system + text, images: 0, maxOutputTokens: maxOut)
+        do {
+            let reply = try await Coach.budget.run(estimateUSD: estimate, model: model, purpose: "youtube-feed") {
+                try await client.complete(model: model, system: system, text: text,
+                                          schema: YouTubeFeed.cloudSchema(count: batch.count), maxOutputTokens: maxOut, timeout: 30)
+            }
+            guard let answers = YouTubeFeed.parseCloud(reply.json, count: batch.count) else { throw XAIClient.Failure.malformed }
             return answers
-        case .failure(let error)?:
+        } catch {
             modelFailures += 1
-            lastModelError = String(String(describing: error).prefix(300)) + " (\(batch.count) videos)"
-            return nil
-        case nil:
-            modelFailures += 1
-            lastModelError = "timed out after \(Int(limit)) s (\(batch.count) videos)"
+            lastModelError = "cloud: " + String(String(describing: error).prefix(300)) + " (\(batch.count) videos)"
+            if case XAIClient.Failure.overBudget = error {
+                cloudDownUntil = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86400)
+            } else {
+                cloudDownUntil = Date().addingTimeInterval(600)
+            }
             return nil
         }
     }
 
-    private func confirm(_ video: YouTubeFeed.Video) async -> Bool? {
-        guard #available(macOS 26.0, *) else { return nil }
-        let result: Result<Bool, Error>? = await Self.within(20) {
-            do { return .success(try await YouTubeFeed.confirm(video)) } catch { return .failure(error) }
+    /// The on-device model, one video at a time; after three misses in a row, keywords for a while.
+    private func local(_ v: YouTubeFeed.Video) async -> YouTubeFeed.Verdict {
+        guard #available(macOS 26.0, *), Date() >= localDownUntil else { return YouTubeFeed.fallback(v) }
+        let result: Result<YouTubeFeed.Verdict, Error>? = await Self.within(localMisses == 0 && !localWarm ? 90 : 20) {
+            do { return .success(try await YouTubeFeed.judge(v)) } catch { return .failure(error) }
         }
-        if case .success(let sure)? = result { return sure }
+        if case .success(let verdict)? = result {
+            localMisses = 0
+            localWarm = true
+            return verdict
+        }
         modelFailures += 1
-        if case .failure(let error)? = result { lastModelError = String(String(describing: error).prefix(300)) + " (second look)" }
-        return nil
+        localMisses += 1
+        if case .failure(let error)? = result { lastModelError = String(String(describing: error).prefix(300)) + " (on device)" }
+        else { lastModelError = "on device: timed out" }
+        if localMisses >= 3 {
+            localMisses = 0
+            localDownUntil = Date().addingTimeInterval(120)
+        }
+        return YouTubeFeed.fallback(v)
     }
 
     private final class Once: @unchecked Sendable {

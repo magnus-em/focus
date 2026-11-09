@@ -142,8 +142,7 @@ function renderYouTube(active = false) {
     button.setAttribute('aria-pressed', String(selected));
   }
   $('youtubeFilterWhen').textContent = youtube.filter === 'off' ? 'Home and related videos are YouTube\u2019s full picks'
-    : 'Home and related show only science, math, tech and AI videos' + (youtube.filter === 'focus' ? ' during focus' : '')
-      + ', even when focus hides recommendations';
+    : 'Home and related keep only videos worth your time: no politics, news or drama' + (youtube.filter === 'focus' ? ', during focus' : '');
   $('youtubeSettings').classList.toggle('disabled', youtube.mode === 'off');
   for (const input of document.querySelectorAll('[data-youtube]')) {
     input.checked = !!youtube[input.dataset.youtube];
