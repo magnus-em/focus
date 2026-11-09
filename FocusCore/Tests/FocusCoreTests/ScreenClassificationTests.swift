@@ -81,6 +81,12 @@ final class ScreenClassificationPolicyTests: XCTestCase {
             text: "You built a character bigram model. Given the current character, what are the probabilities of the next character?"))
         XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "hw3.ipynb — cpsc3231",
             text: "import numpy as np\nnext character in the buffer"))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "micro.py — ml",
+            text: "def __call__(self, x):\n    return x"))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "Set up the bigram neural network",
+            text: "Here is how to set it up"))
+        XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "server.py — api",
+            text: "def handler(request):\n    return response"))
         XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "Olympic torch relay route",
             text: "The torch passes through 12 cities."))
     }

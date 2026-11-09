@@ -451,7 +451,9 @@ public enum ScreenClassificationPolicy {
         }
         // 10/28: a ChatGPT chat titled "Attention Simulates Gradient Descent" (von Oswald) was unlabeled
         // for 11 min whenever the visible reply named no ML term the body rules knew.
+        // 11/8: the ChatGPT chat "Set up the bigram neural network" was unlabeled for 19 min.
         let titleTermCount = domains.filter { title.contains($0) }.count + (titleWords.contains("attention") ? 1 : 0)
+            + (titleWords.contains("bigram") ? 1 : 0)
         if titleTermCount >= 2 && !titleIsMeta { return true }
         // A tracker discussing its model is evidence about building the tracker,
         // even when the discussion quotes the definition of the AI category.
@@ -477,7 +479,8 @@ public enum ScreenClassificationPolicy {
         if valueGraph || bigrams { return true }
         // 11/7: the same bigram model with "." tokens (a count heatmap, names.txt only in the sidebar) and a
         // ChatGPT chat on keepdim/broadcasting for it were SWE/Math for 46 min while AI ran; seven cards, none taken.
-        let notebookInMLWorkspace = title.range(of: #"\.ipynb\b.*[—–-] ?(?:ml|dl|machine[- ]learning|deep[- ]learning)\b"#,
+        // 11/8: micro.py in the same workspace was SWE too.
+        let notebookInMLWorkspace = title.range(of: #"\.(?:ipynb|py)\b.*[—–-] ?(?:ml|dl|machine[- ]learning|deep[- ]learning)\b"#,
                                                 options: .regularExpression) != nil
         let characterModel = ["bigram model", "bigram language model", "character-level language", "character level language"]
             .contains(where: body.contains) || body.contains("next character") && body.contains("probabilit")

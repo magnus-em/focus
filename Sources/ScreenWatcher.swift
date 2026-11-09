@@ -1397,6 +1397,10 @@ final class ScreenCoach {
            Date().timeIntervalSince(stopped) < Self.afterStopQuiet {
             return say("You stopped \(run.category) at \(stopped.formatted(date: .omitted, time: .shortened)), so no card to restart it")
         }
+        // 10/25–11/8: "Looks like Leisure" with nothing running was declined or ignored 9 of 9 times.
+        if running == nil, run.category == "Leisure", !settings.screenAutoAll {
+            return say("Nothing running: Leisure doesn't get a card")
+        }
         if let until = snoozed[run.category], until > Date() {
             return say("\(run.category) snoozed until \(until.formatted(date: .omitted, time: .shortened)) (you said Still)")
         }
