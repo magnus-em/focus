@@ -267,4 +267,35 @@ final class DayStoryTests: XCTestCase {
         XCTAssertEqual(s.blocks.count, 1)
         XCTAssertEqual(s.blocks.first?.moments.first?.text, "Two pointers")
     }
+
+    /// 11/8: rows the coach called "Study" showed as Study instead of the tracked AI.
+    func testACoachCategoryTheUserDoesntHaveTakesTheTrackedLabel() {
+        let content = CoachDay.Content(headline: "h", timeline: [entry("09:00", "10:00", "Study", "Bigram model in the notebook."),
+                                                                  entry("10:00", "10:30", "Leisure", "X posts.")],
+                                       study: [], questions: [], other: [], planVsActual: nil, observations: [])
+        let rec = CoachDay.Record(day: "2026-10-15", content: content, generatedAt: at(11, 0), model: "m", costUSD: 0,
+                                  images: 0, promptVersion: 3)
+        let s = DayStory.build(day: day, now: at(12, 0),
+                               tracked: [.init(start: at(9, 0), end: at(10, 30), label: "AI")],
+                               record: rec, observations: [], focus: focus,
+                               categories: ["AI", "Leisure", "Break", "Sleep"], calendar: calendar)
+        XCTAssertEqual(s.blocks.first?.category, "AI")
+        XCTAssertTrue(s.blocks.first?.study == true)
+        XCTAssertEqual(s.blocks.last?.category, "Leisure", "a real category the coach saw stays")
+    }
+
+    /// 11/8: the 9:12 PM gap showed once as a fix and again as ten one-minute rows.
+    func testWhatTheCoachSawInAnUntrackedGapIsPartOfTheGapsRow() {
+        let observations = (0..<5).map { i in
+            obs(14, 15 + i * 6, tracked: "", screen: "Leisure", topic: "NYT article \(i)", activity: "reading")
+        }
+        let s = DayStory.build(day: day, now: at(15, 0),
+                               tracked: [.init(start: at(13, 0), end: at(14, 10), label: "Math"),
+                                         .init(start: at(14, 50), end: at(15, 0), label: "Math", running: true)],
+                               record: nil, observations: observations, focus: focus, calendar: calendar)
+        let gap = s.blocks.filter { $0.start >= at(14, 10) && $0.end <= at(14, 50) }
+        XCTAssertEqual(gap.count, 1)
+        XCTAssertEqual(gap.first?.fixes.first?.kind, .untracked(seen: nil))
+        XCTAssertEqual(gap.first?.moments.count, 5)
+    }
 }

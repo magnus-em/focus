@@ -48,12 +48,13 @@ final class DayBriefPublisher {
         let now = Date()
         let dayStart = cal.startOfDay(for: now)
         let focus = Set(settings.tags.filter { !settings.lifeTags.contains($0) })
+        let categories = Set(settings.tags + ["Break", "Sleep"])
         let live = [timer.currentInProgressSession, timer.currentInProgressBreak].compactMap { $0 }
             .map { WorkSession(startTime: $0.startTime, durationMinutes: now.timeIntervalSince($0.startTime) / 60,
                                type: $0.type, label: $0.label) }
         days[ObjectIdentifier(today)] = dayStart
         today.refresh(day: dayStart, sessions: store.sessions.filter { TimeIntegrity.end(of: $0) > dayStart },
-                      live: live, focus: focus)
+                      live: live, focus: focus, categories: categories)
 
         // Yesterday only changes when its day record is (re)written in the morning.
         guard let before = cal.date(byAdding: .day, value: -1, to: dayStart) else { return }
@@ -63,6 +64,6 @@ final class DayBriefPublisher {
         days[ObjectIdentifier(yesterday)] = before
         yesterday.refresh(day: before, sessions: store.sessions.filter {
             TimeIntegrity.end(of: $0) > before && $0.startTime < dayStart
-        }, live: [], focus: focus)
+        }, live: [], focus: focus, categories: categories)
     }
 }

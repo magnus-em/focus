@@ -18,7 +18,7 @@ final class DayStoryModel: ObservableObject {
     @Published private(set) var spent: Double?
     private var task: Task<Void, Never>?
 
-    func refresh(day: Date, sessions: [WorkSession], live: [WorkSession], focus: Set<String>) {
+    func refresh(day: Date, sessions: [WorkSession], live: [WorkSession], focus: Set<String>, categories: Set<String>) {
         let cal = Calendar.current
         let start = cal.startOfDay(for: day)
         let end = cal.date(byAdding: .day, value: 1, to: start)!
@@ -39,7 +39,7 @@ final class DayStoryModel: ObservableObject {
                 let observations = Self.observations(for: day)
                 return DayStory.build(day: day, now: now, tracked: tracked, record: record, observations: observations,
                                       events: events, screen: screen, notes: notes, focus: focus, coursePrefixes: prefixes,
-                                      course: CoachCourse.resolver(observations, context: context))
+                                      categories: categories, course: CoachCourse.resolver(observations, context: context))
             }.value
             guard !Task.isCancelled, let self else { return }
             self.story = story

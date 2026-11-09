@@ -68,6 +68,7 @@ final class StudyRecallTests: XCTestCase {
         XCTAssertEqual(StudyRecall.courseCodes(in: "Plan MATH 244 midterm prep"), ["MATH 244"])
         XCTAssertEqual(StudyRecall.courseCodes(in: "MATH 2440 01 (FA26): Discrete Mathematics"), ["MATH 244"])
         XCTAssertEqual(StudyRecall.courseCodes(in: "cpsc3231-midterm-cheat-sheet.pdf"), ["CPSC 3231"])
+        XCTAssertEqual(StudyRecall.courseCodes(in: "CPSC 7770 lecture 9"), ["CPSC 7770"], "an enrolled course ending in 0 keeps its digit")
         XCTAssertEqual(StudyRecall.courseCodes(in: "Midterm in WLH 201 at 1:05"), [])
         XCTAssertEqual(StudyRecall.courseCodes(in: "3231 Study Guides", prefixes: ["3231": "CPSC"]), ["CPSC 3231"])
         XCTAssertEqual(StudyRecall.courseCodes(in: "Fall 2026, 3231 notes"), [])

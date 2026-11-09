@@ -71,9 +71,10 @@ private enum DashboardDestination: String, CaseIterable, Identifiable {
     var symbol: String { self == .day ? "text.alignleft" : "calendar" }
 }
 
-private struct DayChange {
+private struct DayChange: Identifiable {
+    let id = UUID()
     let text: String
-    let undo: SessionStore.ReviewUndo?
+    let undos: [SessionStore.ReviewUndo]
 }
 
 private final class DashboardLiveState: ObservableObject {
@@ -190,10 +191,14 @@ struct DashboardView: View {
     @State private var editingEvent: DayEvent? = nil
     @State private var selectedDay: Date = Calendar.current.startOfDay(for: Date())
     @State private var reviewTargetForDashboard: DayRecord? = nil
+    /// "calendar" (the hour grid, 11/9) or "classic" (the story page it replaced), so the two can be compared.
+    @AppStorage("dayPageLayout") private var dayLayout = "calendar"
+    @State private var dayWhy: DayWhy.Report?
+    @State private var stripDays: [DayStripDay] = []
 
     init(sessionStore: SessionStore, problemStore: ProblemStore, homeworkStore: HomeworkStore,
          settings: AppSettings, dayStore: DayStore, timerManager: TimerManager, browserStore: BrowserStore,
-         initialDestination: String = "Today") {
+         initialDestination: String = "Today", initialDay: Date? = nil, initialLayout: String? = nil) {
         self.sessionStore = sessionStore
         self.problemStore = problemStore
         self.homeworkStore = homeworkStore
@@ -202,6 +207,8 @@ struct DashboardView: View {
         self.timerManager = timerManager
         self.browserStore = browserStore
         _destination = State(initialValue: DashboardDestination(name: initialDestination) ?? .day)
+        if let initialDay { _selectedDay = State(initialValue: Calendar.current.startOfDay(for: initialDay)) }
+        if let initialLayout { UserDefaults.standard.set(initialLayout, forKey: "dayPageLayout") }
         _liveState = StateObject(wrappedValue: DashboardLiveState(timer: timerManager))
     }
 
@@ -284,7 +291,41 @@ struct DashboardView: View {
 
     private func refreshStory() {
         dayModel.refresh(day: selectedDay, sessions: dayData.overlappingSessions, live: selectedDayLiveSessions,
-                         focus: focusCategories)
+                         focus: focusCategories, categories: Set(settings.tags + ["Break", "Sleep"]))
+        refreshWhy()
+    }
+
+    /// The two-week strip and, for a past day, why it was light against the four weeks before it.
+    private func refreshWhy() {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let back = cal.dateComponents([.day], from: selectedDay, to: today).day ?? 0
+        let stripEnd = back < 14 ? today : cal.date(byAdding: .day, value: 6, to: selectedDay)!
+        let stripStart = cal.date(byAdding: .day, value: -13, to: stripEnd)!
+        let from = min(stripStart, cal.date(byAdding: .day, value: -29, to: selectedDay)!)
+        let to = cal.date(byAdding: .day, value: 1, to: max(stripEnd, selectedDay))!
+        let sessions = liveSessions.filter { $0.startTime < to && TimeIntegrity.end(of: $0) > from }
+        stripDays = (0..<14).map { i in
+            let d = cal.date(byAdding: .day, value: i, to: stripStart)!
+            let e = cal.date(byAdding: .day, value: 1, to: d)!
+            let minutes = sessions.filter(\.isFocus).reduce(0.0) {
+                $0 + max(0, min(TimeIntegrity.end(of: $1), e).timeIntervalSince(max($1.startTime, d))) / 60
+            }
+            return DayStripDay(date: d, minutes: minutes)
+        }
+        guard !isSelectedDayToday else { return dayWhy = nil }
+        let dayEnd = cal.date(byAdding: .day, value: 1, to: selectedDay)!
+        let tracked = sessions.map {
+            DayStory.Tracked(start: $0.startTime, end: TimeIntegrity.end(of: $0),
+                             label: $0.type == .work ? ($0.label ?? "Focus") : "Break")
+        }
+        let windows = screenWatcher.spans(from: selectedDay, to: dayEnd).map {
+            DayWhy.Window(start: $0.start, end: $0.end, app: $0.app, title: $0.title, category: $0.category)
+        }
+        let away = PresenceMonitor.shared.spans(from: selectedDay, to: dayEnd).map { DateInterval(start: $0.start, end: $0.end) }
+        dayWhy = DayWhy.report(day: selectedDay, now: Date(), tracked: tracked, focus: focusCategories.union(["Focus"]),
+                               goalMinutes: Double(settings.dailyGoal) * 60, screen: dayModel.lanes.screen,
+                               windows: windows, away: away)
     }
 
     private var selectedDayFocusMinutes: Double {
@@ -298,25 +339,42 @@ struct DashboardView: View {
     /// Past time is repainted with Undo; time inside the running block goes
     /// through the timer, so a saved row never overlaps it.
     private func applyFix(_ fix: DayStory.Fix, _ label: String) {
-        let saved: String? = label == "Break" ? nil : label
-        let runningStart = liveState.snapshot.isActive ? liveState.snapshot.runningStart : nil
         let range = "\(fix.start.formatted(date: .omitted, time: .shortened))–\(fix.running ? "now" : fix.end.formatted(date: .omitted, time: .shortened))"
-        var undo: SessionStore.ReviewUndo?
-        if let runningStart, fix.end > runningStart {
-            if fix.start < runningStart {
-                undo = sessionStore.paintForReview(start: fix.start, end: runningStart, label: saved)
+        perform([.log(start: fix.start, end: fix.running ? Date() : fix.end, label: label)], "Logged \(range) as \(label).")
+    }
+
+    /// Past time is repainted with Undo; time inside the running block goes
+    /// through the timer, so a saved row never overlaps it, and is never cleared.
+    private func perform(_ edits: [DayEdit], _ text: String) {
+        let runningStart = liveState.snapshot.isActive ? liveState.snapshot.runningStart : nil
+        let now = Date()
+        var undos: [SessionStore.ReviewUndo] = []
+        var failed = false
+        for e in edits {
+            switch e {
+            case .log(let start, let end, let label):
+                let saved: String? = label == "Break" ? nil : label
+                if let rs = runningStart, end > rs {
+                    if rs.timeIntervalSince(start) >= 60 {
+                        if let u = sessionStore.paintForReview(start: start, end: rs, label: saved) { undos.append(u) } else { failed = true }
+                    }
+                    if end >= now.addingTimeInterval(-60) {
+                        timerManager.switchTo(label, at: max(start, rs))
+                    } else {
+                        timerManager.carveOut(from: max(start, rs), to: end, as: saved)
+                    }
+                } else if let u = sessionStore.paintForReview(start: start, end: end, label: saved) {
+                    undos.append(u)
+                } else {
+                    failed = true
+                }
+            case .clear(let start, let end):
+                let end = runningStart.map { min(end, $0) } ?? end
+                guard end.timeIntervalSince(start) >= 60 else { continue }
+                if let u = sessionStore.clearForReview(start: start, end: end) { undos.append(u) } else { failed = true }
             }
-            if fix.running || fix.end >= Date().addingTimeInterval(-60) {
-                timerManager.switchTo(label, at: max(fix.start, runningStart))
-            } else {
-                timerManager.carveOut(from: max(fix.start, runningStart), to: fix.end, as: saved)
-            }
-            lastChange = DayChange(text: "Logged \(range) as \(label).", undo: undo)
-        } else if let u = sessionStore.paintForReview(start: fix.start, end: fix.end, label: saved) {
-            lastChange = DayChange(text: "Logged \(range) as \(label).", undo: u)
-        } else {
-            lastChange = DayChange(text: "Couldn't change \(range). Try again, or edit it in the tracked log.", undo: nil)
         }
+        lastChange = DayChange(text: failed ? "Couldn't make all of that change. Try again." : text, undos: undos)
         refreshStory()
     }
 
@@ -335,7 +393,7 @@ struct DashboardView: View {
                 .padding(.bottom, 20)
             HStack(spacing: 0) {
                 rightPanel
-                if showTrackedLog {
+                if showTrackedLog && (dayLayout == "classic" || destination == .week) {
                     Divider()
                     leftPanel.frame(width: 280)
                         .background(Color(nsColor: .controlBackgroundColor).opacity(0.65))
@@ -436,18 +494,30 @@ struct DashboardView: View {
             .padding(4)
             .modifier(FloatingGlass())
             Spacer(minLength: 16)
+            if destination == .day {
+                HStack(spacing: 2) {
+                    layoutButton("calendar", title: "Calendar", symbol: "calendar.day.timeline.left",
+                                 help: "Your day on an hour grid: drag to fix it")
+                    layoutButton("classic", title: "Classic", symbol: "text.alignleft",
+                                 help: "The earlier Day page, to compare")
+                }
+                .padding(4)
+                .modifier(FloatingGlass())
+            }
             HStack(spacing: 0) {
                 dayNavButton(systemImage: "chevron.left") { shiftSelectedDay(by: -1) }
                 dayNavButton(systemImage: "chevron.right", disabled: isSelectedDayToday) { shiftSelectedDay(by: 1) }
-                Divider().frame(height: 20).padding(.horizontal, 4)
-                Button { showTrackedLog.toggle() } label: {
-                    Label("Tracked log", systemImage: "sidebar.right")
-                        .font(.system(size: 13, weight: .medium)).padding(.horizontal, 10).frame(height: 36)
-                        .foregroundStyle(showTrackedLog ? Color.primary : .secondaryText)
+                if dayLayout == "classic" || destination == .week {
+                    Divider().frame(height: 20).padding(.horizontal, 4)
+                    Button { showTrackedLog.toggle() } label: {
+                        Label("Tracked log", systemImage: "sidebar.right")
+                            .font(.system(size: 13, weight: .medium)).padding(.horizontal, 10).frame(height: 36)
+                            .foregroundStyle(showTrackedLog ? Color.primary : .secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show or hide your tracked log")
+                    .accessibilityLabel("Show or hide your tracked log")
                 }
-                .buttonStyle(.plain)
-                .help("Show or hide your tracked log")
-                .accessibilityLabel("Show or hide your tracked log")
             }
             .padding(4)
             .modifier(FloatingGlass())
@@ -530,6 +600,19 @@ struct DashboardView: View {
         }
     }
 
+    private func layoutButton(_ value: String, title: String, symbol: String, help: String) -> some View {
+        Button { dayLayout = value } label: {
+            Label(title, systemImage: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .padding(.horizontal, 10).frame(height: 36)
+                .background { if dayLayout == value { Capsule().fill(Color.primary.opacity(0.1)) } }
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(dayLayout == value ? Color.primary : Color.secondaryText)
+        .help(help)
+        .accessibilityAddTraits(dayLayout == value ? .isSelected : [])
+    }
+
     private func dayNavButton(systemImage: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         let label = systemImage == "chevron.left" ? "Previous day" : "Next day"
         return Button(action: action) {
@@ -590,46 +673,104 @@ struct DashboardView: View {
     }
 
     private var rightPanel: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                switch destination {
-                case .day: dayContent
-                case .week: weekContent
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    switch destination {
+                    case .day: dayContent(proxy)
+                    case .week: weekContent
+                    }
                 }
+                .frame(maxWidth: 1080)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
-            .frame(maxWidth: 1080)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
         }
         .contentMargins(.bottom, liveState.snapshot.isActive ? 90 : 0, for: .scrollContent)
         .overlay(alignment: .bottom) {
-            DashboardFloatingTimer(timer: timerManager).padding(.horizontal, 24)
+            VStack(spacing: 10) {
+                if let change = lastChange { changeBar(change) }
+                DashboardFloatingTimer(timer: timerManager)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, liveState.snapshot.isActive ? 0 : 16)
+        }
+    }
+
+    /// Floats at the bottom so the Undo is in reach wherever on the page the change was made.
+    private func changeBar(_ change: DayChange) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: change.undos.isEmpty ? "exclamationmark.circle" : "checkmark.circle.fill")
+                .foregroundStyle(change.undos.isEmpty ? Color.attention : Color.good)
+            Text(change.text).font(.system(size: 13)).lineLimit(2)
+            if !change.undos.isEmpty {
+                Button("Undo") {
+                    let ok = change.undos.reversed().allSatisfy { sessionStore.undoReview($0) }
+                    lastChange = ok ? nil : DayChange(text: "Couldn't undo: the log changed since.", undos: [])
+                    refreshStory()
+                }
+                .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.accentColor)
+                .keyboardShortcut("z", modifiers: .command)
+            }
+            Button { lastChange = nil } label: { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)) }
+                .buttonStyle(.plain).foregroundStyle(Color.secondaryText).help("Dismiss").accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 18).frame(minHeight: 44)
+        .modifier(FloatingGlass())
+        .frame(maxWidth: 620)
+        .task(id: change.id) {
+            try? await Task.sleep(for: .seconds(15))
+            if lastChange?.id == change.id { lastChange = nil }
         }
     }
 
     @ViewBuilder
-    private var dayContent: some View {
-        if let change = lastChange {
-            HStack(spacing: 12) {
-                Image(systemName: change.undo == nil ? "exclamationmark.circle" : "checkmark.circle.fill")
-                    .foregroundStyle(change.undo == nil ? Color.attention : Color.good)
-                Text(change.text).font(.system(size: 13))
-                Spacer()
-                if let undo = change.undo {
-                    Button("Undo") {
-                        lastChange = sessionStore.undoReview(undo) ? nil
-                            : DayChange(text: "Couldn't undo: the log changed since.", undo: nil)
-                        refreshStory()
-                    }
-                    .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.accentColor)
+    private func dayContent(_ proxy: ScrollViewProxy) -> some View {
+        if dayLayout == "classic" {
+            classicDayContent
+        } else {
+            DayCalendarPage(
+                model: dayModel, day: selectedDay, focusMinutes: selectedDayFocusMinutes,
+                goalHours: Double(settings.dailyGoal), categories: settings.tags + ["Break"],
+                why: dayWhy, strip: stripDays,
+                fixByTyping: fixByTyping,
+                scrollTo: { id in withAnimation(.easeInOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .center) } },
+                selectDay: { selectedDay = $0 },
+                edit: perform,
+                openCoach: { CoachChatWindow.shared.open() })
+            if isSelectedDayToday { NextBlockSummary(day: selectedDay) }
+            Button { showTimeline.toggle() } label: {
+                HStack(spacing: 10) {
+                    SectionTitle("Screen details",
+                                 subtitle: "Every screenshot's label, the activity log with its notes, and the minute-by-minute timeline")
+                    Text(showTimeline ? "Hide" : "Show").font(.system(size: 13, weight: .medium)).foregroundStyle(Color.accentColor)
+                    Image(systemName: showTimeline ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.secondaryText)
                 }
-                Button { lastChange = nil } label: { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)) }
-                    .buttonStyle(.plain).foregroundStyle(Color.secondaryText).help("Dismiss").accessibilityLabel("Dismiss")
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16).frame(minHeight: 44)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.background.secondary))
+            .buttonStyle(.plain)
+            .accessibilityHint(showTimeline ? "Hides the screen details" : "Shows the screen details")
+            if showTimeline {
+                VStack(alignment: .leading, spacing: 24) {
+                    ScreenTimelineSection(watcher: screenWatcher, day: selectedDay, sessions: reviewSessions)
+                    ScreenActivitySection(watcher: screenWatcher, day: selectedDay, sessions: selectedDaySessions)
+                    dayTimelineSection
+                }
+            }
         }
+    }
+
+    private var fixByTyping: AnyView? {
+        guard isSelectedDayToday, #available(macOS 26.0, *) else { return nil }
+        return AnyView(LogFixView(timer: timerManager, store: sessionStore, categories: settings.tags))
+    }
+
+    @ViewBuilder
+    private var classicDayContent: some View {
         DayStoryPage(model: dayModel, day: selectedDay, focusMinutes: selectedDayFocusMinutes,
                      goalHours: Double(settings.dailyGoal), commitment: selectedDayCommitmentText,
                      categories: settings.tags + ["Break"], apply: applyFix,

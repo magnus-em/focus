@@ -15,7 +15,7 @@ final class WeekStoryModel: ObservableObject {
     private var task: Task<Void, Never>?
     private var key = ""
 
-    func refresh(endDay: Date, sessions: [WorkSession], live: Set<UUID>, focus: Set<String>) {
+    func refresh(endDay: Date, sessions: [WorkSession], live: Set<UUID>, focus: Set<String>, categories: Set<String>) {
         let cal = Calendar.current
         let dates = (0..<7).reversed().compactMap { cal.date(byAdding: .day, value: -$0, to: cal.startOfDay(for: endDay)) }
         let newKey = "\(endDay.timeIntervalSince1970)|\(sessions.count)|\(Int(Date().timeIntervalSince1970 / 300))"
@@ -45,6 +45,7 @@ final class WeekStoryModel: ObservableObject {
                     return Day(date: day, story: DayStory.build(day: day, now: now, tracked: tracked, record: record,
                                                                 observations: observations, events: events, screen: screen,
                                                                 notes: notes, focus: focus, coursePrefixes: prefixes,
+                                                                categories: categories,
                                                                 course: CoachCourse.resolver(observations, context: context)))
                 }
             }.value
@@ -66,6 +67,7 @@ struct WeekPage: View {
     let onSelectDay: (Date) -> Void
 
     @StateObject private var model = WeekStoryModel()
+    private var storyCategories: Set<String> { Set(settings.tags + ["Break", "Sleep"]) }
     @ObservedObject private var calendar = ClassCalendar.shared
 
     private var cal: Calendar { Calendar.current }
@@ -143,9 +145,9 @@ struct WeekPage: View {
             coursesCard
             fixesCard
         }
-        .onAppear { model.refresh(endDay: endDay, sessions: sessions, live: live, focus: focus) }
-        .onChange(of: endDay) { _, _ in model.refresh(endDay: endDay, sessions: sessions, live: live, focus: focus) }
-        .onChange(of: sessions.count) { _, _ in model.refresh(endDay: endDay, sessions: sessions, live: live, focus: focus) }
+        .onAppear { model.refresh(endDay: endDay, sessions: sessions, live: live, focus: focus, categories: storyCategories) }
+        .onChange(of: endDay) { _, _ in model.refresh(endDay: endDay, sessions: sessions, live: live, focus: focus, categories: storyCategories) }
+        .onChange(of: sessions.count) { _, _ in model.refresh(endDay: endDay, sessions: sessions, live: live, focus: focus, categories: storyCategories) }
     }
 
     /// A judgement, not a recap of the card below: the nearest exam and how

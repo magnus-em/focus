@@ -237,12 +237,18 @@ struct FocusApp: App {
         CoachDayWorker.shared.start(store: store, days: days, settings: appSettings)
         DayBriefPublisher.shared.start(store: store, timer: timer, settings: appSettings)
         QuickSwitch.shared?.openGallery = { name, dark in
-            switch name {
-            case "dashboard", "dashboard-review", "dashboard-trends", "dashboard-week":
+            // "dashboard-calendar@2026-11-04": that day, in that layout.
+            let parts = name.split(separator: "@", maxSplits: 1).map(String.init)
+            let base = parts[0]
+            let galleryDay = parts.count > 1 ? ISO8601DateFormatter.dayOnly.date(from: parts[1]) : nil
+            switch base {
+            case "dashboard", "dashboard-review", "dashboard-trends", "dashboard-week", "dashboard-calendar", "dashboard-classic":
                 DesignGallery.show(
                     DashboardView(sessionStore: store, problemStore: problems, homeworkStore: homework, settings: appSettings,
                                   dayStore: days, timerManager: timer, browserStore: browser,
-                                  initialDestination: ["dashboard-trends", "dashboard-week"].contains(name) ? "Week" : "Day"),
+                                  initialDestination: ["dashboard-trends", "dashboard-week"].contains(base) ? "Week" : "Day",
+                                  initialDay: galleryDay,
+                                  initialLayout: base == "dashboard-calendar" ? "calendar" : base == "dashboard-classic" ? "classic" : nil),
                     name: name, dark: dark, size: NSSize(width: 1100, height: 900))
             case "leetcode-working":
                 DesignGallery.show(
@@ -828,5 +834,15 @@ enum MenuBarRing {
         }
         img.isTemplate = true
         return img
+    }()
+}
+
+extension ISO8601DateFormatter {
+    /// "2026-11-04" in the Mac's time zone.
+    static let dayOnly: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        f.timeZone = .current
+        return f
     }()
 }

@@ -153,7 +153,8 @@ struct TimerView: View {
             .map { WorkSession(startTime: $0.startTime, durationMinutes: Date().timeIntervalSince($0.startTime) / 60,
                                type: $0.type, label: $0.label) }
         story.refresh(day: day, sessions: store.sessions.filter { TimeIntegrity.end(of: $0) > day }, live: live,
-                      focus: Set(settings.tags.filter { !settings.lifeTags.contains($0) }))
+                      focus: Set(settings.tags.filter { !settings.lifeTags.contains($0) }),
+                      categories: Set(settings.tags + ["Break", "Sleep"]))
     }
 
     private func refreshFocusTotals(_ sessions: [WorkSession]) {

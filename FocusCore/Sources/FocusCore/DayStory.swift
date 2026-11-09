@@ -186,6 +186,7 @@ public enum DayStory {
                              observations: [CoachEpisode.Record], events: [CalendarEvent] = [],
                              screen: [Screen] = [], notes: [Note] = [], focus: Set<String>,
                              coursePrefixes: [String: String] = [:],
+                             categories: Set<String>? = nil,
                              course: (CoachEpisode.Record) -> String? = { $0.understanding.course },
                              asked: (CoachEpisode.Record) -> [String] = { $0.understanding.askedByUser },
                              calendar: Calendar = .current) -> Story {
@@ -214,10 +215,14 @@ public enum DayStory {
                 start = max(start, dayStart)
                 end = min(end, cutoff)
                 guard end > start else { continue }
+                // The coach sometimes names a category the user doesn't have ("Study",
+                // "Untracked", "personal"); those rows take the tracked label.
+                let category = (categories?.contains(e.category) ?? true) ? e.category
+                    : (trackedLabel(tracked, at: start, end: end) ?? e.category)
                 let found = codes(e.what, prefixes: coursePrefixes).map { canonical($0, known: known) }
-                items.append(Item(start: start, end: end, category: e.category,
-                                  course: found.first { fits($0, category: e.category) },
-                                  moment: Moment(start: start, end: end, text: e.what, category: e.category),
+                items.append(Item(start: start, end: end, category: category,
+                                  course: found.first { fits($0, category: category) },
+                                  moment: Moment(start: start, end: end, text: e.what, category: category),
                                   evidence: true))
             }
         }
@@ -260,10 +265,14 @@ public enum DayStory {
             let spans = blocks.indices.map { overlap((blocks[$0].start, blocks[$0].end), (f.start, f.end)) }
             if let i = spans.indices.max(by: { spans[$0] < spans[$1] }), spans[i] > 0 { blocks[i].fixes.append(f) }
         }
+        // What the coach saw inside an untracked gap belongs to the gap's row,
+        // not ten one-minute rows of its own under it (11/8, 9:12 PM).
         for f in fixes where isUntracked(f) {
+            let inside = blocks.filter { $0.start >= f.start && $0.end <= f.end && $0.fixes.isEmpty }
+            blocks.removeAll { b in inside.contains { $0.start == b.start && $0.end == b.end } }
             blocks.append(Block(start: f.start, end: f.end, category: nil, course: nil, event: nil, study: false,
-                                moments: [], interruptions: [], fixes: [f], running: false,
-                                minutes: f.minutes))
+                                moments: inside.flatMap(\.moments).sorted { $0.start < $1.start }, interruptions: [],
+                                fixes: [f], running: false, minutes: f.minutes))
         }
         blocks.sort { $0.start < $1.start }
 
@@ -562,6 +571,20 @@ public enum DayStory {
         guard let category else { return nil }
         let matches = order.filter { byCode[$0]?.category == category }
         return matches.count == 1 ? matches[0] : nil
+    }
+
+    /// The category the screen showed for most of [start, end), if it covered
+    /// at least half of it: the obvious pick for an untracked stretch.
+    public static func dominantScreen(_ screen: [Screen], from start: Date, to end: Date) -> String? {
+        guard end > start else { return nil }
+        var minutes: [String: TimeInterval] = [:]
+        for s in screen where !s.uncertain {
+            guard let c = s.category else { continue }
+            minutes[c, default: 0] += overlap((s.start, s.end), (start, end))
+        }
+        guard let best = minutes.max(by: { $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key }),
+              best.value >= end.timeIntervalSince(start) / 2 else { return nil }
+        return best.key
     }
 
     // MARK: Display

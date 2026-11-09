@@ -242,6 +242,13 @@ class SessionStore: ObservableObject {
         return undo
     }
 
+    /// Leave [start, end) untracked, with an undo.
+    func clearForReview(start: Date, end: Date) -> ReviewUndo? {
+        let undo = LogEdit.paint(start: start, end: end, label: nil, fill: false, in: context)
+        refresh()
+        return undo
+    }
+
     func undoReview(_ undo: ReviewUndo) -> Bool {
         let done = LogEdit.undo(undo, in: context)
         refresh()
