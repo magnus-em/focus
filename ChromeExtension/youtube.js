@@ -26,7 +26,7 @@
   }
 
   function ensureHomeMessage() {
-    if (!active || !settings.hideHome || page() !== 'home') return;
+    if (!active || !settings.hideHome || page() !== 'home' || filtering()) return;
     const host = document.querySelector('ytd-browse[page-subtype="home"], ytd-browse[browse-id="FEwhat_to_watch"], ytm-browse');
     if (!host || host.querySelector('#focus-youtube-home-message')) return;
     const message = document.createElement('div');
@@ -90,8 +90,9 @@
   function filtering() {
     if (!filterActive) return null;
     const p = page();
-    if (p === 'home' && !(active && settings.hideHome)) return 'home';
-    if (p === 'watch' && !(active && settings.hideRelated)) return 'watch';
+    // The filtered feed replaces focus mode's blank Home and hidden related videos (user, 11/8).
+    if (p === 'home') return 'home';
+    if (p === 'watch') return 'watch';
     return null;
   }
 

@@ -1,12 +1,12 @@
-html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"] ytd-rich-grid-renderer,
-html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"] ytd-two-column-browse-results-renderer #primary > ytd-section-list-renderer,
-html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"] ytm-rich-grid-renderer {
+html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"]:not([data-focus-edu="home"]) ytd-rich-grid-renderer,
+html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"]:not([data-focus-edu="home"]) ytd-two-column-browse-results-renderer #primary > ytd-section-list-renderer,
+html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"]:not([data-focus-edu="home"]) ytm-rich-grid-renderer {
   display: none !important;
 }
 
-html[data-focus-youtube-active][data-focus-youtube-hide-related] #related,
-html[data-focus-youtube-active][data-focus-youtube-hide-related] ytd-watch-next-secondary-results-renderer,
-html[data-focus-youtube-active][data-focus-youtube-hide-related] ytm-item-section-renderer[data-content-type="related"] {
+html[data-focus-youtube-active][data-focus-youtube-hide-related]:not([data-focus-edu="watch"]) #related,
+html[data-focus-youtube-active][data-focus-youtube-hide-related]:not([data-focus-edu="watch"]) ytd-watch-next-secondary-results-renderer,
+html[data-focus-youtube-active][data-focus-youtube-hide-related]:not([data-focus-edu="watch"]) ytm-item-section-renderer[data-content-type="related"] {
   display: none !important;
 }
 
@@ -46,7 +46,7 @@ html[data-focus-youtube-active][data-focus-youtube-hide-shorts][data-focus-youtu
   font-family: Roboto, Arial, sans-serif;
 }
 
-html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"] #focus-youtube-home-message {
+html[data-focus-youtube-active][data-focus-youtube-hide-home][data-focus-youtube-page="home"]:not([data-focus-edu="home"]) #focus-youtube-home-message {
   display: grid;
   place-items: center;
   gap: 10px;
