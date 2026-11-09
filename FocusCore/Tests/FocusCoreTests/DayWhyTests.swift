@@ -94,6 +94,16 @@ final class DayWhyTests: XCTestCase {
         XCTAssertEqual(r.reasons.first { $0.category == "Class" }?.detail, "About 48m on an average day.")
     }
 
+    /// 11/4: 2h 52m logged as Exercise while the Mac showed Leisure.
+    func testABlockTheScreenSawAsSomethingElseSaysSo() {
+        let day = usual(11).filter { $0.start != at(11, 13) } + [.init(start: at(11, 13), end: at(11, 16), label: "Exercise")]
+        let screen = [DayStory.Screen(start: at(11, 13, 10), end: at(11, 13, 40), category: "Leisure")]
+        let r = DayWhy.report(day: at(11, 12), now: at(12, 9), tracked: history + day, focus: focus, goalMinutes: 360,
+                              screen: screen, calendar: calendar)
+        XCTAssertEqual(r.reasons.first { $0.category == "Exercise" }?.detail,
+                       "Usually almost none. The screen showed Leisure for 30m of it.")
+    }
+
     func testWithoutEnoughHistoryItListsTheBigNonFocusBlocks() {
         let day: [DayStory.Tracked] = [.init(start: at(11, 10), end: at(11, 14), label: "Leisure"),
                                        .init(start: at(11, 14), end: at(11, 15), label: "AI")]
@@ -110,6 +120,7 @@ final class DayWhyTests: XCTestCase {
         XCTAssertEqual(DayWhy.place(w("Google Chrome", "Opinion | Karp and Germany - The New York Times")), "The New York Times")
         XCTAssertEqual(DayWhy.place(w("Google Chrome", "Feed | LinkedIn")), "LinkedIn")
         XCTAssertEqual(DayWhy.place(w("Messages", "Sam")), "Messages")
+        XCTAssertEqual(DayWhy.place(w("Safari", "Some page title with no site")), "Safari")
     }
 
     func testDominantScreenNeedsHalfTheStretch() {

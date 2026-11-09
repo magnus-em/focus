@@ -70,6 +70,18 @@ public enum DayWhy {
         let light = !isToday && (today.focus < goalMinutes || usualFocus.map { today.focus < $0 * 0.75 } ?? false)
 
         var reasons: [Reason] = []
+        /// "The screen showed Leisure for 24m of it": what the Mac saw in a stretch logged as something else.
+        func screenLine(_ ranges: [DateInterval], label: String?) -> String? {
+            var minutes: [String: Double] = [:]
+            for s in screen where !s.uncertain {
+                guard let c = s.category, c != label else { continue }
+                let span = DateInterval(start: s.start, end: max(s.end, s.start))
+                minutes[c, default: 0] += ranges.reduce(0.0) { $0 + overlap(span, $1) } / 60
+            }
+            guard let top = minutes.max(by: { $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key }),
+                  top.value >= 15 else { return nil }
+            return "The screen showed \(top.key) for \(durationText(minutes: top.value)) of it."
+        }
         func places(_ ranges: [DateInterval]) -> String? {
             let top = topPlaces(windows, in: ranges)
             return top.isEmpty ? nil : top.map { "\($0.name) \(durationText(minutes: $0.minutes))" }.joined(separator: ", ")
@@ -104,6 +116,7 @@ public enum DayWhy {
             let extra = minutes - (usual ?? 0)
             guard usual == nil ? minutes >= 60 : extra >= 45 else { continue }
             var detail = usual.map { $0 < 5 ? "Usually almost none." : "About \(durationText(minutes: $0)) on an average day." } ?? ""
+            if let line = screenLine(ranges, label: label) { detail += (detail.isEmpty ? "" : " ") + line }
             if let seen = places(ranges) { detail += (detail.isEmpty ? "" : " ") + "On screen: \(seen)." }
             reasons.append(Reason(kind: .category, title: "\(label == "Break" ? "Breaks" : label): \(durationText(minutes: minutes))",
                                   detail: detail.isEmpty ? nil : detail, minutes: extra, category: label, ranges: ranges))
@@ -118,8 +131,9 @@ public enum DayWhy {
             }
             if awayMinutes >= today.untracked * 0.6 {
                 detail += (detail.isEmpty ? "" : " ") + "You were away from your Mac for most of it."
-            } else if let seen = places(today.gaps) {
-                detail += (detail.isEmpty ? "" : " ") + "On screen: \(seen)."
+            } else {
+                if let line = screenLine(today.gaps, label: nil) { detail += (detail.isEmpty ? "" : " ") + line }
+                if let seen = places(today.gaps) { detail += (detail.isEmpty ? "" : " ") + "On screen: \(seen)." }
             }
             reasons.append(Reason(kind: .untracked, title: "Nothing logged for \(durationText(minutes: today.untracked))",
                                   detail: detail.isEmpty ? nil : detail, minutes: today.untracked - usualGap,
@@ -242,14 +256,14 @@ public enum DayWhy {
                                                 "Brave Browser", "Orion", "Dia"]
 
     /// A site for browser windows ("Video – YouTube" → YouTube, "(17) Home / X" → X), else the app.
+    /// Never a page title: this sits on a page someone else may see.
     public static func place(_ w: Window) -> String {
         guard browsers.contains(w.app) else { return w.app }
         for sep in [" - ", " – ", " — ", " | ", " / ", " · "] where w.title.contains(sep) {
             let last = w.title.components(separatedBy: sep).last!.trimmingCharacters(in: .whitespaces)
             if (1...24).contains(last.count) { return last }
         }
-        let title = w.title.trimmingCharacters(in: .whitespaces)
-        return title.isEmpty ? w.app : String(title.prefix(32))
+        return w.app
     }
 
     static func topPlaces(_ windows: [Window], in ranges: [DateInterval], limit: Int = 3) -> [(name: String, minutes: Double)] {
