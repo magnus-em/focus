@@ -112,12 +112,14 @@ html[data-focus-youtube-active][data-focus-youtube-hide-shorts][data-focus-youtu
   #focus-youtube-shorts-block p { color: var(--yt-spec-text-secondary, #aaa); }
 }
 
-/* Tiles are hidden until Focus approves them: YouTube renders new tiles before
+/* AI filter: tiles are hidden until Focus approves them: YouTube renders new tiles before
    the script can mark them, and an unmarked tile used to show for a moment. */
-html[data-focus-edu="home"] ytd-browse[page-subtype="home"] ytd-rich-item-renderer:not([data-focus-edu="keep"]),
-html[data-focus-edu="home"] ytd-browse[page-subtype="home"] ytd-rich-section-renderer,
-html[data-focus-edu="watch"] #related :is(yt-lockup-view-model, ytd-compact-video-renderer):not(:is(yt-lockup-view-model, ytd-compact-video-renderer) *):not([data-focus-edu="keep"]),
-html[data-focus-edu="watch"] #related ytd-reel-shelf-renderer {
+html[data-focus-edu="home"]:not([data-focus-edu-manual]) ytd-browse[page-subtype="home"] ytd-rich-item-renderer:not([data-focus-edu="keep"]),
+html[data-focus-edu="home"]:not([data-focus-edu-manual]) ytd-browse[page-subtype="home"] ytd-rich-section-renderer,
+html[data-focus-edu="watch"]:not([data-focus-edu-manual]) #related :is(yt-lockup-view-model, ytd-compact-video-renderer):not(:is(yt-lockup-view-model, ytd-compact-video-renderer) *):not([data-focus-edu="keep"]),
+html[data-focus-edu="watch"]:not([data-focus-edu-manual]) #related ytd-reel-shelf-renderer,
+/* By hand: everything shows except what you hid. */
+html[data-focus-edu-manual]:not([data-focus-edu-peek]) [data-focus-edu-id][data-focus-edu="hide"] {
   display: none !important;
 }
 
@@ -161,6 +163,10 @@ html[data-focus-edu="watch"] .focus-edu-actions { right: auto; max-width: 160px;
 
 html[data-focus-edu] [data-focus-edu]:hover > .focus-edu-actions,
 html[data-focus-edu] .focus-edu-actions:focus-within { display: flex; }
+
+/* Just hidden: stays in place, dimmed, with Undo, until you leave the page. */
+html[data-focus-edu] [data-focus-edu-just] > :not(.focus-edu-actions) { opacity: 0.3; }
+html[data-focus-edu] [data-focus-edu-just] > .focus-edu-actions { display: flex; }
 
 /* Review mode: hidden videos come back dimmed, each saying why it was hidden. */
 html[data-focus-edu][data-focus-edu-peek] [data-focus-edu="hide"] > :not(.focus-edu-actions) { opacity: 0.45; }

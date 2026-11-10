@@ -21,7 +21,7 @@ const YOUTUBE_DEFAULT = {
   hideEndScreens: true,
   disableAutoplay: true,
   hideComments: false,
-  filter: 'always',
+  filter: 'manual',
 };
 
 const local = chrome.storage.local;
@@ -125,7 +125,7 @@ function isBlocked(url, state) {
 
 function normalizeYouTube(value = {}) {
   const mode = ['off', 'focus', 'always'].includes(value.mode) ? value.mode : YOUTUBE_DEFAULT.mode;
-  const filter = ['off', 'focus', 'always'].includes(value.filter) ? value.filter : YOUTUBE_DEFAULT.filter;
+  const filter = ['off', 'manual', 'focus', 'always'].includes(value.filter) ? value.filter : YOUTUBE_DEFAULT.filter;
   const result = { ...YOUTUBE_DEFAULT, mode, filter };
   for (const key of Object.keys(YOUTUBE_DEFAULT).filter((key) => key !== 'mode' && key !== 'filter')) {
     if (typeof value[key] === 'boolean') result[key] = value[key];
@@ -140,7 +140,7 @@ function isYouTubeActive(settings, state) {
 }
 
 function isYouTubeFilterActive(settings, state) {
-  if (settings.filter === 'always') return true;
+  if (settings.filter === 'always' || settings.filter === 'manual') return true;
   if (settings.filter !== 'focus') return false;
   return !!(state?.isFocus ?? state?.blocking);
 }
@@ -165,11 +165,11 @@ async function syncYouTube(state, force = false) {
 // The app labels each video (its cache, the user's channel rules, then the
 // on-device model); content scripts can't reach it because the bridge only
 // accepts the extension's origin.
-async function classifyVideos(videos, page) {
+async function classifyVideos(videos, page, judge) {
   try {
     const r = await fetch(API + '/youtube', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ videos: (videos || []).slice(0, 60), page }),
+      body: JSON.stringify({ videos: (videos || []).slice(0, 60), page, judge }),
       signal: AbortSignal.timeout(60_000),
     });
     if (!r.ok) return null;
@@ -197,6 +197,26 @@ async function setYouTubeVideo(video, keep) {
     return { ok: r.ok };
   } catch { return { ok: false }; }
 }
+
+async function logYouTube(events) {
+  try {
+    const r = await fetch(API + '/youtube/log', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events: (events || []).slice(0, 500) }), signal: AbortSignal.timeout(5_000),
+    });
+    return { ok: r.ok };
+  } catch { return { ok: false }; }
+}
+
+// 11/10: the user paused the AI filter to hide videos by hand for a few days, so a model can
+// learn from what they hid. Moves an existing setting over once; later choices stick.
+async function switchToHidingByHand() {
+  const { youtubeFocus, ytByHandSince } = await local.get(['youtubeFocus', 'ytByHandSince']);
+  if (ytByHandSince) return;
+  await local.set({ ytByHandSince: Date.now() });
+  if (youtubeFocus && youtubeFocus.filter !== 'off') await setYouTube({ ...youtubeFocus, filter: 'manual' });
+}
+switchToHidingByHand().catch(() => {});
 
 async function setYouTube(value) {
   const settings = normalizeYouTube(value);
@@ -784,7 +804,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       case 'setYouTube':
         return setYouTube(msg.settings || {});
       case 'ytClassify':
-        return classifyVideos(msg.videos);
+        return classifyVideos(msg.videos, undefined, msg.judge === 'manual' ? 'manual' : undefined);
+      case 'ytLog':
+        return logYouTube(msg.events);
       case 'ytReport':
         return classifyVideos([], msg.page);
       case 'ytChannel':

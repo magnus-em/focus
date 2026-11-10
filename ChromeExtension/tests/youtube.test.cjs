@@ -67,14 +67,15 @@ test('YouTube settings use focus-safe defaults and ignore malformed values', () 
     hideEndScreens: true,
     disableAutoplay: true,
     hideComments: true,
-    filter: 'always',
+    filter: 'manual',
   });
   assert.equal(w.run("normalizeYouTube({filter:'focus'}).filter"), 'focus');
-  assert.equal(w.run("normalizeYouTube({filter:'sometimes'}).filter"), 'always');
+  assert.equal(w.run("normalizeYouTube({filter:'sometimes'}).filter"), 'manual');
 });
 
-test('the educational filter runs always by default and can follow focus', () => {
+test('the feed runs by hand by default; the AI filter can run always or follow focus', () => {
   const w = worker();
+  assert.equal(w.run("isYouTubeFilterActive({filter:'manual'}, {isFocus:false})"), true);
   assert.equal(w.run("isYouTubeFilterActive({filter:'always'}, {isFocus:false})"), true);
   assert.equal(w.run("isYouTubeFilterActive({filter:'focus'}, {isFocus:false})"), false);
   assert.equal(w.run("isYouTubeFilterActive({filter:'focus'}, {isFocus:true})"), true);

@@ -6,6 +6,8 @@ import FocusCore
 /// and the user's channel rules (`Focus/youtube/channels.json`). Unknown videos go to Grok 40 at a time
 /// when Cloud AI is on (inside the shared daily cap), else to the on-device model one at a time.
 /// `Focus/youtube/page.json` holds the extension's latest page report and the last model error.
+/// In hide-by-hand mode nothing is judged, and `Focus/youtube/feed-log.jsonl` records what was on screen,
+/// opened and hidden (`YouTubeFeed.logEntry`).
 actor YouTubeFeedFilter {
     static let shared = YouTubeFeedFilter()
 
@@ -32,9 +34,12 @@ actor YouTubeFeedFilter {
     private var localDownUntil = Date.distantPast
     private var localMisses = 0
     private var localWarm = false
+    private var seenToday: Set<String> = []
+    private var seenDay = ""
 
     private var verdictsURL: URL { dir.appendingPathComponent("verdicts.json") }
     private var rulesURL: URL { dir.appendingPathComponent("channels.json") }
+    private var logURL: URL { dir.appendingPathComponent("feed-log.jsonl") }
 
     private func load() {
         guard !loaded else { return }
@@ -92,9 +97,16 @@ actor YouTubeFeedFilter {
     /// Answers at once from rules and the cache; videos it doesn't know yet go to the model in the
     /// background and are missing from the reply, so the extension asks again. The model can take
     /// ~40 s to wake up (11/7), longer than the extension waits.
-    func classify(_ videos: [YouTubeFeed.Video]) -> [String: YouTubeFeed.Verdict] {
+    func classify(_ videos: [YouTubeFeed.Video], byHand: Bool = false) -> [String: YouTubeFeed.Verdict] {
         load()
         var out: [String: YouTubeFeed.Verdict] = [:]
+        if byHand {
+            for v in videos.prefix(60) {
+                if let mine = verdicts[v.id], mine.verdict.source == .you { out[v.id] = mine.verdict }
+                else { out[v.id] = YouTubeFeed.byHand(v, rules: rules) }
+            }
+            return out
+        }
         for v in videos.prefix(60) where out[v.id] == nil {
             if let mine = verdicts[v.id], mine.verdict.source == .you {
                 out[v.id] = mine.verdict
@@ -112,6 +124,41 @@ actor YouTubeFeedFilter {
             Task { await drain() }
         }
         return out
+    }
+
+    /// Appends the extension's events to the feed log; a video counts as seen once a day.
+    func log(_ body: Data) {
+        guard let obj = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any],
+              let events = obj["events"] as? [[String: Any]] else { return }
+        let now = Date()
+        let day = String(YouTubeFeed.localTime(now).prefix(10))
+        if day != seenDay { loadSeen(day) }
+        var lines = Data()
+        for e in events.prefix(500) {
+            guard let entry = YouTubeFeed.logEntry(e, at: now) else { continue }
+            if entry["event"] as? String == "seen", let id = entry["id"] as? String, !seenToday.insert(id).inserted { continue }
+            guard let d = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys, .withoutEscapingSlashes]) else { continue }
+            lines.append(d)
+            lines.append(0x0A)
+        }
+        guard !lines.isEmpty else { return }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: logURL.path) { FileManager.default.createFile(atPath: logURL.path, contents: nil) }
+        guard let h = try? FileHandle(forWritingTo: logURL) else { return }
+        defer { try? h.close() }
+        _ = try? h.seekToEnd()
+        try? h.write(contentsOf: lines)
+    }
+
+    private func loadSeen(_ day: String) {
+        seenDay = day
+        seenToday = []
+        guard let text = try? String(contentsOf: logURL, encoding: .utf8) else { return }
+        for line in text.split(separator: "\n") where line.contains("\"event\":\"seen\"") && line.contains("\"at\":\"\(day)") {
+            if let o = (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any], let id = o["id"] as? String {
+                seenToday.insert(id)
+            }
+        }
     }
 
     /// On-device verdicts are asked again once the cloud is back: it's right far more often.

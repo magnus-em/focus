@@ -14,6 +14,8 @@ import Combine
 ///     (videos still being judged are left out; `page` is the extension's report, kept in Focus/youtube/page.json)
 ///   POST /youtube/channel → `{ "channel", "allow": true | false | null }` always show / always hide / forget
 ///   POST /youtube/video → `{ "id", "title", "channel", "keep": true | false | null }` show / hide this one video / forget
+///   POST /youtube/log → `{ "events": [{ "event", "id"?, "title"?, "channel"?, "page"?, "watching"?, "mode"? }] }`
+///     appended to Focus/youtube/feed-log.jsonl (`judge: "manual"` on /youtube = hide-by-hand, nothing judged)
 ///
 /// Only browsers attach an `Origin`, and a web page can't forge one, so any
 /// request whose Origin isn't the extension is refused. Local processes are
@@ -286,9 +288,10 @@ final class BrowserBridge: ObservableObject {
                                          channel: String((v["channel"] as? String ?? "").prefix(120)))
             }
             let page = (obj?["page"] as? [String: Any]).flatMap { try? JSONSerialization.data(withJSONObject: $0) }
+            let byHand = obj?["judge"] as? String == "manual"
             Task {
                 if let page { await YouTubeFeedFilter.shared.note(page: page) }
-                let verdicts = await YouTubeFeedFilter.shared.classify(videos)
+                let verdicts = await YouTubeFeedFilter.shared.classify(videos, byHand: byHand)
                 let out = verdicts.mapValues { v -> [String: Any] in
                     var d: [String: Any] = ["keep": v.keep, "source": v.source.rawValue]
                     if let why = v.why { d["why"] = why }
@@ -305,6 +308,12 @@ final class BrowserBridge: ObservableObject {
             let allow = obj?["allow"] as? Bool
             Task {
                 await YouTubeFeedFilter.shared.setChannel(channel, allow: allow)
+                self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
+            }
+        case ("POST", "/youtube/log"):
+            let body = req.body
+            Task {
+                await YouTubeFeedFilter.shared.log(body)
                 self.queue.async { self.respond(conn, status: "200 OK", json: Data(#"{"ok":true}"#.utf8)) }
             }
         case ("POST", "/youtube/video"):

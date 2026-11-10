@@ -25,7 +25,7 @@ const toInput = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(
 const fromInput = (v) => { const [h, m] = v.split(':').map(Number); return h * 60 + m; };
 const DARK_DEFAULT = { mode: 'night', from: 19 * 60, to: 7 * 60, brightness: 100, contrast: 100 };
 const YOUTUBE_DEFAULT = { mode: 'focus', hideHome: true, hideRelated: true, hideShorts: true,
-  hideEndScreens: true, disableAutoplay: true, hideComments: false, filter: 'always' };
+  hideEndScreens: true, disableAutoplay: true, hideComments: false, filter: 'manual' };
 const $ = (id) => document.getElementById(id);
 let dark = DARK_DEFAULT;
 let youtube = YOUTUBE_DEFAULT;
@@ -142,7 +142,8 @@ function renderYouTube(active = false) {
     button.setAttribute('aria-pressed', String(selected));
   }
   $('youtubeFilterWhen').textContent = youtube.filter === 'off' ? 'Home and related videos are YouTube\u2019s full picks'
-    : 'Home and related keep only videos worth your time: no politics, news or drama' + (youtube.filter === 'focus' ? ', during focus' : '');
+    : youtube.filter === 'manual' ? 'YouTube\u2019s full picks. Hover a video to hide it; Focus logs what you hide'
+      : 'AI keeps only videos worth your time: no politics, news or drama' + (youtube.filter === 'focus' ? ', during focus' : '');
   $('youtubeSettings').classList.toggle('disabled', youtube.mode === 'off');
   for (const input of document.querySelectorAll('[data-youtube]')) {
     input.checked = !!youtube[input.dataset.youtube];

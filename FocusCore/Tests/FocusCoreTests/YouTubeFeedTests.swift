@@ -74,4 +74,26 @@ final class YouTubeFeedTests: XCTestCase {
     func testCloudPromptNumbersEveryVideoInOrder() {
         XCTAssertEqual(YouTubeFeed.cloudPrompt([video("A", "c1"), video("B", "c2")]), "v1: \"A\" by c1\nv2: \"B\" by c2")
     }
+
+    func testByHandShowsEverythingButYourChannelHides() {
+        let rules = [YouTubeFeed.channelKey("CNN"): false, YouTubeFeed.channelKey("Veritasium"): true]
+        XCTAssertEqual(YouTubeFeed.byHand(video("Trump reacts to the election", "Fox News"), rules: rules), .init(keep: true, source: .unfiltered))
+        XCTAssertEqual(YouTubeFeed.byHand(video("Breaking", "CNN"), rules: rules), .init(keep: false, source: .you, why: "channel"))
+        XCTAssertTrue(YouTubeFeed.byHand(video("Ice", "Veritasium"), rules: rules).keep)
+    }
+
+    func testLogEntriesKeepOnlyKnownFieldsAndNeedTheirSubject() throws {
+        let date = Date(timeIntervalSince1970: 1_794_000_000)
+        let est = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let e = try XCTUnwrap(YouTubeFeed.logEntry(["event": "hide", "id": "abc", "title": " A video ", "channel": "C",
+                                                    "page": "home", "mode": "manual", "cookie": "x"], at: date))
+        XCTAssertEqual(e["title"] as? String, "A video")
+        XCTAssertNil(e["cookie"])
+        XCTAssertNotNil(e["at"])
+        XCTAssertTrue(YouTubeFeed.localTime(date, timeZone: est).hasSuffix("-05:00"))
+        XCTAssertNil(YouTubeFeed.logEntry(["event": "hide", "title": "no id"], at: date))
+        XCTAssertNil(YouTubeFeed.logEntry(["event": "delete", "id": "abc"], at: date))
+        XCTAssertNotNil(YouTubeFeed.logEntry(["event": "hideChannel", "channel": "CNN"], at: date))
+        XCTAssertNil(YouTubeFeed.logEntry(["event": "hideChannel", "id": "abc"], at: date))
+    }
 }

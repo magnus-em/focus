@@ -18,7 +18,8 @@ public enum YouTubeFeed {
         }
     }
 
-    public enum Source: String, Codable, Sendable { case you, known, title, model, cloud, fallback }
+    /// `unfiltered`: hide-by-hand mode, nothing judged the video.
+    public enum Source: String, Codable, Sendable { case you, known, title, model, cloud, fallback, unfiltered }
 
     public struct Verdict: Codable, Equatable, Sendable {
         public var keep: Bool
@@ -149,6 +150,38 @@ public enum YouTubeFeed {
         if !key.isEmpty, let c = channel(key, in: hiddenChannels.keys) { return Verdict(keep: false, source: .known, why: hiddenChannels[c]) }
         if !key.isEmpty, channel(key, in: knownChannels) != nil { return Verdict(keep: true, source: .known) }
         return nil
+    }
+
+    /// Hide-by-hand mode (user, 11/10: show YouTube's picks, let me hide the ones I don't want, log it so a
+    /// model can learn the filter from it). Only the user's own channel hides apply; nothing is judged.
+    public static func byHand(_ video: Video, rules: [String: Bool]) -> Verdict {
+        let key = channelKey(video.channel)
+        if !key.isEmpty, rules[key] == false { return Verdict(keep: false, source: .you, why: "channel") }
+        return Verdict(keep: true, source: .unfiltered)
+    }
+
+    /// Events in `Focus/youtube/feed-log.jsonl`: tiles that stayed on screen (`seen`, once a day per video),
+    /// clicked (`open`), and the user's hides and undos. The material for learning the filter.
+    public static let logEvents: Set<String> = ["seen", "open", "hide", "unhide", "hideChannel", "unhideChannel"]
+
+    public static func logEntry(_ e: [String: Any], at date: Date) -> [String: Any]? {
+        guard let event = e["event"] as? String, logEvents.contains(event) else { return nil }
+        var out: [String: Any] = ["event": event, "at": localTime(date)]
+        for (key, limit) in [("id", 64), ("title", 300), ("channel", 120), ("page", 16), ("watching", 300), ("mode", 16)] {
+            if let s = (e[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+                out[key] = String(s.prefix(limit))
+            }
+        }
+        let aboutChannel = event == "hideChannel" || event == "unhideChannel"
+        guard out[aboutChannel ? "channel" : "id"] != nil else { return nil }
+        return out
+    }
+
+    /// Local time with its offset, so the day in `at` is the user's day.
+    public static func localTime(_ date: Date, timeZone: TimeZone = .current) -> String {
+        let f = ISO8601DateFormatter()
+        f.timeZone = timeZone
+        return f.string(from: date)
     }
 
     /// Used only when the on-device model can't answer.
