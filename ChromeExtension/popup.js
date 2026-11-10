@@ -211,6 +211,11 @@ async function showSave() {
     }
   };
   render(status);
+  $('archiveBtn').disabled = !url || /^https:\/\/archive\.(ph|is|today|li|md|vn|fo)\//.test(url);
+  $('archiveBtn').onclick = async () => {
+    await chrome.runtime.sendMessage({ type: 'saveArchive' }).catch(() => null);
+    window.close();
+  };
   button.onclick = async () => {
     button.disabled = true;
     button.textContent = 'Saving\u2026';

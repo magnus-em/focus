@@ -634,6 +634,8 @@ function ensureMenus() {
     chrome.contextMenus.create({ id: 'save-page', title: 'Save page to reading list', contexts: ['page'] });
     chrome.contextMenus.create({ id: 'save-link', title: 'Save link to reading list', contexts: ['link'] });
     chrome.contextMenus.create({ id: 'save-selection', title: 'Save page with this highlight', contexts: ['selection'] });
+    chrome.contextMenus.create({ id: 'archive-page', title: 'Save page via archive.today (no ads, no paywall)', contexts: ['page'] });
+    chrome.contextMenus.create({ id: 'archive-link', title: 'Save link via archive.today', contexts: ['link'] });
   });
 }
 
@@ -641,12 +643,125 @@ chrome.contextMenus?.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'save-link' && info.linkUrl) saveLink(info.linkUrl, tab && tab.id);
   else if (info.menuItemId === 'save-selection' && tab) saveTab(tab, info.selectionText || '');
   else if (info.menuItemId === 'save-page' && tab) saveTab(tab);
+  else if (info.menuItemId === 'archive-page' && tab) saveViaArchive(tab.url, tab);
+  else if (info.menuItemId === 'archive-link' && info.linkUrl) saveViaArchive(info.linkUrl, tab);
 });
 
 chrome.commands?.onCommand.addListener(async (command, tab) => {
   if (command !== 'save-page') return;
   const t = tab || (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
   saveTab(t);
+});
+
+// MARK: - Save via archive.today
+
+// archive.today serves a static copy without scripts, ads or most paywalls. Its
+// pages can't be fetched from here (it answers automated requests with a
+// CAPTCHA), so the copy opens in a real tab next to the page: if archive.today
+// asks for a CAPTCHA the user solves it there, and once the snapshot page loads
+// its article is saved under the original URL and the tab closes.
+const ARCHIVE = 'https://archive.ph';
+const ARCHIVE_HOST = /^https:\/\/archive\.(ph|is|today|li|md|vn|fo)\//;
+const ARCHIVE_TIMEOUT_MS = 10 * 60 * 1000;
+
+async function archiveJobs() {
+  const { archiveJobs: jobs = {} } = await session.get('archiveJobs');
+  return jobs;
+}
+
+async function setArchiveJob(tabId, job) {
+  await serial(async () => {
+    const jobs = await archiveJobs();
+    if (job) jobs[tabId] = job; else delete jobs[tabId];
+    await session.set({ archiveJobs: jobs });
+  });
+}
+
+async function saveViaArchive(url, fromTab) {
+  if (!/^https?:/.test(url || '') || ARCHIVE_HOST.test(url)) {
+    announceSave(fromTab && fromTab.id, { status: 'error', error: 'Only web pages can go through archive.today.' });
+    return { status: 'error', error: 'Only web pages can go through archive.today.' };
+  }
+  const tab = await chrome.tabs.create({
+    url: `${ARCHIVE}/newest/${url}`,
+    active: true,
+    ...(fromTab ? { index: fromTab.index + 1, openerTabId: fromTab.id, windowId: fromTab.windowId } : {}),
+  });
+  await setArchiveJob(tab.id, { url, from: fromTab ? fromTab.id : null, phase: 'newest', started: Date.now() });
+  return { status: 'started' };
+}
+
+async function archivePageInfo(tabId) {
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const captcha = !!document.querySelector('.g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey], iframe[src*="captcha"], iframe[src*="challenges.cloudflare"], #captcha, form[action*="captcha"]')
+          || /just a moment|verify you are human|captcha/i.test(document.title);
+        const content = document.getElementById('CONTENT');
+        if (!content) return { captcha };
+        // The snapshot's own header (archive.today's toolbar) sits outside #CONTENT.
+        // Links and images become absolute so they still work under the original URL.
+        const copy = content.cloneNode(true);
+        const live = content.querySelectorAll('img, a, source');
+        copy.querySelectorAll('img, a, source').forEach((el, i) => {
+          const src = live[i];
+          if (el.hasAttribute('src')) el.setAttribute('src', src.src);
+          if (el.hasAttribute('href')) el.setAttribute('href', src.href);
+          el.removeAttribute('srcset');
+        });
+        copy.querySelectorAll('script, iframe, noscript').forEach((el) => el.remove());
+        const title = (document.title || '').replace(/\s*[|–-]\s*archive\.\w+\s*$/i, '').trim();
+        return { captcha, title, html: `<!doctype html><html><head><title>${title.replace(/</g, '&lt;')}</title></head><body>${copy.innerHTML}</body></html>` };
+      },
+    });
+    return (res && res.result) || {};
+  } catch {
+    return {};
+  }
+}
+
+async function finishArchive(tabId, job, res) {
+  await setArchiveJob(tabId, null);
+  const target = job.from != null && await chrome.tabs.get(job.from).catch(() => null);
+  if (res && res.status !== 'error') {
+    await chrome.tabs.remove(tabId).catch(() => {});
+    if (target) await chrome.tabs.update(target.id, { active: true }).catch(() => {});
+  }
+  announceSave(target ? target.id : tabId, res, 'Saved from archive.today');
+}
+
+async function stepArchive(tabId, tab) {
+  const jobs = await archiveJobs();
+  const job = jobs[tabId];
+  if (!job || job.busy) return;
+  if (Date.now() - job.started > ARCHIVE_TIMEOUT_MS) {
+    await finishArchive(tabId, job, { status: 'error', error: 'archive.today didn\'t finish; the tab is still open' });
+    return;
+  }
+  const url = tab.url || '';
+  // Snapshots live at archive.ph/<id> or archive.ph/<timestamp>/<url> (where
+  // /newest/ redirects); both carry the archived page in #CONTENT.
+  await setArchiveJob(tabId, { ...job, busy: true });
+  const page = await archivePageInfo(tabId);
+  if (page.html && !/\/wip\//.test(url)) {
+    const res = await readLater(job.url, 'archive', { html: page.html, title: page.title || '', author: '' });
+    await finishArchive(tabId, job, res);
+    return;
+  }
+  await setArchiveJob(tabId, { ...job, busy: false });
+  // No snapshot yet: ask archive.today to make one, unless it's showing a CAPTCHA
+  // first, which the user answers in the tab (we wait for the next load).
+  if (job.phase !== 'newest' || !/\/newest\//.test(url) || page.captcha) return;
+  await setArchiveJob(tabId, { ...job, phase: 'run' });
+  await chrome.tabs.update(tabId, { url: `${ARCHIVE}/?run=1&url=${encodeURIComponent(job.url)}` }).catch(() => {});
+}
+
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.status === 'complete' && ARCHIVE_HOST.test(tab.url || '')) stepArchive(tabId, tab);
+});
+chrome.tabs.onRemoved?.addListener((tabId) => {
+  archiveJobs().then((jobs) => { if (jobs[tabId]) setArchiveJob(tabId, null); });
 });
 
 async function flushReadLater() {
@@ -852,6 +967,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         const res = await saveTab(tab);
         return { ...res, message: saveMessage(res) };
+      }
+      case 'saveArchive': {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        return saveViaArchive(tab && tab.url, tab);
       }
       case 'readerStatus':
         return readerCall('status', msg.url || '');
