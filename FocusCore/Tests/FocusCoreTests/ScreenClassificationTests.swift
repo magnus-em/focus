@@ -227,6 +227,14 @@ final class ScreenClassificationPolicyTests: XCTestCase {
         XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Admin", app: "ChatGPT", title: "Install project", text: "Install the Focus app on my phone.").category, "Admin")
     }
 
+    func testChatWithNoMathIsNotMath() {
+        let mania = "If it is mania, there usually isn't one single cause. It often occurs with bipolar disorder, where genetics and differences in brain function contribute to vulnerability. Sleep and the body clock become disrupted."
+        XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Understand manic episodes on social…", text: mania).category)
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Strong induction help", text: "Show the base case holds for n = 1.").category, "Math")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Pset 7 question 3", text: "How many ways can 5 people sit if two refuse to sit together? Count the arrangements.").category, "Math")
+        XCTAssertEqual(ScreenClassificationPolicy.evaluate(category: "Math", app: "Claude", title: "Counting question", text: "Is a permutation the right model here?").category, "Math")
+    }
+
     func testSaunaMaterialCuriosityIsNotInventedMathCoursework() {
         let text = "Explain why wool insulation in a sauna hat protects the head. I am curious about the material science."
         XCTAssertNil(ScreenClassificationPolicy.evaluate(category: "Math", app: "ChatGPT", title: "Why sauna hats?", text: text).category)
@@ -289,6 +297,16 @@ final class LocalTaskContextTests: XCTestCase {
         let observations = try decode(context.promptContext(at: now))
         XCTAssertEqual(observations.first?["excerpt"] as? String, instruction)
         XCTAssertEqual(observations.first?["uncertain"] as? Bool, true)
+    }
+
+    func testWindowsThatShowNoTaskStayOutOfContext() throws {
+        var context = LocalTaskContext()
+        context.record(app: "Calendar", title: "Calendar", category: nil, summary: "Discrete Math Midterm for CPSC 3231.",
+                       text: "Discrete Math Midterm", uncertain: true, at: now)
+        context.record(app: "Google Chrome", title: "Blocked · Focus", category: nil, summary: "Blocked Instagram.", text: "", uncertain: true, at: now)
+        context.record(app: "Code", title: "hw2.ipynb — hw2", category: "SWE", summary: "", text: "", at: now)
+        let observations = try decode(context.promptContext(at: now))
+        XCTAssertEqual(observations.map { $0["app"] as? String }, ["Code"])
     }
 
     private func decode(_ json: String) throws -> [[String: Any]] {

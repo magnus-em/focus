@@ -115,6 +115,11 @@ public enum ScreenClassificationPolicy {
             if let category, !["Admin", "Recruiting", "Leisure", "Social"].contains(category), isMailThread(app: app, title: title) {
                 return Decision(category: nil, reason: "An email mentioning a subject is not work on it", uncertain: true)
             }
+            // 11/9: a ChatGPT chat about manic episodes was Math in a card over SWE; the model's reason
+            // ("Discrete Math Midterm for CPSC 3231.") was a Calendar glance's summary from the recent-task context.
+            if category == "Math", isAssistantApp(app), !showsMathSubject(title: title, text: text) {
+                return Decision(category: nil, reason: "A chat with no math in it is not math", uncertain: true)
+            }
             // 10/30: a Quanta biology article ("See Inside Cells Like Never Before") was Math from the
             // site's Mathematics nav link; popular-science magazines are reading, never coursework.
             if category == "Math", showsMaterialCuriosity(title: title, text: text) || isScienceMagazine(title: title) {
@@ -282,6 +287,32 @@ public enum ScreenClassificationPolicy {
     public static func isSearchResults(title: String) -> Bool {
         let title = normalized(String(title.prefix(240)))
         return ["- google search", "- bing", "at duckduckgo", "- search", "- perplexity"].contains { title.hasSuffix($0) }
+    }
+
+    /// Windows the model may describe but that never show the task (a calendar's plans, a folder,
+    /// a list, a call, a system utility, an empty tab): no label, and no part of the recent-task context.
+    public static func showsNoTask(app: String, title: String) -> Bool {
+        ["calendar", "finder", "reminders", "screen sharing", "activity monitor", "system settings",
+         "system preferences", "find my"].contains(normalized(app))
+            || isVideoCall(app: app) || isPlaceholderPage(app: app, title: title)
+    }
+
+    public static func isAssistantApp(_ app: String) -> Bool {
+        let app = normalized(app)
+        return ["chatgpt", "claude", "codex"].contains { app.contains($0) }
+    }
+
+    private static func showsMathSubject(title: String, text: String) -> Bool {
+        let content = normalized(String(title.prefix(240)) + "\n" + String(text.prefix(2400)))
+        let words = ["math", "proof", "prove", "theorem", "lemma", "equation", "induction", "integral", "derivative",
+                     "matrix", "matrices", "probability", "modulo", "permutation", "combinator", "bijection", "injective",
+                     "surjective", "calculus", "algebra", "geometry", "vector", "eigen", "polynomial", "recurrence",
+                     "graph theory", "vertices", "logarithm", "exponent", "factorial", "binomial", "expected value",
+                     "variance", "set theory", "subset", "relation", "congruen", "prime", "divisib", "formula", "how many",
+                     "count", "pset", "problem set", "homework", "exercise", "midterm", "exam", "math 244", "discrete"]
+        if words.contains(where: { containsWordBeginning($0, in: content) }) { return true }
+        if ["∑", "∫", "≤", "≥", "≠", "∈", "⊆", "∀", "∃", "√", "π", "²"].contains(where: content.contains) { return true }
+        return content.range(of: #"\d\s*[-+*/^=<>]\s*\d|\b[a-z]\s*[=<>]\s*\d|\b[a-z]\s*\^\s*\d"#, options: .regularExpression) != nil
     }
 
     public static func isVideoCall(app: String) -> Bool {
@@ -539,6 +570,7 @@ public struct LocalTaskContext: Sendable {
 
     public mutating func record(app: String, title: String, category: String?, summary: String, text: String,
                                 confirmed: Bool = false, uncertain: Bool = false, at: Date = Date()) {
+        guard !ScreenClassificationPolicy.showsNoTask(app: app, title: title) else { return }
         observations.removeAll { at.timeIntervalSince($0.at) > maximumAge || $0.at > at }
         let observation = Observation(at: at, app: String(app.prefix(80)), title: String(title.prefix(160)),
                                       category: category.map { String($0.prefix(40)) }, summary: String(summary.prefix(160)),
