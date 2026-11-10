@@ -171,6 +171,12 @@ final class InsightsStore: ObservableObject {
 
     // MARK: - Writing
 
+    /// The analysis's week: today and the six days before it, up to now.
+    nonisolated static func lastSevenDays(now: Date = Date()) -> DateInterval {
+        let cal = Calendar.current
+        return DateInterval(start: cal.date(byAdding: .day, value: -6, to: cal.startOfDay(for: now))!, end: now)
+    }
+
     nonisolated static var reportsDirectory: URL { directory.appendingPathComponent("reports", isDirectory: true) }
 
     nonisolated static func loadReports() -> [InsightsReport.Report] {
@@ -188,7 +194,7 @@ final class InsightsStore: ObservableObject {
     /// The facts for the last 7 days, as the model would read them, plus the
     /// schema; Claude Code writes a report from this when asked.
     func writeBundle() async -> URL? {
-        let p = DateInterval(start: Calendar.current.date(byAdding: .day, value: -7, to: Date())!, end: Date())
+        let p = Self.lastSevenDays()
         let (facts, _) = await facts(period: p)
         let bundle: [String: Any] = [
             "periodStart": ISO8601DateFormatter().string(from: p.start),
@@ -233,7 +239,7 @@ final class InsightsStore: ObservableObject {
         writing = true
         writeStatus = "Writing…"
         defer { writing = false }
-        let p = DateInterval(start: Calendar.current.date(byAdding: .day, value: -7, to: Date())!, end: Date())
+        let p = Self.lastSevenDays()
         let (facts, _) = await facts(period: p)
         do {
             let r = try await InsightsWriter.write(facts: facts, period: p)

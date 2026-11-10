@@ -188,7 +188,7 @@ public enum Insights {
         // Goals
         var progress: [GoalProgress] = goals.enumerated().map { i, g in
             GoalProgress(id: g.id, title: g.title, avoided: g.avoided, rank: i + 1, trackedMinutes: 0, screenMinutes: 0,
-                         weeklyTarget: g.weeklyHours.map { $0 * p.duration / (7 * 86400) }, perDay: Array(repeating: 0, count: dayStarts.count),
+                         weeklyTarget: g.weeklyHours.map { $0 * Double(dayStarts.count) / 7 }, perDay: Array(repeating: 0, count: dayStarts.count),
                          daysTouched: 0, outputs: [:], outputTargets: g.outputsPerWeek, lastTouched: nil)
         }
         let goalIndex = Dictionary(uniqueKeysWithValues: goals.enumerated().map { ($1.id, $0) })

@@ -73,10 +73,10 @@ struct InsightsContent: View {
             if let s = store.summary {
                 hero(s)
                 goalsSection(s)
-                reportSection
+                reportSection.id("insights-report")
                 timerSection(s)
-                attentionSection(s)
-                daysSection(s)
+                attentionSection(s).id("insights-attention")
+                daysSection(s).id("insights-days")
                 studySection(s)
             } else {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 200)
@@ -330,17 +330,24 @@ private struct GoalRow: View {
                 }
                 Text(detail).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             }
-            .frame(width: 330, alignment: .leading)
-            VStack(alignment: .leading, spacing: 4) {
+            .frame(minWidth: 260, maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 6) {
                 let target = goal.target ?? 0
-                ProgressView(value: min(goal.screenMinutes, max(target, 1)), total: max(target, 1))
-                    .tint(target > 0 && goal.screenMinutes >= target ? .green : .orange)
-                    .opacity(target > 0 ? 1 : 0.3)
-                Text(target > 0 ? "\(hm(goal.screenMinutes)) of \(hm(target)) on screen · \(hm(goal.trackedMinutes)) on the timer"
-                     : "\(hm(goal.screenMinutes)) on screen · \(hm(goal.trackedMinutes)) on the timer · no target")
-                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText).monospacedDigit()
+                if target > 0 {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.gray.opacity(0.18))
+                            Capsule().fill(goal.screenMinutes >= target ? Color.good : goal.avoided ? Color.orange : Color.accentColor)
+                                .frame(width: max(6, geo.size.width * min(1, goal.screenMinutes / target)))
+                        }
+                    }
+                    .frame(height: 6)
+                }
+                Text(target > 0 ? "\(hm(goal.screenMinutes)) of \(hm(target)) on screen" : "\(hm(goal.screenMinutes)) on screen · no target")
+                    .font(.system(size: 13, weight: .medium)).monospacedDigit()
+                Text("\(hm(goal.trackedMinutes)) on the timer").font(.system(size: 12)).foregroundStyle(Color.secondaryText).monospacedDigit()
             }
-            .frame(width: 280)
+            .frame(width: 260, alignment: .leading)
             HStack(alignment: .bottom, spacing: 3) {
                 let peak = max(30, goal.perDay.max() ?? 0)
                 ForEach(Array(goal.perDay.suffix(14).enumerated()), id: \.offset) { _, m in
@@ -362,8 +369,8 @@ private struct GoalRow: View {
             let label = k == "applications" ? "applications" : "LeetCode problems"
             parts.append("\(v)\(goal.outputTargets[k].map { " of \($0)" } ?? "") \(label)")
         }
-        parts.append("\(goal.daysTouched) days touched")
-        if let last = goal.lastTouched { parts.append("last \(last.formatted(.relative(presentation: .named)))") }
+        parts.append(goal.daysTouched == 1 ? "1 day with 5+ min" : "\(goal.daysTouched) days with 5+ min")
+        if let last = goal.lastTouched { parts.append("last seen \(last.formatted(.relative(presentation: .named)))") }
         else { parts.append("not seen") }
         return parts.joined(separator: " · ")
     }
