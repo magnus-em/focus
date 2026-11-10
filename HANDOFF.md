@@ -2,7 +2,15 @@
 
 Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-11-05 (Codex: confirmed course roster).
+Last touched: 2026-11-10 (Claude: Insights, goals, window timeline).
+
+## Insights, goals, second-by-second capture — 11/10 (Claude)
+
+- Check after a day of use: `Focus/timeline/` rows (window/input/alive/away), `Focus/ai-chats/` (window, transcript rows), `Focus/screen-cloud-disagreements.jsonl` (Grok vs on-device), `Focus/insights/nudges.jsonl`, and the Insights window's distraction numbers against the day.
+- Claude desktop's message class is assumed to contain "user-message" (ChatGPT's does: `bg-user-message`); verify with the app open.
+- The analysis has no model until the user adds an Anthropic key (Settings → Recall) or turns Cloud AI on; Claude Code can write one from `focus://insights?bundle=1` → `Focus/insights/bundle.json` into `Focus/insights/reports/`.
+- `focus://insights` route and the Dashboard entry point: the Dashboard page tab still to add (DashboardView was claimed by another session).
+
 
 ## Cross-device timer rewrite — 10/30 (Claude)
 

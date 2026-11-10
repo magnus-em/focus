@@ -141,7 +141,14 @@ class AppSettings: ObservableObject {
     @Published var screenAutoAllUntil: Double {
         didSet { sd.set(screenAutoAllUntil, forKey: "screenAutoAllUntil") }
     }
-    var screenAutoAll: Bool { screenAutoAllUntil > Date().timeIntervalSince1970 }
+    /// Every screen card switches on its own, with Undo, always (user, 11/9:
+    /// "I never have to manually change the categories when I'm working on
+    /// my Mac"). Leaving focus for a life category needs 8 min of it first;
+    /// shorter side trips are counted as distractions instead.
+    @Published var screenAutoAlways: Bool {
+        didSet { sd.set(screenAutoAlways, forKey: "screenAutoAlways") }
+    }
+    var screenAutoAll: Bool { screenAutoAlways || screenAutoAllUntil > Date().timeIntervalSince1970 }
 
     /// The end of today for "today" settings: the next 4 AM.
     static func nextFourAM(after now: Date = Date()) -> Date {
@@ -272,6 +279,7 @@ class AppSettings: ObservableObject {
             "screenSuggest": true,
             "screenSuggestMinutes": 2,
             "screenAutoSwitch": true,
+            "screenAutoAlways": true,
             "screenEverySwitch": false,
             "screenAutoAllUntil": 0.0,
             "awayPromptMinutes": 15,
@@ -328,6 +336,7 @@ class AppSettings: ObservableObject {
         screenSuggest = d.bool(forKey: "screenSuggest")
         screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
         screenAutoSwitch = d.bool(forKey: "screenAutoSwitch")
+        screenAutoAlways = d.bool(forKey: "screenAutoAlways")
         screenEverySwitch = d.bool(forKey: "screenEverySwitch")
         screenAutoAllUntil = d.double(forKey: "screenAutoAllUntil")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
@@ -448,6 +457,7 @@ class AppSettings: ObservableObject {
         screenSuggest = d.bool(forKey: "screenSuggest")
         screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
         screenAutoSwitch = d.bool(forKey: "screenAutoSwitch")
+        screenAutoAlways = d.bool(forKey: "screenAutoAlways")
         screenEverySwitch = d.bool(forKey: "screenEverySwitch")
         screenAutoAllUntil = d.double(forKey: "screenAutoAllUntil")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")

@@ -83,7 +83,7 @@ public final class ScreenJournalWriter: @unchecked Sendable {
         return encoder
     }()
 
-    public init(directory: URL, keepSeconds: TimeInterval = 7 * 86400, byteBudget: Int = 128 * 1024 * 1024,
+    public init(directory: URL, keepSeconds: TimeInterval = 365 * 86400, byteBudget: Int = 1536 * 1024 * 1024,
                 chunkBytes: Int = 4 * 1024 * 1024) {
         self.directory = directory; self.keepSeconds = keepSeconds
         self.byteBudget = max(1, byteBudget); self.chunkBytes = max(1, min(chunkBytes, byteBudget))

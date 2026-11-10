@@ -1168,7 +1168,7 @@ private struct ScreenSettings: View {
         .font(.system(size: 13))
         ToggleRow(label: "Keep screenshots for review on this Mac", isOn: $evidence.enabled)
         HStack {
-            Text("Seven days · up to 256 MB · \(ByteCountFormatter.string(fromByteCount: Int64(evidence.storedBytes), countStyle: .file)) stored")
+            Text("14 days · up to 1 GB · \(ByteCountFormatter.string(fromByteCount: Int64(evidence.storedBytes), countStyle: .file)) stored")
                 .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             Spacer()
             Button("Delete screenshots", role: .destructive) { evidence.deleteAll() }
@@ -1186,9 +1186,22 @@ private struct ScreenSettings: View {
                 IntRow(label: "After the screen shows it for", value: $settings.screenSuggestMinutes, range: 1...20, suffix: "min")
                 ToggleRow(label: "Switch focus categories on its own for windows I've labeled", isOn: $settings.screenAutoSwitch)
                 ToggleRow(label: "Ask on every switch it sees (testing, ~30s)", isOn: $settings.screenEverySwitch)
-                ToggleRow(label: "Switch without asking until 4 AM, with Undo", isOn: Binding(
-                    get: { settings.screenAutoAll },
-                    set: { settings.screenAutoAllUntil = $0 ? AppSettings.nextFourAM().timeIntervalSince1970 : 0 }))
+                ToggleRow(label: "Switch without asking, with Undo", isOn: $settings.screenAutoAlways)
+                if !settings.screenAutoAlways {
+                    ToggleRow(label: "Switch without asking until 4 AM, with Undo", isOn: Binding(
+                        get: { settings.screenAutoAll },
+                        set: { settings.screenAutoAllUntil = $0 ? AppSettings.nextFourAM().timeIntervalSince1970 : 0 }))
+                }
+                Text("Leaving focus for something else switches after 8 min of it, backdated; shorter side trips stay in the block and count as distractions on the Insights page.")
+                    .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            AIChatSettingsRows()
+            HStack {
+                Text("Insights: goals, where effort went, distractions to the second (⌃⌥⌘G)")
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                Spacer()
+                Button("Open Insights") { InsightsWindowController.shared.open() }.controlSize(.small)
             }
             HStack(spacing: 6) {
                 Text(watcher.status).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
@@ -1327,6 +1340,42 @@ private struct SettingsCard<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
                 .contentCard()
+        }
+    }
+}
+
+
+/// Settings → Screen: recording what you type to AI tools.
+struct AIChatSettingsRows: View {
+    @ObservedObject private var chats = AIChatStore.shared
+    @State private var importStatus = ""
+
+    var body: some View {
+        ToggleRow(label: "Record what I ask AI tools (word for word)", isOn: $chats.enabled)
+        if chats.enabled {
+            HStack(spacing: 6) {
+                Text(chats.trusted ? "\(chats.weekCount) messages this week from ChatGPT, Claude, Claude Code and Codex"
+                     : "ChatGPT and Claude windows need Accessibility permission; Claude Code and Codex are read from disk")
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                if !chats.trusted { Button("Grant…") { chats.requestAccess() }.controlSize(.small) }
+            }
+            HStack {
+                Text(importStatus.isEmpty ? "Exports add exact times and phone chats" : importStatus)
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                Spacer()
+                Button("Import ChatGPT or Claude export…") {
+                    let panel = NSOpenPanel()
+                    panel.canChooseDirectories = true
+                    panel.allowedContentTypes = [.zip, .json, .folder]
+                    guard panel.runModal() == .OK, let url = panel.url else { return }
+                    importStatus = "Importing…"
+                    Task { importStatus = await chats.importExport(url) }
+                }.controlSize(.small)
+            }
+            Text("Only your own messages are kept, on this Mac, in Focus/ai-chats. Temporary and incognito chats are skipped.")
+                .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
         }
     }
 }

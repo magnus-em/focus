@@ -116,9 +116,11 @@ final class CoachEpisodeStore: ObservableObject {
                     guard let source = try await source(job) else { try await queue.set(job.id, phase: .skipped); continue }
                     guard !Task.isCancelled, token == generation, allowed(source.row) else { return }
                     let prefixes = ClassCalendar.shared.coursePrefixes
-                    let text = try CoachEpisode.prompt(row: source.row, text: source.text, coursePrefixes: prefixes)
+                    let categories = ScreenWatcher.shared.checkChoices
+                    let text = try CoachEpisode.prompt(row: source.row, text: source.text, coursePrefixes: prefixes, categories: categories)
                     if dryRun {
-                        try await queue.preview(job.id, payload: CoachEpisode.preview(row: source.row, text: source.text, image: source.image, coursePrefixes: prefixes))
+                        try await queue.preview(job.id, payload: CoachEpisode.preview(row: source.row, text: source.text, image: source.image,
+                                                                                      coursePrefixes: prefixes, categories: categories))
                         status = "Dry run: payload ready, nothing sent"
                         continue
                     }
@@ -153,6 +155,9 @@ final class CoachEpisodeStore: ObservableObject {
                     }
                     guard !Task.isCancelled, token == generation, allowed(source.row) else { return }
                     try await queue.finish(.init(source: source.row, understanding: understanding, model: model, usage: usage, needsReview: needsReview))
+                    if let c = understanding.category, categories.contains(c), understanding.confidence != .low, !understanding.unreadable {
+                        ScreenWatcher.shared.cloudLabel(c, for: source.row)
+                    }
                     status = needsReview ? "Episode saved; evidence needs review" : "Episode saved"
                     lastError = nil
                 } catch let error as XAIClient.Failure {

@@ -137,7 +137,7 @@ final class ScreenEvidenceWorker: @unchecked Sendable {
         generationLock.unlock()
     }
 
-    init(directory: URL, keepSeconds: TimeInterval = 7 * 86400, byteBudget: Int = 256 * 1024 * 1024) {
+    init(directory: URL, keepSeconds: TimeInterval = 14 * 86400, byteBudget: Int = 1024 * 1024 * 1024) {
         self.directory = directory
         self.keepSeconds = keepSeconds
         self.byteBudget = byteBudget
@@ -282,7 +282,7 @@ final class ScreenEvidenceWorker: @unchecked Sendable {
         index.sort { $0.at < $1.at }
         var bytes = index.reduce(0) { $0 + $1.bytes }
         let cutoff = now.addingTimeInterval(-keepSeconds)
-        while let first = index.first, first.at < cutoff || bytes > byteBudget || index.count > 12000 {
+        while let first = index.first, first.at < cutoff || bytes > byteBudget || index.count > 40000 {
             try FileManager.default.removeItem(at: url(first.id))
             bytes -= first.bytes
             index.removeFirst()

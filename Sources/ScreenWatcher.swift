@@ -219,6 +219,11 @@ final class ScreenWatcher: ObservableObject {
     func start(settings: AppSettings) {
         self.settings = settings
         CoachEpisodeStore.shared.start()
+        WindowTimelineRecorder.shared.start(settings: settings)
+        AIChatStore.shared.start(settings: settings)
+        RecruitingStore.shared.start()
+        InsightsStore.shared.start()
+        InsightsWindowController.shared.registerHotKey()
         guard tick == nil else { return }
         watchSetting = settings.$screenWatch.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] enabled in
             if !enabled { self?.resetEvidence(); ScreenJournalStore.shared.invalidate() }
@@ -380,7 +385,12 @@ final class ScreenWatcher: ObservableObject {
         guard !busy else { return }
         guard !PresenceMonitor.shared.isAway else { status = "Paused while you're away"; taskContext.clear(); return }
         let idle = PresenceMonitor.idleSeconds
-        guard idle < 300 else { status = "Paused, no keyboard or mouse for 5 min"; taskContext.clear(); return }
+        guard idle < PresenceMonitor.idleAwaySeconds else {
+            status = "Paused, no keyboard or mouse for 10 min"; taskContext.clear(); return
+        }
+        // Reading without touching anything still counts as being here (you
+        // only count as away at 10 min), just sampled once a minute.
+        if idle >= 300, Date().timeIntervalSince(lastSampleAt) < 60 { return }
         // During Chores etc. a lit screen says nothing, but hands on the
         // keyboard/mouse mean you're back, so watch (and suggest) again.
         if let c = runningCategory(), Self.offScreenCategories.contains(c), idle > 30 {
@@ -509,6 +519,7 @@ final class ScreenWatcher: ObservableObject {
         let source: String? = labelSource.hasPrefix("your earlier answer") ? "you"
             : labelSource == "your Focus project rule" ? "rule"
             : labelSource.hasPrefix("kept") ? "held"
+            : labelSource.hasPrefix("cloud") ? "cloud"
             : labelSource.contains("model") ? "model" : nil
         let browser = Self.browsers.contains(bundle)
         let privateMarker = (shot.title + "\n" + read.fullText).range(of: #"(?i)\b(incognito|private browsing)\b"#, options: .regularExpression) != nil
@@ -529,7 +540,7 @@ final class ScreenWatcher: ObservableObject {
 
     private func canRecordSample(generation: Int, bundle: String) -> Bool {
         generation == sampleGeneration && settings?.screenWatch == true && !PresenceMonitor.shared.isAway
-            && PresenceMonitor.idleSeconds < 300 && !Self.privateApps.contains(bundle) && Self.userIgnored[bundle] == nil
+            && PresenceMonitor.idleSeconds < PresenceMonitor.idleAwaySeconds && !Self.privateApps.contains(bundle) && Self.userIgnored[bundle] == nil
     }
 
     private func record(_ s: ScreenSample) {
@@ -538,9 +549,17 @@ final class ScreenWatcher: ObservableObject {
 
         let end = s.date.addingTimeInterval(Self.interval)
         let testMode = settings?.screenEverySwitch ?? false
+        // A reading that ran late (labeling, a skipped tick) leaves a hole
+        // after the previous span; the second-by-second window log says
+        // whether that window stayed in front through it.
+        let recorder = WindowTimelineRecorder.shared
+        let continuous = { (last: ScreenSpan) in
+            s.date.timeIntervalSince(last.end) < Self.interval
+                || (s.date.timeIntervalSince(last.end) < 180
+                    && recorder.wasFront(bundle: s.bundleID, from: last.end, to: s.date))
+        }
         if var last = spans.last, last.bundleID == s.bundleID, last.title == s.title, last.category == s.category,
-           (last.uncertain ?? false) == s.uncertain, last.testMode == testMode,
-           s.date.timeIntervalSince(last.end) < Self.interval {
+           (last.uncertain ?? false) == s.uncertain, last.testMode == testMode, continuous(last) {
             last.end = end
             last.summary = s.summary
             last.active = (last.active ?? false) || s.active
@@ -549,8 +568,21 @@ final class ScreenWatcher: ObservableObject {
             last.uncertain = s.uncertain
             spans[spans.count - 1] = last
         } else {
+            var start = s.date
             if let last = spans.last, last.end > s.date { spans[spans.count - 1].end = s.date }
-            spans.append(ScreenSpan(start: s.date, end: end, app: s.app, bundleID: s.bundleID,
+            else if let last = spans.last, last.end < s.date, s.date.timeIntervalSince(last.end) < 180 {
+                // Fill the hole from both sides: the previous window until it
+                // left the front, this one from when it came to the front.
+                let since = recorder.front?.bundle == s.bundleID ? recorder.frontSince : s.date
+                let switchAt = min(s.date, max(last.end, since))
+                if last.bundleID != s.bundleID, recorder.wasFront(bundle: last.bundleID, from: last.end, to: switchAt) {
+                    spans[spans.count - 1].end = switchAt
+                }
+                if switchAt < s.date, recorder.wasFront(bundle: s.bundleID, from: switchAt, to: s.date) {
+                    start = max(spans[spans.count - 1].end, switchAt)
+                }
+            }
+            spans.append(ScreenSpan(start: start, end: end, app: s.app, bundleID: s.bundleID,
                                     title: s.title, summary: s.summary, category: s.category, active: s.active,
                                     source: s.source, reason: s.reason, uncertain: s.uncertain, testMode: testMode))
         }
@@ -573,9 +605,15 @@ final class ScreenWatcher: ObservableObject {
     func save() {
         unsavedSamples = 0
         let cutoff = Date().addingTimeInterval(-Double(Self.keepDays) * 86400)
-        spans.removeAll { $0.end < cutoff }
+        let expired = spans.filter { $0.end < cutoff }
+        let expiredNotes = activityNotes.filter { $0.key < cutoff }
+        // Old rows move to a monthly archive for long-range insights; if that
+        // write fails they stay here and are tried again next save.
+        if (expired.isEmpty && expiredNotes.isEmpty) || ScreenArchive.append(spans: expired, notes: expiredNotes) {
+            spans.removeAll { $0.end < cutoff }
+            activityNotes = activityNotes.filter { $0.key >= cutoff }
+        }
         if let data = try? JSONEncoder().encode(spans) { try? data.write(to: fileURL, options: .atomic) }
-        activityNotes = activityNotes.filter { $0.key >= cutoff }
         if let data = try? JSONEncoder().encode(activityNotes) { try? data.write(to: notesURL, options: .atomic) }
     }
 
@@ -774,7 +812,7 @@ final class ScreenWatcher: ObservableObject {
 
     /// Their tab strip and bookmarks bar OCR first and filled the 1500-char
     /// budget (godbolt read as "Ask Gemini / 3231 Study Guides / …" → Math).
-    nonisolated private static let browsers: Set<String> = [
+    nonisolated static let browsers: Set<String> = [
         "com.google.Chrome", "com.apple.Safari", "company.thebrowser.Browser", "org.mozilla.firefox",
         "com.microsoft.edgemac", "com.brave.Browser",
     ]
@@ -1051,7 +1089,64 @@ final class ScreenWatcher: ObservableObject {
         shared.objectWillChange.send()
     }
 
+    /// Grok's reading of a window (`CoachEpisodeStore`, ~20 s after the
+    /// capture) fills in what the on-device labeler left blank or unsure, for
+    /// that window's recent snapshots and the next 30 min of them. It never
+    /// overrides an on-device label; disagreements are logged for tuning in
+    /// `Focus/screen-cloud-disagreements.jsonl`.
+    private var cloudLabels: [String: (category: String, at: Date)] = [:]
+
+    func cloudLabel(_ category: String, for row: ScreenJournal.Row) {
+        let key = "\(row.bundle)|\(row.title)"
+        cloudLabels[key] = (category, Date())
+        cloudLabels = cloudLabels.filter { Date().timeIntervalSince($0.value.at) < 1800 }
+        var filled = false
+        for i in samples.indices where samples[i].bundleID == row.bundle && samples[i].title == row.title
+            && samples[i].date >= row.at.addingTimeInterval(-1) {
+            if samples[i].category == nil || samples[i].uncertain {
+                samples[i].category = category
+                samples[i].uncertain = false
+                samples[i].source = "cloud"
+                samples[i].reason = "Grok's reading of this window"
+                filled = true
+            } else if samples[i].category != category, samples[i].date.timeIntervalSince(row.at) < 2 {
+                Self.logDisagreement(row: row, local: samples[i].category ?? "", cloud: category)
+            }
+        }
+        for i in spans.indices.reversed() {
+            guard spans[i].end > row.at else { break }
+            if spans[i].bundleID == row.bundle, spans[i].title == row.title, spans[i].category == nil || spans[i].uncertain == true {
+                spans[i].category = category
+                spans[i].uncertain = false
+                spans[i].source = "cloud"
+                filled = true
+            }
+        }
+        if filled, let last = samples.last { onSample?(last) }
+    }
+
+    private static func logDisagreement(row: ScreenJournal.Row, local: String, cloud: String) {
+        let url = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Focus/screen-cloud-disagreements.jsonl")
+        let line: [String: Any] = ["at": ISO8601DateFormatter().string(from: row.at), "app": row.app, "title": row.title,
+                                   "url": row.url ?? "", "local": local, "cloud": cloud, "tracked": row.trackedCategory ?? ""]
+        guard let data = try? JSONSerialization.data(withJSONObject: line, options: [.sortedKeys]) else { return }
+        if let h = try? FileHandle(forWritingTo: url) {
+            _ = try? h.seekToEnd(); try? h.write(contentsOf: data + Data("\n".utf8)); try? h.close()
+        } else { try? (data + Data("\n".utf8)).write(to: url) }
+    }
+
     private func classify(app: String, bundle: String, title: String, text: String, url: String? = nil) async -> (String?, String) {
+        let result = await classifyOnDevice(app: app, bundle: bundle, title: title, text: text, url: url)
+        guard result.0 == nil || labelUncertain, let cloud = cloudLabels["\(bundle)|\(title)"],
+              Date().timeIntervalSince(cloud.at) < 1800, candidateCategories().contains(cloud.category) else { return result }
+        labelSource = "cloud reading of this window"
+        labelReason = "Grok's reading of this window"
+        labelUncertain = false
+        return (cloud.category, result.1)
+    }
+
+    private func classifyOnDevice(app: String, bundle: String, title: String, text: String, url: String? = nil) async -> (String?, String) {
         let generation = sampleGeneration
         let fallbackSummary = title.isEmpty ? app : "\(app): \(title)"
         let candidates = candidateCategories()
@@ -1216,7 +1311,7 @@ struct ScreenSample {
     let bundleID: String
     let title: String
     let summary: String
-    let category: String?
+    var category: String?
     /// Keyboard/mouse used in the last 90s: only these count as evidence for
     /// a suggestion (a PDF left open while you walk away isn't "doing Math").
     var active = true
@@ -1248,6 +1343,14 @@ final class ScreenCoach {
     static let acceptedKey = "screenSuggest.accepted"
     static let declinedKey = "screenSuggest.declined"
 
+    var sessions: [WorkSession] { timer.sessionStore?.sessions ?? [] }
+    var appSettings: AppSettings { settings }
+    /// What the timer is counting right now, from when.
+    var runningBlock: (start: Date, label: String)? {
+        guard timer.isActive, let start = timer.sessionStartTime else { return nil }
+        return (start, timer.isOnBreak ? "Break" : timer.currentLabel)
+    }
+
     init(timer: TimerManager, settings: AppSettings, days: DayStore) {
         self.timer = timer
         self.settings = settings
@@ -1259,6 +1362,7 @@ final class ScreenCoach {
         }
         watcher.start(settings: settings)
         ClassCalendar.shared.start()
+        startGoalNudges()
         let reset: @Sendable (Notification) -> Void = { [weak self] _ in
             Task { @MainActor in
                 self?.watcher.resetEvidence()
@@ -1292,6 +1396,10 @@ final class ScreenCoach {
     /// less proof, so a window you've answered for before is suggested in 45s.
     private static let learnedRunSeconds: TimeInterval = 45
     private static let afterStopQuiet: TimeInterval = 20 * 60
+    /// Switching without asking, leaving focus for a life category waits this
+    /// long (the switch is backdated, so the log loses nothing); shorter side
+    /// trips stay in the focus block and are counted as distractions.
+    private static let autoLeaveFocusSeconds: TimeInterval = 8 * 60
 
     /// Trailing stretch where ≥ 80% of active samples say the same category.
     /// Two misses in a row, a 60s hole (sleep, away, paused) or the moment you
@@ -1328,7 +1436,9 @@ final class ScreenCoach {
         // kept; learned focus→life cards had never been taken).
         let leavesFocus = running.map { $0 != "Break" && !FocusCategories.isLife($0) } ?? false
         let followsYourRule = (allLearned || allProjectAdmin) && !(leavesFocus && FocusCategories.isLife(c))
-        let needed = settings.screenEverySwitch ? 25 : followsYourRule ? Self.learnedRunSeconds : Double(settings.screenSuggestMinutes) * 60
+        let needed = settings.screenEverySwitch ? 25 : followsYourRule ? Self.learnedRunSeconds
+            : settings.screenAutoAll && leavesFocus && FocusCategories.isLife(c) ? Self.autoLeaveFocusSeconds
+            : Double(settings.screenSuggestMinutes) * 60
         guard hits >= (settings.screenEverySwitch ? 2 : followsYourRule ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
               last.date.timeIntervalSince(start) >= needed else { return nil }
         // Your answer teaches the windows the run was made of, not one stray
@@ -1364,6 +1474,12 @@ final class ScreenCoach {
     private func consider() {
         let say = { [watcher] (s: String) in watcher.coachStatus = s }
         guard settings.screenSuggest else { return say("Suggestions are off") }
+        // Switching without asking includes opening the day once real work shows.
+        if !days.isDayStarted, settings.screenAutoAlways, !days.isDayEnded, Calendar.current.component(.hour, from: Date()) >= 5,
+           let run = trailingRun(notBefore: nil, running: nil), !FocusCategories.isLife(run.category) {
+            days.startDay()
+            SyncLog.event("autoStartDay", ["category": run.category])
+        }
         guard days.isDayStarted else { return say("Day not started") }
         guard !panel.isBusy, !(AwayCoach.shared?.isBusy ?? false), !LeetCodeSolveDraftStore.isShowing else { return say("A card is already showing") }
         // In class you're in Class, whatever the screen shows, until the
@@ -1431,7 +1547,7 @@ final class ScreenCoach {
             return autoSwitch(from: from, to: run)
         }
         if settings.screenAutoAll {
-            say("Switched to \(run.category): switching without asking until 4 AM")
+            say("Switched to \(run.category): \(settings.screenAutoAlways ? "switching without asking" : "switching without asking until 4 AM")")
             return autoSwitch(from: running, to: run)
         }
         say("Showing a card: \(run.category) since \(run.start.formatted(date: .omitted, time: .shortened))")
@@ -1482,6 +1598,104 @@ final class ScreenCoach {
         m.onClose = { [weak self] in
             PromptLog.answer(logID, "closed")
             self?.decline(run.category, key: declineKey, lifeToLife: FocusCategories.isLife(running) && FocusCategories.isLife(run.category))
+            close?()
+        }
+    }
+
+    // MARK: - Goals you put off
+
+    /// The user (11/9): good at hard technical work, failing to point effort
+    /// at what they don't want to do (homework, recruiting). When a focus
+    /// block of something else ends (switch, stop, break) and a goal marked
+    /// "put off" is under its daily minimum, one card offers to start it; by
+    /// 3 PM with nothing at all on it, once even mid-work. Once per goal per
+    /// day; answers go to `Focus/insights/nudges.jsonl` for the weekly report.
+    private var lastBlock: (active: Bool, label: String) = (false, "")
+    private var nudgeTimer: Timer?
+    private static let nudgedKey = "goalNudged"
+
+    func startGoalNudges() {
+        guard nudgeTimer == nil else { return }
+        nudgeTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.goalNudgeTick() }
+        }
+    }
+
+    private func minutesToday(_ g: Goals.Goal) -> Double {
+        let start = Calendar.current.startOfDay(for: Date())
+        var m = sessions.reduce(0.0) { acc, s in
+            guard s.type == .work, let l = s.label, g.categories.contains(l) else { return acc }
+            let end = s.startTime.addingTimeInterval(s.durationMinutes * 60)
+            return acc + max(0, end.timeIntervalSince(max(s.startTime, start))) / 60
+        }
+        if let r = runningBlock, g.categories.contains(r.label) { m += Date().timeIntervalSince(max(r.start, start)) / 60 }
+        return m
+    }
+
+    private func goalNudgeTick() {
+        let now = Date()
+        let active = timer.isActive
+        let label = timer.isOnBreak ? "Break" : timer.currentLabel
+        let previous = lastBlock
+        lastBlock = (active, label)
+        let transition = previous.active && (previous.active != active || previous.label != label)
+            && previous.label != "Break" && !FocusCategories.isLife(previous.label)
+        let hour = Calendar.current.component(.hour, from: now)
+        guard hour >= 11, hour < 22, days.isDayStarted, !days.isDayEnded, !PresenceMonitor.shared.isAway,
+              PresenceMonitor.idleSeconds < 120, !panel.isBusy, !(AwayCoach.shared?.isBusy ?? false),
+              !LeetCodeSolveDraftStore.isShowing, label != "Class", ClassCalendar.shared.currentClass() == nil,
+              transition || hour >= 15 else { return }
+        var nudged = UserDefaults.standard.dictionary(forKey: Self.nudgedKey) as? [String: String] ?? [:]
+        let today = CoachDay.dayKey(now)
+        for g in GoalsStore.shared.avoided {
+            guard let minimum = g.dailyMinutes, minimum > 0, let first = g.categories.first,
+                  nudged[g.id.uuidString] != today else { continue }
+            if active, g.categories.contains(label) { continue }
+            let done = minutesToday(g)
+            guard done < minimum, transition || done == 0 else { continue }
+            nudged[g.id.uuidString] = today
+            UserDefaults.standard.set(nudged, forKey: Self.nudgedKey)
+            showGoalNudge(g, first: first, done: done, minimum: minimum, running: active ? label : nil)
+            return
+        }
+    }
+
+    private func showGoalNudge(_ g: Goals.Goal, first: String, done: Double, minimum: Double, running: String?) {
+        let rank = (GoalsStore.shared.active.firstIndex { $0.id == g.id } ?? 0) + 1
+        let m = AwayPromptModel(
+            icon: "flag",
+            title: done < 1 ? "\(g.title): nothing yet today" : "\(g.title): \(Int(done)) of \(Int(minimum)) min today",
+            subtitle: "Your #\(rank) goal, one you put off. Start \(Int((minimum - done).rounded())) min now?",
+            question: g.why,
+            keep: "Not now",
+            options: g.categories.prefix(2).map { Optional($0) }, tags: settings.tags
+        )
+        func log(_ answer: String) {
+            let line: [String: Any] = ["at": ISO8601DateFormatter().string(from: Date()), "goal": g.title, "answer": answer,
+                                       "running": running ?? "", "doneMinutes": Int(done)]
+            let url = InsightsStore.directory.appendingPathComponent("nudges.jsonl")
+            try? FileManager.default.createDirectory(at: InsightsStore.directory, withIntermediateDirectories: true)
+            guard let data = try? JSONSerialization.data(withJSONObject: line, options: [.sortedKeys]) else { return }
+            if let h = try? FileHandle(forWritingTo: url) {
+                _ = try? h.seekToEnd(); try? h.write(contentsOf: data + Data("\n".utf8)); try? h.close()
+            } else { try? (data + Data("\n".utf8)).write(to: url) }
+        }
+        log("shown")
+        m.onPick = { [weak self] picked in
+            guard let self else { return }
+            let cat = picked ?? first
+            log("started \(cat)")
+            self.timer.switchTo(cat)
+            self.panel.dismiss()
+        }
+        m.onKeep = { [weak self] in
+            log("not now")
+            self?.panel.dismiss()
+        }
+        panel.show(m)
+        let close = m.onClose
+        m.onClose = {
+            log("closed")
             close?()
         }
     }
@@ -1687,7 +1901,7 @@ final class ScreenCoach {
 
 /// Every switch card with what it was decided from (snapshots and the page
 /// text read during the run), and what you answered, as JSON lines in
-/// `Focus/prompt-log.jsonl` (14 days). Meant to be handed to Claude to tune
+/// `Focus/prompt-log.jsonl` (90 days). Meant to be handed to Claude to tune
 /// the rules. This is the one place page text is written to disk.
 enum PromptLog {
     struct Snapshot: Codable {
@@ -1807,7 +2021,7 @@ enum PromptLog {
         prunedAt = Date()
         let dec = JSONDecoder()
         dec.dateDecodingStrategy = .iso8601
-        let cutoff = Date().addingTimeInterval(-14 * 86400)
+        let cutoff = Date().addingTimeInterval(-90 * 86400)
         let kept = raw.split(separator: "\n").filter {
             guard let l = try? dec.decode(Line.self, from: Data($0.utf8)) else { return false }
             return l.at >= cutoff

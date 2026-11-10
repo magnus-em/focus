@@ -133,6 +133,14 @@ final class QuickSwitch {
         case "toggle": toggle()
         case "switcher": showSwitcher()
         case "recall": openRecall?()
+        case "insights":
+            Task { @MainActor in
+                let store = InsightsStore.shared
+                if param("bundle") != nil { _ = await store.writeBundle(); return }
+                if param("reload") != nil { store.reloadReports(); return }
+                if param("write") != nil { await store.write(reason: "url") }
+                InsightsWindowController.shared.open()
+            }
         case "reader":
             let remove = param("remove"), importFrom = param("import"), refetch = param("refetch")
             Task { @MainActor in

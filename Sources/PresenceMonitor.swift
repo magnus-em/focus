@@ -29,7 +29,7 @@ final class PresenceMonitor: ObservableObject {
     /// Input idle this long counts as away (backdated to the last input).
     static let idleAwaySeconds: TimeInterval = 10 * 60
     private static let minSpanSeconds: TimeInterval = 10 * 60
-    private static let keepDays = 60
+    private static let keepDays = 365
 
     private var awayStart: Date?
     private var awayReason = ""

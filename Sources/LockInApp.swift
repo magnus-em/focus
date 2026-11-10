@@ -233,6 +233,11 @@ struct FocusApp: App {
         }
         AwayCoach.shared = AwayCoach(timer: timer, store: store, settings: appSettings, days: days)
         ScreenCoach.shared = ScreenCoach(timer: timer, settings: appSettings, days: days)
+        InsightsStore.shared.leetCodeProvider = { [weak problems] in
+            (problems?.problems ?? []).filter {
+                $0.domain == .swe && ($0.url.contains("leetcode.com/problems") || $0.source.caseInsensitiveCompare("LeetCode") == .orderedSame)
+            }.map(\.date)
+        }
         FocusModes.shared.start(timer: timer)
         CoachDayWorker.shared.start(store: store, days: days, settings: appSettings)
         DayBriefPublisher.shared.start(store: store, timer: timer, settings: appSettings)

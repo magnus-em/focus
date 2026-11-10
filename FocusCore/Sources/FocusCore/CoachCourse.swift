@@ -83,6 +83,7 @@ public enum CoachCourse {
 
     public static let known = enrollment.map(\.course)
     static let enrollmentDescription = enrollment.map { "\($0.course.code) \($0.name)" }.joined(separator: "; ")
+    static let categoryDescription = enrollment.compactMap { e in e.course.category.map { "\(e.course.code) → \($0)" } }.joined(separator: ", ")
 
     public static func enrolledCourse(forCalendarTitle title: String) -> Course? {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)

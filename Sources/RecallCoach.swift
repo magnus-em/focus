@@ -227,6 +227,35 @@ enum RecallCoach {
         }
     }
 
+    /// The weekly Insights analysis: high effort, the reply's JSON as data.
+    static func insights(system: String, user: String, schema: [String: Any]) async throws -> (json: Data, input: Int, output: Int) {
+        guard let key = apiKey else { throw CoachError.noKey }
+        var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 600
+        req.setValue("application/json", forHTTPHeaderField: "content-type")
+        req.setValue(key, forHTTPHeaderField: "x-api-key")
+        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        req.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta")
+        let body: [String: Any] = [
+            "model": model, "max_tokens": 32000, "fallbacks": "default", "system": system,
+            "output_config": ["effort": "high", "format": ["type": "json_schema", "schema": schema]],
+            "messages": [["role": "user", "content": user]],
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        guard status == 200 else {
+            throw CoachError.http(status, (obj["error"] as? [String: Any])?["message"] as? String ?? "")
+        }
+        if obj["stop_reason"] as? String == "refusal" { throw CoachError.refused }
+        let text = (obj["content"] as? [[String: Any]] ?? []).filter { $0["type"] as? String == "text" }
+            .compactMap { $0["text"] as? String }.joined()
+        let usage = obj["usage"] as? [String: Any] ?? [:]
+        return (Data(text.utf8), usage["input_tokens"] as? Int ?? 0, usage["output_tokens"] as? Int ?? 0)
+    }
+
     private static func call(user: String, schema: [String: Any]) async throws -> [String: Any] {
         guard let key = apiKey else { throw CoachError.noKey }
         var req = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
