@@ -9,7 +9,7 @@ Last touched: 2026-11-10 (Claude: Insights, goals, window timeline).
 - Check after a day of use: `Focus/timeline/` rows (window/input/alive/away), `Focus/ai-chats/` (window, transcript rows), `Focus/screen-cloud-disagreements.jsonl` (Grok vs on-device), `Focus/insights/nudges.jsonl`, and the Insights window's distraction numbers against the day.
 - Claude desktop's message class is assumed to contain "user-message" (ChatGPT's does: `bg-user-message`); verify with the app open.
 - The analysis has no model until the user adds an Anthropic key (Settings → Recall) or turns Cloud AI on; Claude Code can write one from `focus://insights?bundle=1` → `Focus/insights/bundle.json` into `Focus/insights/reports/`.
-- `focus://insights` route and the Dashboard entry point: the Dashboard page tab still to add (DashboardView was claimed by another session).
+- Insights is the Dashboard's third page since 11/10 (checked in light/dark shots, `.shots/insights-2`); no separate design-review round yet. ChatGPT/Claude window capture waits on the user granting Accessibility to Focus (signed with team MUR9TJXP6S, so the grant survives deploys).
 
 
 ## Cross-device timer rewrite — 10/30 (Claude)

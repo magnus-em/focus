@@ -155,7 +155,7 @@ struct InsightsContent: View {
                     .disabled(store.writing || InsightsWriter.available == nil)
                     .help(InsightsWriter.available.map { "Writes with \($0)" } ?? "Add an Anthropic key or turn on Cloud AI first")
             }
-            if let r = store.latest { ReportView(report: r.content) }
+            if let r = store.latest { ReportView(report: r.content).frame(maxWidth: 820, alignment: .leading) }
             else {
                 Text(InsightsWriter.available == nil
                      ? "No model to write with yet. Add an Anthropic key in Settings → Recall, or turn on Cloud AI, or ask Claude Code to write it."
@@ -290,7 +290,7 @@ struct InsightsContent: View {
                     Text("Doing what").font(.system(size: 13, weight: .semibold))
                     let total = max(1, s.activityMinutes.values.reduce(0, +))
                     ForEach(s.activityMinutes.sorted { $0.value > $1.value }.prefix(6), id: \.key) { k, v in
-                        HStack { Text(k.replacingOccurrences(of: "-", with: " ").capitalized); Spacer(); Text(pct(v / total)).monospacedDigit() }
+                        HStack { Text(k == "asking-ai" ? "Asking AI" : k.replacingOccurrences(of: "-", with: " ").capitalized); Spacer(); Text(pct(v / total)).monospacedDigit() }
                             .font(.system(size: 13))
                     }
                 }.frame(width: 220)
