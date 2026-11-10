@@ -9,7 +9,8 @@ import Combine
 ///   POST /events  → `{ "events": [...] }` block hits, reasons, bypasses, browsing spans
 ///   POST /tab     → `{ "url", "title" }` the focused tab, for the screen watcher
 ///   POST /dark    → `DarkPages` changed from the extension's popup
-///   POST /reader  → `{ "url", "title", "author", "html", "source" }` save a page to Focus's reading list
+///   POST /reader  → `{ "url", "title", "author", "html", "source", "selection"? }` save a page to Focus's reading list
+///     (selected text becomes a highlight); `/reader/status`, `/reader/open`, `/reader/remove` take `{ "url" }`
 ///   POST /youtube → `{ "videos": [{ "id", "title", "channel" }], "page"? }` → `{ "verdicts": { id: { "keep", "source", "why"? } } }`
 ///     (videos still being judged are left out; `page` is the extension's report, kept in Focus/youtube/page.json)
 ///   POST /youtube/channel → `{ "channel", "allow": true | false | null }` always show / always hide / forget
@@ -265,12 +266,30 @@ final class BrowserBridge: ObservableObject {
             Task { @MainActor in
                 self.lastContact = Date()
                 let page = ReaderPage(url: url, title: obj?["title"] as? String ?? "", author: obj?["author"] as? String ?? "",
-                                      html: obj?["html"] as? String ?? "", source: obj?["source"] as? String ?? "extension")
+                                      html: obj?["html"] as? String ?? "", source: obj?["source"] as? String ?? "extension",
+                                      selection: obj?["selection"] as? String ?? "")
+                let before = ReaderStore.shared.item(url: url)
                 let result = await self.onReaderSave?(page)
                     ?? ("error", "Focus isn't ready")
-                var out: [String: Any] = ["status": result.status]
+                var out = Self.readerStatus(url)
+                out["status"] = result.status
+                out["already"] = before != nil && before?.location != .archive
+                out["highlighted"] = (ReaderStore.shared.item(url: url)?.highlights.count ?? 0) > (before?.highlights.count ?? 0)
                 if let e = result.error { out["error"] = e }
                 let body = try? JSONSerialization.data(withJSONObject: out)
+                self.queue.async { self.respond(conn, status: "200 OK", json: body) }
+            }
+        case ("POST", "/reader/status"), ("POST", "/reader/open"), ("POST", "/reader/remove"):
+            let url = ((try? JSONSerialization.jsonObject(with: req.body)) as? [String: Any])?["url"] as? String ?? ""
+            let path = req.path
+            Task { @MainActor in
+                self.lastContact = Date()
+                if path == "/reader/open" {
+                    ReaderWindowController.shared.open(select: ReaderStore.shared.item(url: url)?.id)
+                } else if path == "/reader/remove", !url.isEmpty {
+                    ReaderStore.shared.remove(url: url)
+                }
+                let body = try? JSONSerialization.data(withJSONObject: Self.readerStatus(url))
                 self.queue.async { self.respond(conn, status: "200 OK", json: body) }
             }
         case ("POST", "/leetcode"):
@@ -338,6 +357,18 @@ final class BrowserBridge: ObservableObject {
         default:
             respond(conn, status: "404 Not Found", json: Data(#"{"error":"not found"}"#.utf8))
         }
+    }
+
+    @MainActor private static func readerStatus(_ url: String) -> [String: Any] {
+        let store = ReaderStore.shared
+        var out: [String: Any] = ["inbox": store.inboxCount, "saved": false]
+        if !url.isEmpty, let item = store.item(url: url) {
+            out["saved"] = true
+            out["location"] = item.location.rawValue
+            out["progress"] = item.progress
+            out["highlights"] = item.highlights.count
+        }
+        return out
     }
 
     private func respond(_ conn: NWConnection, status: String, json: Data?) {

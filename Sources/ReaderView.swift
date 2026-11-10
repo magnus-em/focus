@@ -236,7 +236,7 @@ struct ReaderView: View {
                       systemImage: ReaderSection.location(location).icon)
             } description: {
                 if query.isEmpty && location == .inbox {
-                    Text("Save from Chrome with the block page's Save for later, the Focus toolbar button, right-click → Save to reading list, or ⌥R.")
+                    Text("In Chrome: click the Focus button in the toolbar, then Save this page. Or press ⌥⇧S, or right-click a page or link → Save to reading list. Select text first to keep it as a highlight.")
                 } else if query.isEmpty && location == .archive {
                     Text("Press E while reading to archive what you've finished.")
                 }

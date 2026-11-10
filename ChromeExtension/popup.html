@@ -5,6 +5,14 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="popup">
+  <section class="save" aria-label="Reading list">
+    <button class="primary" id="saveBtn">Save this page</button>
+    <div class="muted" id="saveNote" role="status"></div>
+    <div class="saveRow">
+      <button id="openList">Open reading list</button>
+      <button id="removeSaved" hidden>Remove</button>
+    </div>
+  </section>
   <div class="row"><span class="dot" id="dot"></span><span id="conn">Checking…</span></div>
   <div class="big" id="status"></div>
   <div class="muted" id="today"></div>

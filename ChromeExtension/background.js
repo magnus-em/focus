@@ -511,7 +511,8 @@ async function pageForReader(url) {
 
 async function readLater(url, source = 'blocked', live = null) {
   const page = live || await pageForReader(url);
-  const item = { url, title: page.title || '', author: page.author || '', html: page.html || '', source };
+  const item = { url, title: page.title || '', author: page.author || '', html: page.html || '', source,
+    selection: page.selection || '' };
   try {
     return await postReadLater(item);
   } catch {
@@ -531,7 +532,8 @@ async function livePage(tab) {
       target: { tabId: tab.id },
       func: () => {
         const m = (n) => document.querySelector(`meta[name="${n}"], meta[property="${n}"]`)?.content || '';
-        return { html: document.documentElement.outerHTML, title: m('og:title') || document.title, author: m('author') || m('article:author') };
+        return { html: document.documentElement.outerHTML, title: m('og:title') || document.title, author: m('author') || m('article:author'),
+          selection: String(getSelection() || '').trim().slice(0, 4000) };
       },
     });
     const page = res && res.result;
@@ -540,18 +542,84 @@ async function livePage(tab) {
   return null;
 }
 
-async function saveTab(tab) {
+async function saveTab(tab, selection = '') {
   if (!tab || !/^https?:/.test(tab.url || '')) return { status: 'error', error: 'Only web pages can be saved.' };
-  const live = await livePage(tab);
-  const res = await readLater(tab.url, 'extension', live || { title: tab.title || '' });
-  flashBadge(tab.id, res && res.status !== 'error');
+  const live = await livePage(tab) || { title: tab.title || '' };
+  if (selection) live.selection = selection.trim().slice(0, 4000);
+  const res = await readLater(tab.url, 'extension', live);
+  announceSave(tab.id, res);
   return res;
 }
 
 async function saveLink(url, tabId) {
   const res = await readLater(url, 'extension');
-  flashBadge(tabId, res && res.status !== 'error');
+  announceSave(tabId, res, 'Link saved');
   return res;
+}
+
+function saveMessage(res, saved = 'Saved') {
+  if (!res || res.status === 'error') return (res && res.error) || 'Couldn\'t save this page';
+  if (res.status === 'queued') return 'Focus isn\'t running. Saved once it\'s back.';
+  if (res.highlighted) return res.already ? 'Highlight added' : saved + ' with your highlight';
+  return res.already ? 'Already in your reading list' : saved + ' to your reading list';
+}
+
+// The toolbar badge is invisible unless the extension is pinned, so every save
+// also says so on the page itself.
+function announceSave(tabId, res, saved) {
+  const ok = !!res && res.status !== 'error';
+  flashBadge(tabId, ok);
+  if (tabId == null) return;
+  chrome.scripting.executeScript({
+    target: { tabId },
+    args: [saveMessage(res, saved), ok, ok && res.status !== 'queued'],
+    func: (text, ok, canOpen) => {
+      document.getElementById('focus-save-toast')?.remove();
+      const host = document.createElement('div');
+      host.id = 'focus-save-toast';
+      host.style.cssText = 'all: initial; position: fixed; top: 16px; right: 16px; z-index: 2147483647;';
+      const root = host.attachShadow({ mode: 'closed' });
+      const box = document.createElement('div');
+      box.style.cssText = 'display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px;'
+        + 'background: #1d1d1f; color: #f5f5f7; font: 500 13px/1.3 -apple-system, BlinkMacSystemFont, sans-serif;'
+        + 'box-shadow: 0 6px 24px rgba(0,0,0,.28); transition: opacity .25s, transform .25s; opacity: 0; transform: translateY(-6px);';
+      const dot = document.createElement('span');
+      dot.textContent = ok ? '✓' : '!';
+      dot.style.cssText = `color: ${ok ? '#34c759' : '#ff9f0a'}; font-weight: 700;`;
+      const label = document.createElement('span');
+      label.textContent = text;
+      box.append(dot, label);
+      if (canOpen) {
+        const open = document.createElement('button');
+        open.textContent = 'Open';
+        open.style.cssText = 'all: unset; cursor: pointer; padding: 3px 9px; border-radius: 7px; background: rgba(255,255,255,.14); font: 600 12px -apple-system, sans-serif; color: #f5f5f7;';
+        open.addEventListener('click', () => {
+          const message = { type: 'readerOpen', url: location.href };
+          if (globalThis.focusRuntime) globalThis.focusRuntime.send(message); else chrome.runtime.sendMessage(message);
+          host.remove();
+        });
+        box.append(open);
+      }
+      root.append(box);
+      (document.body || document.documentElement).append(host);
+      requestAnimationFrame(() => { box.style.opacity = '1'; box.style.transform = 'none'; });
+      setTimeout(() => { box.style.opacity = '0'; setTimeout(() => host.remove(), 300); }, 3500);
+    },
+  }).catch(() => {});
+}
+
+async function readerCall(path, url = '') {
+  try {
+    const r = await fetch(API + '/reader/' + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(4000),
+    });
+    return r.ok ? { connected: true, ...(await r.json()) } : { connected: false };
+  } catch {
+    return { connected: false };
+  }
 }
 
 function flashBadge(tabId, ok) {
@@ -565,11 +633,13 @@ function ensureMenus() {
   chrome.contextMenus?.removeAll(() => {
     chrome.contextMenus.create({ id: 'save-page', title: 'Save page to reading list', contexts: ['page'] });
     chrome.contextMenus.create({ id: 'save-link', title: 'Save link to reading list', contexts: ['link'] });
+    chrome.contextMenus.create({ id: 'save-selection', title: 'Save page with this highlight', contexts: ['selection'] });
   });
 }
 
 chrome.contextMenus?.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'save-link' && info.linkUrl) saveLink(info.linkUrl, tab && tab.id);
+  else if (info.menuItemId === 'save-selection' && tab) saveTab(tab, info.selectionText || '');
   else if (info.menuItemId === 'save-page' && tab) saveTab(tab);
 });
 
@@ -780,8 +850,15 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         return readLater(msg.url);
       case 'saveTab': {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        return saveTab(tab);
+        const res = await saveTab(tab);
+        return { ...res, message: saveMessage(res) };
       }
+      case 'readerStatus':
+        return readerCall('status', msg.url || '');
+      case 'readerOpen':
+        return readerCall('open', msg.url || '');
+      case 'readerRemove':
+        return readerCall('remove', msg.url || '');
       case 'leave': {
         const tab = sender.tab;
         if (!tab) return { ok: false };

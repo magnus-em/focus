@@ -9,6 +9,8 @@ struct ReaderPage {
     /// The page as the user's browser sees it (signed in past paywalls). Memory only until extracted.
     var html: String
     var source: String
+    /// Text selected on the page when it was saved; kept as a highlight.
+    var selection: String = ""
 }
 
 /// Focus's read-later library, a small Readwise Reader of its own (the Readwise trial
@@ -72,6 +74,11 @@ final class ReaderStore: ObservableObject {
 
     func item(_ id: UUID) -> ReadingItem? { items.first { $0.id == id } }
 
+    func item(url: String) -> ReadingItem? {
+        let key = ReadingURL.key(url)
+        return items.first { ReadingURL.key($0.url) == key }
+    }
+
     // MARK: Saving
 
     /// Returns "saved" or an error.
@@ -91,6 +98,10 @@ final class ReaderStore: ObservableObject {
                                    source: page.source)
             items.append(item)
             id = item.id
+        }
+        let quote = String(page.selection.trimmingCharacters(in: .whitespacesAndNewlines).prefix(4000))
+        if !quote.isEmpty, item(id)?.highlights.contains(where: { $0.text == quote }) != true {
+            _ = addHighlight(id, text: quote)
         }
         persist()
         if !page.html.isEmpty {

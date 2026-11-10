@@ -178,3 +178,52 @@ chrome.runtime.onMessage.addListener((message) => {
     renderYouTube(!!message.active);
   }
 });
+
+async function showSave() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const url = tab && /^https?:/.test(tab.url || '') ? tab.url : '';
+  const [status, commands] = await Promise.all([
+    chrome.runtime.sendMessage({ type: 'readerStatus', url }).catch(() => null),
+    chrome.commands.getAll().catch(() => []),
+  ]);
+  const shortcut = (commands.find((c) => c.name === 'save-page') || {}).shortcut || '';
+  const button = $('saveBtn');
+  const render = (s, note) => {
+    const saved = !!(s && s.saved && s.location !== 'archive');
+    button.disabled = !url;
+    button.classList.toggle('done', saved);
+    button.textContent = !url ? 'This page can\u2019t be saved' : saved ? '\u2713 In your reading list' : 'Save this page';
+    $('removeSaved').hidden = !saved;
+    const count = s && s.connected ? s.inbox : null;
+    $('openList').textContent = count ? `Open reading list \u00b7 ${count}` : 'Open reading list';
+    $('openList').disabled = !(s && s.connected);
+    $('saveNote').replaceChildren();
+    if (note) $('saveNote').textContent = note;
+    else if (s && !s.connected) $('saveNote').textContent = 'Focus isn\u2019t running. Saves wait here until it\u2019s back.';
+    else if (saved && s.progress > 0.02) $('saveNote').textContent = `${Math.round(s.progress * 100)}% read`;
+    else if (shortcut) $('saveNote').textContent = `Shortcut: ${shortcut}. Select text first to keep it as a highlight.`;
+    else {
+      const link = document.createElement('a');
+      link.href = '#';
+      link.textContent = 'Set a keyboard shortcut';
+      link.onclick = (e) => { e.preventDefault(); chrome.tabs.create({ url: 'chrome://extensions/shortcuts' }); };
+      $('saveNote').append('Or right-click a page or link. ', link);
+    }
+  };
+  render(status);
+  button.onclick = async () => {
+    button.disabled = true;
+    button.textContent = 'Saving\u2026';
+    const res = await chrome.runtime.sendMessage({ type: 'saveTab' }).catch(() => null);
+    const next = await chrome.runtime.sendMessage({ type: 'readerStatus', url }).catch(() => null);
+    render(next || status, res && res.status === 'saved' ? '' : (res && res.message) || 'Couldn\u2019t save this page');
+  };
+  $('openList').onclick = async () => {
+    await chrome.runtime.sendMessage({ type: 'readerOpen', url });
+    window.close();
+  };
+  $('removeSaved').onclick = async () => {
+    render(await chrome.runtime.sendMessage({ type: 'readerRemove', url }).catch(() => status));
+  };
+}
+showSave();
