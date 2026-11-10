@@ -39,6 +39,7 @@ struct AdderallCheckInWindow: View {
     let sessions: SessionStore
     @State var day: Date
     @State var page: Int
+    @State private var drafts: [String: AdderallCheckIn] = [:]
     let close: () -> Void
 
     var body: some View {
@@ -51,9 +52,11 @@ struct AdderallCheckInWindow: View {
             ScrollView {
                 Group {
                     if page == 0 {
-                        AdderallCheckInForm(day: $day, existing: store.checkIn(on: day),
-                                            doses: health.doses(on: day, through: .distantFuture), saveError: store.saveError) { c in
-                            if store.save(c) { page = 1 }
+                        AdderallCheckInForm(day: $day,
+                            existing: drafts[AdderallCheckIn.dayKey(day)] ?? store.checkIn(on: day),
+                            doses: health.doses(on: day, through: .distantFuture), saveError: store.saveError,
+                            onDraftChange: { drafts[$0.day] = $0 }) { c in
+                            if store.save(c) { drafts.removeValue(forKey: c.day); page = 1 }
                         }
                         .id(day)
                     } else {
@@ -72,7 +75,10 @@ func focusHours(_ sessions: SessionStore, _ day: Date) -> Double {
     let cal = Calendar.current
     let start = cal.startOfDay(for: day)
     guard let end = cal.date(byAdding: .day, value: 1, to: start) else { return 0 }
-    return sessions.workMinutes(since: start, until: end) / 60
+    return sessions.sessions.filter(\.isFocus).reduce(0.0) { total, session in
+        let sessionEnd = session.startTime.addingTimeInterval(session.durationMinutes * 60)
+        return total + max(0, min(end, sessionEnd).timeIntervalSince(max(start, session.startTime))) / 3600
+    }
 }
 
 // MARK: - Form
@@ -82,12 +88,14 @@ struct AdderallCheckInForm: View {
     let doses: [HealthEvent]
     let saveError: String?
     let onSave: (AdderallCheckIn) -> Void
+    let onDraftChange: (AdderallCheckIn) -> Void
     @State private var c: AdderallCheckIn
 
-    init(day: Binding<Date>, existing: AdderallCheckIn?, doses: [HealthEvent], saveError: String?, onSave: @escaping (AdderallCheckIn) -> Void) {
+    init(day: Binding<Date>, existing: AdderallCheckIn?, doses: [HealthEvent], saveError: String?, onDraftChange: @escaping (AdderallCheckIn) -> Void = { _ in }, onSave: @escaping (AdderallCheckIn) -> Void) {
         _day = day
         self.doses = doses
         self.saveError = saveError
+        self.onDraftChange = onDraftChange
         self.onSave = onSave
         let tookDose = !doses.isEmpty
         var fresh = AdderallCheckIn(day: AdderallCheckIn.dayKey(day.wrappedValue), tookDose: tookDose)
@@ -145,7 +153,7 @@ struct AdderallCheckInForm: View {
                                     if on { c.effects.removeAll { $0 == effect } } else { c.effects.append(effect) }
                                 } label: {
                                     Text(effect).font(.system(size: 12, weight: on ? .semibold : .regular))
-                                        .frame(maxWidth: .infinity).padding(.vertical, 6)
+                                        .frame(maxWidth: .infinity, minHeight: 36)
                                         .background(Capsule().fill(on ? checkInAccent.opacity(0.85) : Color.secondary.opacity(0.12)))
                                         .foregroundStyle(on ? Color.white : Color.primary)
                                 }
@@ -167,12 +175,13 @@ struct AdderallCheckInForm: View {
                 .keyboardShortcut(.defaultAction)
         }
         .font(.system(size: 13))
+        .onChange(of: c) { _, value in onDraftChange(value) }
     }
 
     private var header: some View {
         HStack {
-            Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 32, height: 32) }
-                .accessibilityLabel("Previous day")
+            Button { move(-1) } label: { Image(systemName: "chevron.left").frame(width: 36, height: 36) }
+                .accessibilityLabel("Previous day").help("Previous day")
             Spacer()
             VStack(spacing: 2) {
                 Text(isToday ? "Today" : day.formatted(.dateTime.weekday(.wide).month().day()))
@@ -181,8 +190,8 @@ struct AdderallCheckInForm: View {
                     .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             }
             Spacer()
-            Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 32, height: 32) }
-                .disabled(isToday).accessibilityLabel("Next day")
+            Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 36, height: 36) }
+                .disabled(isToday).accessibilityLabel("Next day").help("Next day")
         }
         .buttonStyle(.plain)
     }
