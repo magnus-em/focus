@@ -68,6 +68,8 @@ final class AIChatsTests: XCTestCase {
         XCTAssertNil(AIChats.codexPrompt(line("# AGENTS.md instructions for /x"), cwd: nil))
         XCTAssertEqual(AIChats.codexPrompt(line("# Context from my IDE setup:\nfoo\n## My request for Codex:\nadd tests"), cwd: "/a/focus")?.text, "add tests")
         XCTAssertEqual(AIChats.codexPrompt(line("make the popup wider"), cwd: "/a/focus")?.project, "focus")
+        XCTAssertNil(AIChats.codexPrompt(line("The following is the Codex agent history whose request action you are assessing."), cwd: nil))
+        XCTAssertEqual(AIChats.codexText("# Files pasted by the user:\n## \"nb\"\n## My request for Codex\nfix the shape bug"), "fix the shape bug")
     }
 
     func testExportsFromBothTools() throws {

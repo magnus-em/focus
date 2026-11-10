@@ -131,17 +131,27 @@ public enum AIChats {
               p["type"] as? String == "message", p["role"] as? String == "user",
               let at = date(o["timestamp"] as? String) else { return nil }
         let parts = (p["content"] as? [[String: Any]] ?? []).compactMap { $0["text"] as? String }
-        var text = parts.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        if let r = text.range(of: "## My request for Codex:") {
-            text = String(text[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        } else if text.hasPrefix("#") && (text.contains("AGENTS.md") || text.hasPrefix("# Files mentioned")
-                                          || text.hasPrefix("# Context from my IDE")) {
-            return nil
-        }
-        guard !text.isEmpty, !text.hasPrefix("<"), !text.hasPrefix("Agent mail from") else { return nil }
+        guard let text = codexText(parts.joined(separator: "\n")) else { return nil }
         return Message(id: "cx-" + hash("\(at.timeIntervalSince1970)|\(text)"), at: at, tool: "Codex",
                        conversation: nil, text: text, source: .transcript,
                        project: cwd.map { URL(fileURLWithPath: $0).lastPathComponent })
+    }
+
+    /// What you typed in a Codex turn, or nil for what Codex adds itself:
+    /// environment and AGENTS.md context, IDE wrappers without a request,
+    /// its approval reviewer ("The following is the Codex agent history…")
+    /// and mail from Claude.
+    public static func codexText(_ raw: String) -> String? {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let r = text.range(of: #"## My request for Codex:?"#, options: .regularExpression) {
+            text = String(text[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if text.hasPrefix("#") && (text.contains("AGENTS.md") || text.hasPrefix("# Files mentioned")
+                                          || text.hasPrefix("# Files pasted") || text.hasPrefix("# Context from my IDE")) {
+            return nil
+        }
+        guard !text.isEmpty, !text.hasPrefix("<"), !text.hasPrefix("Agent mail from"),
+              !text.hasPrefix("The following is the Codex agent history") else { return nil }
+        return text
     }
 
     public static func codexCwd(_ line: Data) -> String? {

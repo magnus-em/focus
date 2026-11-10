@@ -283,7 +283,10 @@ final class AIChatStore: ObservableObject {
         for f in files where String(f.lastPathComponent.prefix(7)) >= lo && String(f.lastPathComponent.prefix(7)) <= hi {
             guard let text = try? String(contentsOf: f, encoding: .utf8) else { continue }
             for line in text.split(separator: "\n") {
-                if let m = try? dec.decode(AIChats.Message.self, from: Data(line.utf8)), m.at >= from, m.at < to { out.append(m) }
+                guard var m = try? dec.decode(AIChats.Message.self, from: Data(line.utf8)), m.at >= from, m.at < to else { continue }
+                // Rows saved before a filter improved are cleaned the same way on read.
+                if m.tool == "Codex" { guard let t = AIChats.codexText(m.text) else { continue }; m.text = t }
+                out.append(m)
             }
         }
         return dedupe ? AIChats.deduplicated(out) : out.sorted { $0.at < $1.at }
