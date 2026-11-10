@@ -57,18 +57,33 @@ private func fmtHours(_ h: Double) -> String {
 private enum DashboardDestination: String, CaseIterable, Identifiable {
     case day = "Day"
     case week = "Week"
+    case insights = "Insights"
 
     /// Old names still open the page that replaced them.
     init?(name: String) {
         switch name {
         case "Day", "Today", "Review": self = .day
         case "Week", "Trends": self = .week
+        case "Insights", "Goals": self = .insights
         default: return nil
         }
     }
 
     var id: String { rawValue }
-    var symbol: String { self == .day ? "text.alignleft" : "calendar" }
+    var symbol: String {
+        switch self {
+        case .day: "text.alignleft"
+        case .week: "calendar"
+        case .insights: "flag"
+        }
+    }
+    var help: String {
+        switch self {
+        case .day: "One day's story: what you did, what the screen saw, what to fix"
+        case .week: "The last 7 days: courses, exams and days that need fixing"
+        case .insights: "Your goals, where the effort went and when attention left the work"
+        }
+    }
 }
 
 private struct DayChange: Identifiable {
@@ -399,7 +414,7 @@ struct DashboardView: View {
                 .padding(.bottom, 20)
             HStack(spacing: 0) {
                 rightPanel
-                if showTrackedLog && (layout == "classic" || destination == .week) {
+                if showTrackedLog && (layout == "classic" || destination == .week) && destination != .insights {
                     Divider()
                     leftPanel.frame(width: 280)
                         .background(Color(nsColor: .controlBackgroundColor).opacity(0.65))
@@ -470,10 +485,12 @@ struct DashboardView: View {
     private var dashboardToolbar: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(destination == .week ? (Calendar.current.isDateInToday(weekEndDay) ? "This week" : "Week")
+                Text(destination == .insights ? "Insights"
+                     : destination == .week ? (Calendar.current.isDateInToday(weekEndDay) ? "This week" : "Week")
                      : isSelectedDayToday ? "Today" : selectedDay.formatted(.dateTime.weekday(.wide)))
                     .font(.system(size: 26, weight: .semibold))
-                Text(destination == .week ? "\(weekRangeText), 7 days"
+                Text(destination == .insights ? "Your goals and where the effort went"
+                     : destination == .week ? "\(weekRangeText), 7 days"
                      : isSelectedDayToday ? selectedDay.formatted(.dateTime.weekday(.wide).month(.wide).day())
                      : selectedDay.formatted(.dateTime.month(.wide).day().year()))
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
@@ -494,8 +511,7 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(item == destination ? Color.primary : Color.secondaryText)
-                    .help(item == .day ? "One day's story: what you did, what the screen saw, what to fix"
-                          : "The last 7 days: courses, exams and days that need fixing")
+                    .help(item.help)
                     .accessibilityAddTraits(item == destination ? .isSelected : [])
                 }
             }
@@ -512,6 +528,7 @@ struct DashboardView: View {
                 .padding(4)
                 .modifier(FloatingGlass())
             }
+            if destination != .insights {
             HStack(spacing: 0) {
                 dayNavButton(systemImage: "chevron.left") { shiftSelectedDay(by: -1) }
                 dayNavButton(systemImage: "chevron.right", disabled: isSelectedDayToday) { shiftSelectedDay(by: 1) }
@@ -529,6 +546,7 @@ struct DashboardView: View {
             }
             .padding(4)
             .modifier(FloatingGlass())
+            }
         }
     }
 
@@ -687,6 +705,7 @@ struct DashboardView: View {
                     switch destination {
                     case .day: dayContent(proxy)
                     case .week: weekContent
+                    case .insights: InsightsContent(embedded: true)
                     }
                 }
                 .frame(maxWidth: 1080)

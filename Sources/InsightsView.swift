@@ -49,29 +49,38 @@ private func hm(_ minutes: Double) -> String {
 private func pct(_ x: Double) -> String { "\(Int((x * 100).rounded()))%" }
 
 struct InsightsView: View {
+    var body: some View {
+        ScrollView {
+            InsightsContent(embedded: false)
+                .padding(32)
+                .frame(maxWidth: 980, alignment: .leading)
+                .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+/// The page itself: in its own window, or as the Dashboard's Insights page
+/// (`embedded`, where the Dashboard's toolbar carries the title).
+struct InsightsContent: View {
+    var embedded = false
     @ObservedObject private var store = InsightsStore.shared
     @ObservedObject private var goals = GoalsStore.shared
     @State private var editing = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                header
-                if let s = store.summary {
-                    hero(s)
-                    goalsSection(s)
-                    reportSection
-                    timerSection(s)
-                    attentionSection(s)
-                    daysSection(s)
-                    studySection(s)
-                } else {
-                    ProgressView().frame(maxWidth: .infinity, minHeight: 200)
-                }
+        VStack(alignment: .leading, spacing: 28) {
+            header
+            if let s = store.summary {
+                hero(s)
+                goalsSection(s)
+                reportSection
+                timerSection(s)
+                attentionSection(s)
+                daysSection(s)
+                studySection(s)
+            } else {
+                ProgressView().frame(maxWidth: .infinity, minHeight: 200)
             }
-            .padding(32)
-            .frame(maxWidth: 980, alignment: .leading)
-            .frame(maxWidth: .infinity)
         }
         .onAppear { store.appeared() }
         .onDisappear { store.disappeared() }
@@ -80,10 +89,15 @@ struct InsightsView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Insights").font(.system(size: 26, weight: .semibold))
-                Text("Where your effort went, ranked by your goals, from your timer and what the screen saw")
+            if embedded {
+                Text("Ranked by your goals, from your timer and what the screen saw")
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Insights").font(.system(size: 26, weight: .semibold))
+                    Text("Where your effort went, ranked by your goals, from your timer and what the screen saw")
+                        .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+                }
             }
             Spacer()
             Picker("", selection: $store.days) {

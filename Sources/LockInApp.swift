@@ -249,11 +249,13 @@ struct FocusApp: App {
             let galleryDay = parts.count > 1 ? ISO8601DateFormatter.dayOnly.date(from: parts[1]) : nil
             let galleryScroll = scrollParts.count > 1 ? scrollParts[1] : nil
             switch base {
-            case "dashboard", "dashboard-review", "dashboard-trends", "dashboard-week", "dashboard-calendar", "dashboard-classic":
+            case "dashboard", "dashboard-review", "dashboard-trends", "dashboard-week", "dashboard-calendar", "dashboard-classic",
+                 "dashboard-insights":
                 DesignGallery.show(
                     DashboardView(sessionStore: store, problemStore: problems, homeworkStore: homework, settings: appSettings,
                                   dayStore: days, timerManager: timer, browserStore: browser,
-                                  initialDestination: ["dashboard-trends", "dashboard-week"].contains(base) ? "Week" : "Day",
+                                  initialDestination: ["dashboard-trends", "dashboard-week"].contains(base) ? "Week"
+                                      : base == "dashboard-insights" ? "Insights" : "Day",
                                   initialDay: galleryDay,
                                   initialLayout: base == "dashboard-calendar" ? "calendar" : base == "dashboard-classic" ? "classic" : nil,
                                   initialScroll: galleryScroll),
