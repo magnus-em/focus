@@ -268,3 +268,7 @@ Added local, regular-browser exact-URL identity observations and a persisted per
 ## 2026-11-05 — Codex: confirmed course roster
 
 - The prompt log traced “AI Apps” and “Data Structures Exam 2” cards to Calendar events. Earlier cards also included “Purposes of College Education (Audit)”. Calendar classes and exams now require a title matching one of the four user-confirmed courses. Daily, observation and chat coach prompts share that roster. Regression cases cover the actual calendar titles, abbreviated Systems and Deep Learning exams, and optional or prep events.
+
+## 2026-11-10 — Codex: Adderall experience check-in
+
+Connected the unfinished daily experience form to Mac Health → Adderall, including anxiety, side effects, notes, past dates and trends. Added notification routing and refresh; reminders default off. Removed guessed duration and redundant enum conformance. Validation pending.

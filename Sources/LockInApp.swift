@@ -193,7 +193,17 @@ struct FocusApp: App {
         CommitmentReminder.shared.install(dayStore: days, settings: appSettings) {
             EveningReviewWindowController.shared.open(store: store, days: days, settings: appSettings, timer: timer, recall: recall)
         }
+        AdderallCheckInWindowController.shared.health = health
+        AdderallCheckInWindowController.shared.sessions = store
+        AdderallCheckInStore.shared.scheduleReminders()
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                                               object: nil, queue: .main) { _ in
+            AdderallCheckInStore.shared.scheduleReminders()
+        }
         CommitmentReminder.shared.onOtherTap = { id in
+            if let day = AdderallCheckInStore.day(fromReminder: id) {
+                AdderallCheckInWindowController.shared.open(day: day)
+            }
             if id == LeetCodeStore.nudgeID { leetCodeCtrl.open(store: leetCode, settings: appSettings) }
         }
 
@@ -309,6 +319,12 @@ struct FocusApp: App {
                     previewConfidence: name == "leetcode-draft-ready" ? .solid : nil,
                     confirm: { _, _ in }, dismiss: {}).padding(20),
                     name: name, dark: dark, size: NSSize(width: 380, height: 470))
+            case "adderall-checkin":
+                DesignGallery.show(ScrollView {
+                    AdderallCheckInForm(day: .constant(Calendar.current.startOfDay(for: Date())),
+                        existing: AdderallCheckIn(day: AdderallCheckIn.dayKey(Date()), tookDose: true),
+                        doses: [], saveError: nil, onSave: { _ in }).padding(20)
+                }, name: name, dark: dark, size: NSSize(width: 520, height: 1500))
             case "adderall-day":
                 DesignGallery.show(ScrollView { AdderallDayView(store: health, preview: true).padding(16) },
                                    name: name, dark: dark, size: NSSize(width: 380, height: 1000))

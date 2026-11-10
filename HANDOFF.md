@@ -135,3 +135,7 @@ User said the main screen had become too crowded on 10/21. Compact Now is again 
 - Standalone category/time+problem goals and active-problem workflow are installed at `6293b46`;214 core tests pass, signed install preserved451 sessions, final hidden light/dark review93/100. Durable behavior and file map are in CLAUDE.md, validation in WORK_LOG.md.
 - First real-user browser→Done→save walkthrough remains to observe; QA did not insert a synthetic solve or change the user's category. Automatic identity requires a privacy-verified regular LeetCode problem URL; direct catalog selection works independently. Mac-only active-problem UI; no iOS install for this change.
 - Goal calibration: starting recommendation120 focused minutes +4 distinct problems/day, roughly3 new (mostly Medium) +1 redo. User has not supplied first interview date or target companies/topics; tailor after those arrive.
+
+## Adderall experience check-in — 11/10 (Codex)
+
+- Mac integration in validation: Health → Adderall → Daily check-in. The previously untracked model/store/form are now connected. Phone check-in UI remains unimplemented.

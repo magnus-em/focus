@@ -25,6 +25,9 @@ struct HealthView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
                 if tracker == .adderall {
+                    AdderallCheckInCard(store: .shared) { day, trends in
+                        AdderallCheckInWindowController.shared.open(day: day, trends: trends)
+                    }
                     AdderallDayView(store: store)
                     DisclosureGroup("Weekly trends") {
                         VStack(spacing: 14) { statsRow; chartCard; weeksCard }
