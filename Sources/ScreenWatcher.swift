@@ -1097,6 +1097,9 @@ final class ScreenWatcher: ObservableObject {
     private var cloudLabels: [String: (category: String, at: Date)] = [:]
 
     func cloudLabel(_ category: String, for row: ScreenJournal.Row) {
+        // 11/10: an alumni transfer panel on Zoom became 88 min of Recruiting from Grok
+        // after the on-device rules had rightly left the call blank.
+        guard !ScreenClassificationPolicy.showsNoTask(app: row.app, title: row.title) else { return }
         let key = "\(row.bundle)|\(row.title)"
         cloudLabels[key] = (category, Date())
         cloudLabels = cloudLabels.filter { Date().timeIntervalSince($0.value.at) < 1800 }
@@ -1138,7 +1141,8 @@ final class ScreenWatcher: ObservableObject {
 
     private func classify(app: String, bundle: String, title: String, text: String, url: String? = nil) async -> (String?, String) {
         let result = await classifyOnDevice(app: app, bundle: bundle, title: title, text: text, url: url)
-        guard result.0 == nil || labelUncertain, let cloud = cloudLabels["\(bundle)|\(title)"],
+        guard result.0 == nil || labelUncertain, !ScreenClassificationPolicy.showsNoTask(app: app, title: title),
+              let cloud = cloudLabels["\(bundle)|\(title)"],
               Date().timeIntervalSince(cloud.at) < 1800, candidateCategories().contains(cloud.category) else { return result }
         labelSource = "cloud reading of this window"
         labelReason = "Grok's reading of this window"
@@ -1396,6 +1400,10 @@ final class ScreenCoach {
     /// less proof, so a window you've answered for before is suggested in 45s.
     private static let learnedRunSeconds: TimeInterval = 45
     private static let afterStopQuiet: TimeInterval = 20 * 60
+    /// The last switch made without asking: a switch straight back to what it
+    /// left is two windows of one task disagreeing, not a change of task.
+    private var lastAuto: (from: String, to: String, at: Date)?
+    private static let flipBackQuiet: TimeInterval = 15 * 60
     /// Switching without asking, leaving focus for a life category waits this
     /// long (the switch is backdated, so the log loses nothing); shorter side
     /// trips stay in the focus block and are counted as distractions.
@@ -1538,6 +1546,27 @@ final class ScreenCoach {
         // 10/23: a ChatGPT chat on C++ syntax ("Find a faster approach") was SWE mid-LeetCode.
         if running == FocusCategories.leetCode, run.category == "SWE", run.inChat {
             return say("Coding help in a chat is part of LeetCode practice")
+        }
+        if let running, let start = timer.sessionStartTime, !FocusCategories.isLife(running), running != "Break",
+           !FocusCategories.isLife(run.category) {
+            // Homework in a subject is that subject (11/10: Math → HW on the Pluck notebook, undone).
+            if run.category == "HW" {
+                return say("Homework while \(running) runs counts as \(running)")
+            }
+            // 11/10 10:25 PM: SWE picked on the Pluck notebook, switched back to Math 75 s later
+            // from its old label, undone. The window in front when you picked is yours.
+            if lastAuto?.to != running || lastAuto.map({ abs($0.at.timeIntervalSince(start)) > 120 }) ?? true {
+                let picked = Set(watcher.samples.filter { $0.date >= start.addingTimeInterval(-30) && $0.date <= start.addingTimeInterval(10) }
+                    .map(\.memoryKey))
+                if !run.keys.isEmpty, run.keys.isSubset(of: picked) {
+                    return say("You picked \(running) with this window in front")
+                }
+            }
+            // 11/10 11:24–11:33: SWE → Math → SWE → Math between the Pluck notebook and its chat.
+            if let last = lastAuto, last.to == running, last.from == run.category,
+               Date().timeIntervalSince(last.at) < Self.flipBackQuiet {
+                return say("Just switched from \(run.category) to \(running): not flipping back")
+            }
         }
         // Focus → focus on windows you've labeled yourself: just switch, with
         // Undo. Anything involving a life category stays a question.
@@ -1703,6 +1732,7 @@ final class ScreenCoach {
     /// `from` nil: nothing was running, so Undo stops it again.
     private func autoSwitch(from: String?, to run: Run) {
         timer.switchTo(run.category, at: run.start)
+        lastAuto = from.map { ($0, run.category, run.start) }
         let why = run.projectAdmin ? "your Focus project rule"
             : run.trusted ? "windows you've labeled \(run.category)" : "what's on screen"
         let m = AwayPromptModel(
