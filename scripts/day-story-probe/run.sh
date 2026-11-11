@@ -11,7 +11,7 @@ set -e
 day=${1:-$(date +%F)}
 here="$(cd "$(dirname "$0")" && pwd)"
 tmp=$(mktemp -d)
-sqlite3 -readonly ~/Library/Application\ Support/default.store \
+sqlite3 -readonly ~/Library/Application\ Support/Focus/Focus.store \
   "select cast(ZSTARTTIME+978307200 as real), ZDURATIONMINUTES, coalesce(ZLABEL,''), ZTYPERAW from ZSTOREDWORKSESSION where ZSTARTTIME+978307200 > cast(strftime('%s','$day','-1 day') as integer) order by ZSTARTTIME" > "$tmp/sessions.txt"
 (cd "$here" && swift build -q 2>&1 | grep -v "^$" || true)
 "$here/.build/debug/storyprobe" "$day" "$tmp/sessions.txt"

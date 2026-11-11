@@ -44,8 +44,8 @@ for old in /Applications/LockIn.app /Applications/FocusTimer.app; do
 done
 
 # Sessions live in the SwiftData store (sessions.json was retired in the SwiftData migration).
-STORE="$HOME/Library/Application Support/default.store"
-BACKUP="$HOME/Library/Application Support/Focus/default.store.pre-deploy-$(date +%Y%m%d_%H%M%S)"
+STORE="$HOME/Library/Application Support/Focus/Focus.store"
+BACKUP="$HOME/Library/Application Support/Focus/Focus.store.pre-deploy-$(date +%Y%m%d_%H%M%S)"
 count_sessions() { sqlite3 -readonly "$1" "select count(*) from ZSTOREDWORKSESSION" 2>/dev/null || echo "?"; }
 
 echo "── Pre-install ──────────────────────────────"
