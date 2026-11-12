@@ -1099,7 +1099,8 @@ final class ScreenWatcher: ObservableObject {
     func cloudLabel(_ category: String, for row: ScreenJournal.Row) {
         // 11/10: an alumni transfer panel on Zoom became 88 min of Recruiting from Grok
         // after the on-device rules had rightly left the call blank.
-        guard !ScreenClassificationPolicy.showsNoTask(app: row.app, title: row.title) else { return }
+        guard !ScreenClassificationPolicy.showsNoTask(app: row.app, title: row.title),
+              ScreenClassificationPolicy.cloudLabelFits(category: category, app: row.app, title: row.title) else { return }
         let key = "\(row.bundle)|\(row.title)"
         cloudLabels[key] = (category, Date())
         cloudLabels = cloudLabels.filter { Date().timeIntervalSince($0.value.at) < 1800 }
@@ -1143,7 +1144,8 @@ final class ScreenWatcher: ObservableObject {
         let result = await classifyOnDevice(app: app, bundle: bundle, title: title, text: text, url: url)
         guard result.0 == nil || labelUncertain, !ScreenClassificationPolicy.showsNoTask(app: app, title: title),
               let cloud = cloudLabels["\(bundle)|\(title)"],
-              Date().timeIntervalSince(cloud.at) < 1800, candidateCategories().contains(cloud.category) else { return result }
+              Date().timeIntervalSince(cloud.at) < 1800, candidateCategories().contains(cloud.category),
+              ScreenClassificationPolicy.cloudLabelFits(category: cloud.category, app: app, title: title) else { return result }
         labelSource = "cloud reading of this window"
         labelReason = "Grok's reading of this window"
         labelUncertain = false

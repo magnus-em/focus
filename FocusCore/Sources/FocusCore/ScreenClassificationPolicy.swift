@@ -284,6 +284,29 @@ public enum ScreenClassificationPolicy {
         return marks.filter(page.contains).count >= 2
     }
 
+    // 11/11: Yale Course Search and a ChatGPT chat "Recommend Yale Classes" were AI for 40 min from the
+    // deep-learning courses listed on them while Admin and Meals ran; picking courses is an errand, not study.
+    static func showsCoursePlanning(title: String, text: String) -> Bool {
+        let title = normalized(String(title.prefix(240)))
+        if ["course search", "search yale courses", "courses.yale", "course selection", "course registration",
+            "course planning", "class schedule", "which classes", "which courses"].contains(where: title.contains) { return true }
+        if title.range(of: #"\b(?:recommend|choos|pick|plan|select)\w* (?:\w+ )?(?:classes|courses)\b"#, options: .regularExpression) != nil {
+            return true
+        }
+        let body = normalized(String(text.prefix(2400)))
+        let marks = ["course search", "registration", "add to worksheet", "worksheet", "prerequisite", "enroll",
+                     "next semester", "spring 2027", "fall 2027", "which classes", "which courses", "course load",
+                     "credits", "shopping period", "add/drop"]
+        return marks.filter(body.contains).count >= 2
+    }
+
+    /// Grok fills only blank or unsure labels; it doesn't get to call a search page reading or journaling.
+    public static func cloudLabelFits(category: String, app: String, title: String) -> Bool {
+        if ["Reading", "Journaling"].contains(category), isSearchResults(title: title) { return false }
+        if category == "Reading", isVideo(title: title) { return false }
+        return true
+    }
+
     public static func isSearchResults(title: String) -> Bool {
         let title = normalized(String(title.prefix(240)))
         return ["- google search", "- bing", "at duckduckgo", "- search", "- perplexity"].contains { title.hasSuffix($0) }
@@ -489,7 +512,7 @@ public enum ScreenClassificationPolicy {
         // A tracker discussing its model is evidence about building the tracker,
         // even when the discussion quotes the definition of the AI category.
         guard !meta.contains(where: { title.contains($0) || body.contains($0) }) else { return false }
-        guard !showsCareerTalk(title + " " + body) else { return false }
+        guard !showsCareerTalk(title + " " + body), !showsCoursePlanning(title: title, text: body) else { return false }
         // 10/27: slides walking through von Oswald et al. (ICML 2023) were Math for 31 min and drew five
         // AI → Math cards, all kept: the derivation slides cite the paper but name no ML term the rules knew.
         let citesMLVenue = (title + " " + body).range(of: #"\bet al\.?,? (?:\(?\d{4}\)?,? )?(?:icml|neurips|nips|iclr)\b|\b(?:icml|neurips|iclr) ?20\d\d\b"#,
@@ -538,8 +561,16 @@ public enum ScreenClassificationPolicy {
         return hits >= 2 && hasStudyEvidence
     }
 
+    // 11/11: Chrome appends 🔊 to a tab playing audio, so with music on every title-ending rule missed
+    // ("… - YouTube 🔊" was Admin, "… - Google Search 🔊" was Reading for 7 min).
+    private static let playbackMarks = ["🔊", "🔇", "▶️", "⏸️", "▶", "⏸"]
+
     private static func normalized(_ value: String) -> String {
-        value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+        var value = value.trimmingCharacters(in: .whitespaces)
+        while let mark = playbackMarks.first(where: value.hasSuffix) {
+            value = String(value.dropLast(mark.count)).trimmingCharacters(in: .whitespaces)
+        }
+        return value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
     }
 
     private static func containsWordBeginning(_ prefix: String, in value: String) -> Bool {

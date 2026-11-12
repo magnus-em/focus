@@ -580,4 +580,23 @@ final class SocialFeedPolicyTests: XCTestCase {
         XCTAssertNil(ScreenClassificationPolicy.readingAlternative(title: "I Spent a Week in a Hacker House - The Atlantic"))
         XCTAssertNil(ScreenClassificationPolicy.readingAlternative(title: "The CNN architecture explained - Towards Data Science"))
     }
+
+    func testNovember11CoursePlanningAndPlaybackMarks() {
+        let chat = "Given your interest in deep learning and neural network theory, take CPSC 7770 next semester. "
+            + "It has a prerequisite in linear algebra; with 4 credits you can still fit MATH 244."
+        XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "Recommend Yale Classes", text: chat))
+        XCTAssertFalse(ScreenClassificationPolicy.supportsMLStudy(title: "Search Yale Courses 🔊",
+            text: "CPSC 4770 Deep Learning\nIntroduction to neural network training\nAdd to worksheet\nRegistration"))
+        XCTAssertTrue(ScreenClassificationPolicy.supportsMLStudy(title: "lecture7.pdf",
+            text: "Backpropagation through the transformer: we derive the gradient of self-attention."))
+        XCTAssertTrue(ScreenClassificationPolicy.isSearchResults(title: "can you eat wood for calories - Google Search 🔊"))
+        XCTAssertTrue(ScreenClassificationPolicy.isMailThread(app: "Google Chrome",
+            title: "AI song request - magnus@example.edu - Yale University Mail 🔊"))
+        XCTAssertFalse(ScreenClassificationPolicy.cloudLabelFits(category: "Reading", app: "Google Chrome",
+            title: "can you eat wood for calories - Google Search 🔊"))
+        XCTAssertFalse(ScreenClassificationPolicy.cloudLabelFits(category: "Journaling", app: "Google Chrome",
+            title: "ive wandered far from home - Google Search"))
+        XCTAssertTrue(ScreenClassificationPolicy.cloudLabelFits(category: "Math", app: "Google Chrome",
+            title: "chromatic number of a planar graph - Google Search"))
+    }
 }
