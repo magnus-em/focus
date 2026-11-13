@@ -454,16 +454,44 @@ struct MenuBarTitle: View {
     @ObservedObject private var streak = FocusStreakStore.shared
 
     var body: some View {
-        var text = Text("\(timer.isOnBreak ? "Break" : timer.currentLabel)  \(timer.menuBarTimeText)")
-        if settings.menuBarStreak, timer.isRunning, !timer.isOnBreak {
-            let now = Date()
-            if let since = streak.since {
-                text = text + Text("   \(Image(systemName: "flame.fill")) \(Self.clock(now.timeIntervalSince(since)))")
-            } else if let away = streak.away {
-                text = text + Text("   \(Self.short(away.name)) \(Self.clock(now.timeIntervalSince(away.since)))")
-            }
+        let title = "\(timer.isOnBreak ? "Break" : timer.currentLabel)  \(timer.menuBarTimeText)"
+        if let extra {
+            Image(nsImage: Self.image(title, symbol: extra.symbol, extra.text))
+                .accessibilityLabel("\(title), \(extra.symbol == nil ? "" : "without a distraction ")\(extra.text)")
+        } else {
+            Text(title)
         }
-        return text.monospacedDigit()
+    }
+
+    private var extra: (symbol: String?, text: String)? {
+        guard settings.menuBarStreak, timer.isRunning, !timer.isOnBreak else { return nil }
+        let now = Date()
+        if let since = streak.since { return ("flame.fill", Self.clock(now.timeIntervalSince(since))) }
+        if let away = streak.away { return (nil, "\(Self.short(away.name)) \(Self.clock(now.timeIntervalSince(away.since)))") }
+        return nil
+    }
+
+    /// The menu bar drops symbols inside a Text, so this line is drawn as one template image.
+    static func image(_ title: String, symbol: String?, _ text: String) -> NSImage {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.menuBarFont(ofSize: 0).pointSize, weight: .regular)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+        let line = NSMutableAttributedString(string: title + "   ", attributes: attrs)
+        if let symbol, let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: font.pointSize - 1, weight: .regular)) {
+            let a = NSTextAttachment()
+            a.image = img
+            a.bounds = NSRect(x: 0, y: (font.capHeight - img.size.height) / 2, width: img.size.width, height: img.size.height)
+            line.append(NSAttributedString(attachment: a))
+            line.append(NSAttributedString(string: " ", attributes: attrs))
+        }
+        line.append(NSAttributedString(string: text, attributes: attrs))
+        let size = line.size()
+        let img = NSImage(size: NSSize(width: ceil(size.width), height: ceil(size.height)), flipped: false) { rect in
+            line.draw(in: rect)
+            return true
+        }
+        img.isTemplate = true
+        return img
     }
 
     static func clock(_ t: TimeInterval) -> String {
