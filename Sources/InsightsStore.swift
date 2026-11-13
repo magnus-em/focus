@@ -120,7 +120,8 @@ final class InsightsStore: ObservableObject {
             let archived = ScreenArchive.spans(from: period.start, to: period.end)
             let spans = (archived + live).filter { !ignored.contains($0.bundleID) }
             let labels = spans.map { WindowTimeline.Label(start: $0.start, end: $0.end, bundle: $0.bundleID, title: $0.title,
-                                                          category: $0.summary == "Private" ? WindowTimeline.privateCategory : $0.category) }
+                                                          category: $0.summary == "Private" ? WindowTimeline.privateCategory : $0.category,
+                                                          source: $0.source) }
             let appNames = Dictionary(spans.map { ($0.bundleID, $0.app) }, uniquingKeysWith: { a, _ in a })
             let events = WindowTimelineRecorder.events(from: period.start, to: period.end)
             let timelineSegs = WindowTimeline.segments(events, away: away, from: period.start, to: period.end)

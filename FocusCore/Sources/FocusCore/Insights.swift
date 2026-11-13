@@ -77,22 +77,30 @@ public enum Insights {
         public var name: String
         public var count: Int
         public var minutes: Double
+        /// Minutes the stretches it ended had reached, in all.
+        public var endedMinutes: Double = 0
         public var id: String { name }
+        public var averageEnded: Double { count > 0 ? endedMinutes / Double(count) : 0 }
     }
 
+    /// How long study lasted without a distraction (`FocusStreak`).
     public struct Attention: Equatable, Sendable {
         public var focusHoursSeen: Double
-        public var excursions: Int
-        public var glances: Int
-        public var detours: Int
-        public var drifts: Int
-        public var excursionMinutes: Double
+        /// Share of that time from the second-by-second window log; the rest
+        /// is 15 s screen readings, which miss short trips away.
+        public var fineShare: Double
+        public var distractions: Int
+        public var distractionMinutes: Double
         public var perFocusHour: Double
-        public var medianStretchMinutes: Double
-        public var longStretchShare: Double
         public var longestStretchMinutes: Double
+        public var longestStretch: FocusStreak.Stretch?
+        /// Half the time in stretches came in stretches at least this long.
+        public var halfTimeMinutes: Double
+        public var medianStretchMinutes: Double
+        public var stretches25: Int
+        public var stretches50: Int
         public var distractors: [Distractor]
-        /// Excursion minutes by hour of day.
+        /// Minutes away on distractions, by hour of day.
         public var byHour: [Double]
     }
 
@@ -101,7 +109,9 @@ public enum Insights {
         public var trackedFocus: Double
         public var confirmedStudy: Double
         public var avoidedMinutes: Double
-        public var excursionsPerHour: Double?
+        public var distractionsPerHour: Double?
+        public var longestStretch: Double?
+        public var halfTimeStretch: Double?
         public var firstFocus: Date?
         public var firstAvoided: Date?
         public var aiMessages: Int
@@ -195,7 +205,8 @@ public enum Insights {
         var avoided = 0.0, otherGoal = 0.0, noGoal = 0.0
         var courseMinutes: [String: Double] = [:]
         var studyByHour = Array(repeating: 0.0, count: 24)
-        var days = dayStarts.map { Day(date: $0, trackedFocus: 0, confirmedStudy: 0, avoidedMinutes: 0, excursionsPerHour: nil,
+        var days = dayStarts.map { Day(date: $0, trackedFocus: 0, confirmedStudy: 0, avoidedMinutes: 0, distractionsPerHour: nil,
+                                       longestStretch: nil, halfTimeStretch: nil,
                                        firstFocus: nil, firstAvoided: nil, aiMessages: 0) }
         for l in segs {
             guard let c = l.category, isFocusCat(c) else { continue }
@@ -243,6 +254,7 @@ public enum Insights {
                 let o = min(l.segment.end, s.end).timeIntervalSince(max(l.segment.start, s.start)) / 60
                 seen += o
                 if let c = l.category, isFocusCat(c) { on += o }
+                else if l.category == nil, FocusStreak.isAIChat(bundle: l.segment.bundle, url: l.segment.url) { on += o }
             }
             confirmed += on; offTask += max(0, seen - on); unseen += max(0, len - seen)
             if let di = dayIndex(s.start) {
@@ -258,38 +270,45 @@ public enum Insights {
         }
 
         // Attention
-        let distracting = { (c: String) in input.lifeCategories.contains(c) || c == WindowTimeline.privateCategory }
         let blocks = focusSessions.map { WindowTimeline.Block(start: $0.start, end: $0.end, category: $0.category) }
-        let att = WindowTimeline.attention(segs, blocks: blocks, distracting: distracting, isFocus: isFocusCat)
-        let away = att.excursions.filter { !$0.otherWork }
+        let life = input.lifeCategories.subtracting(input.studyCategories)
+        let streaks = FocusStreak.stretches(segs, blocks: blocks, life: life)
         var byName: [String: Distractor] = [:]
         var byHour = Array(repeating: 0.0, count: 24)
-        for e in away {
-            let name = e.category == WindowTimeline.privateCategory ? (e.privateApp ?? "Private apps") : distractorName(e)
-            byName[name, default: Distractor(name: name, count: 0, minutes: 0)].count += 1
-            byName[name]!.minutes += e.seconds / 60
-            byHour[calendar.component(.hour, from: e.start)] += e.seconds / 60
-            if let di = dayIndex(e.start) { days[di].excursionsPerHour = (days[di].excursionsPerHour ?? 0) + 1 }
+        var dayDistractions = Array(repeating: 0, count: days.count)
+        for d in streaks.distractions {
+            byName[d.name, default: Distractor(name: d.name, count: 0, minutes: 0)].count += 1
+            byName[d.name]!.minutes += d.seconds / 60
+            byName[d.name]!.endedMinutes += d.endedMinutes
+            byHour[calendar.component(.hour, from: d.start)] += d.seconds / 60
+            if let di = dayIndex(d.start) { dayDistractions[di] += 1 }
+        }
+        var daySeen = Array(repeating: 0.0, count: days.count)
+        for b in blocks {
+            guard let di = dayIndex(b.start) else { continue }
+            daySeen[di] += segs.filter { $0.segment.end > b.start && $0.segment.start < b.end }
+                .reduce(0.0) { $0 + min($1.segment.end, b.end).timeIntervalSince(max($1.segment.start, b.start)) }
         }
         for i in days.indices {
-            let seenH = blocks.filter { dayIndex($0.start) == i }.reduce(0.0) { acc, b in
-                acc + segs.filter { $0.segment.end > b.start && $0.segment.start < b.end }
-                    .reduce(0.0) { $0 + min($1.segment.end, b.end).timeIntervalSince(max($1.segment.start, b.start)) } / 3600
+            let st = streaks.stretches.filter { dayIndex($0.start) == i }
+            if daySeen[i] >= 15 * 60 { days[i].distractionsPerHour = Double(dayDistractions[i]) / (daySeen[i] / 3600) }
+            if !st.isEmpty {
+                days[i].longestStretch = st.map(\.minutes).max()
+                days[i].halfTimeStretch = FocusStreak.halfTimeMinutes(st)
             }
-            if seenH >= 0.25 { days[i].excursionsPerHour = (days[i].excursionsPerHour ?? 0) / seenH } else { days[i].excursionsPerHour = nil }
         }
-        let stretchMin = att.stretches.map { $0.seconds / 60 }.filter { $0 >= 1 }.sorted()
-        let onTotal = stretchMin.reduce(0, +)
-        let seenHours = att.seenSeconds / 3600
+        let lengths = streaks.stretches.map(\.minutes).sorted()
+        let seenHours = streaks.seenSeconds / 3600
         let attention = Attention(
-            focusHoursSeen: seenHours, excursions: away.count,
-            glances: away.filter { $0.kind == .glance }.count, detours: away.filter { $0.kind == .detour }.count,
-            drifts: away.filter { $0.kind == .drift }.count,
-            excursionMinutes: away.reduce(0) { $0 + $1.seconds / 60 },
-            perFocusHour: seenHours > 0 ? Double(away.count) / seenHours : 0,
-            medianStretchMinutes: stretchMin.isEmpty ? 0 : stretchMin[stretchMin.count / 2],
-            longStretchShare: onTotal > 0 ? stretchMin.filter { $0 >= 25 }.reduce(0, +) / onTotal : 0,
-            longestStretchMinutes: stretchMin.last ?? 0,
+            focusHoursSeen: seenHours, fineShare: streaks.seenSeconds > 0 ? streaks.fineSeconds / streaks.seenSeconds : 0,
+            distractions: streaks.distractions.count,
+            distractionMinutes: streaks.distractions.reduce(0) { $0 + $1.seconds / 60 },
+            perFocusHour: seenHours > 0 ? Double(streaks.distractions.count) / seenHours : 0,
+            longestStretchMinutes: lengths.last ?? 0,
+            longestStretch: streaks.stretches.max { $0.seconds < $1.seconds },
+            halfTimeMinutes: FocusStreak.halfTimeMinutes(streaks.stretches),
+            medianStretchMinutes: lengths.isEmpty ? 0 : lengths[lengths.count / 2],
+            stretches25: lengths.filter { $0 >= 25 }.count, stretches50: lengths.filter { $0 >= 50 }.count,
             distractors: byName.values.sorted { $0.count > $1.count || ($0.count == $1.count && $0.minutes > $1.minutes) },
             byHour: byHour)
 
@@ -330,24 +349,12 @@ public enum Insights {
             avoidedFirstDays: avoidedFirst, activeDays: activeDays)
     }
 
-    static func distractorName(_ e: WindowTimeline.Excursion) -> String {
-        let t = (e.titles.first ?? "").lowercased()
-        let app = e.apps.first ?? e.category
-        for (mark, name) in [("youtube", "YouTube"), ("/ x", "X"), ("x.com", "X"), ("instagram", "Instagram"), ("reddit", "Reddit"),
-                             ("linkedin", "LinkedIn"), ("gmail", "Email"), ("inbox", "Email"), ("amazon", "Shopping"),
-                             ("threads", "Threads"), ("tiktok", "TikTok"), ("netflix", "Netflix")] where t.contains(mark) {
-            return name
-        }
-        if ["Google Chrome", "Safari", "Arc"].contains(app) { return "\(e.category) browsing" }
-        return "\(app) (\(e.category))"
-    }
-
     /// Screen readings as labeled segments, for days the window log doesn't cover.
     public static func segments(fromReadings labels: [WindowTimeline.Label], apps: [String: String] = [:]) -> [WindowTimeline.LabeledSegment] {
         labels.map { l in
             WindowTimeline.LabeledSegment(
                 segment: .init(start: l.start, end: l.end, app: apps[l.bundle] ?? l.bundle, bundle: l.bundle, title: l.title),
-                category: l.category, source: .reading, coarse: true)
+                category: l.category, source: .reading, coarse: true, labelSource: l.source)
         }
     }
 }

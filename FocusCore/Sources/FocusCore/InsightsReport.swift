@@ -6,7 +6,7 @@ import Foundation
 /// first. Saved as `Focus/insights/reports/*.json`; Claude Code can write the
 /// same file from `Focus/insights/bundle.json` when you ask it to.
 public enum InsightsReport {
-    public static let version = "insights-1"
+    public static let version = "insights-2"
 
     public struct GoalVerdict: Codable, Equatable, Sendable {
         public var goal: String
@@ -82,6 +82,7 @@ public enum InsightsReport {
     - Rank everything by their goals, in their order. Goals marked "put off" come first in every list where they apply. Never present more time on a goal that is not put off as a win while a put-off goal is behind.
     - Every claim must come from the facts given. Cite the numbers and days. If a measure has little data, say so.
     - The screen record only covers the Mac. Time on the timer with nothing on screen may be paper, the iPad, a lecture or a timer left running; say which is more likely only when the facts show it.
+    - The student also wants to stay on their study longer without distractions (Messages, feeds, email, side projects). Talking to AI about the work they're doing counts as study, not a distraction. Report how long they stayed focused (longest stretch, half-time length, stretches of 25+ min) and what ended stretches, compare days, and aim at least one tip at the top distraction.
     - Tips are small, concrete and schedulable (what, when, how long), aimed at starting the put-off work, and each names how Focus will measure it next week. At most 5 tips. No generic productivity advice.
     - Check last report's tips against this period's facts: followed (yes, partly, no, unknown) and what changed.
     - Plain words, second person, no exclamation marks, no headings inside fields. Keep each detail to 1–3 sentences.
@@ -147,13 +148,14 @@ public enum InsightsReport {
             var l = "\(df.string(from: d.date)): timer focus \(h(d.trackedFocus)), focus on screen \(h(d.confirmedStudy)), put-off goals \(h(d.avoidedMinutes))"
             if let f = d.firstFocus { l += ", first focus \(tf.string(from: f))" }
             if let f = d.firstAvoided { l += ", first put-off work \(tf.string(from: f))" }
-            if let e = d.excursionsPerHour { l += ", \(String(format: "%.1f", e)) distractions/focus hour" }
+            if let m = d.longestStretch { l += ", longest stretch without a distraction \(h(m))" }
+            if let e = d.distractionsPerHour { l += ", \(String(format: "%.1f", e)) distractions/focus hour" }
             if d.aiMessages > 0 { l += ", \(d.aiMessages) AI messages" }
             out.append(l)
         }
         let a = s.attention
-        out.append("\nATTENTION during focus (\(String(format: "%.1f", a.focusHoursSeen)) h seen): \(a.excursions) times away to something else (\(a.glances) under 30 s, \(a.detours) 30 s–5 min, \(a.drifts) over 5 min), \(h(a.excursionMinutes)) in all, \(String(format: "%.1f", a.perFocusHour)) per hour. On-task stretches: median \(String(format: "%.0f", a.medianStretchMinutes)) min, longest \(String(format: "%.0f", a.longestStretchMinutes)) min, \(Int((a.longStretchShare * 100).rounded()))% of on-task time in stretches of 25 min or more.")
-        out.append("Where attention went: " + a.distractors.prefix(8).map { "\($0.name) \($0.count)× \(h($0.minutes))" }.joined(separator: ", "))
+        out.append("\nFOCUS WITHOUT DISTRACTION (the student's own aim: longer stretches, no Messages etc. mid-study; AI chats about the work count as study). From \(String(format: "%.1f", a.focusHoursSeen)) h of focus blocks on the Mac\(a.fineShare < 0.95 ? ", \(Int((a.fineShare * 100).rounded()))% of it timed to the second (the rest from 15 s readings, which miss short trips)" : ""): longest stretch \(h(a.longestStretchMinutes))\(a.longestStretch.map { " (\($0.category), \(df.string(from: $0.start)) \(tf.string(from: $0.start)))" } ?? ""), half of the stretch time in stretches of \(String(format: "%.0f", a.halfTimeMinutes)) min or more, median stretch \(String(format: "%.0f", a.medianStretchMinutes)) min, \(a.stretches25) stretches of 25+ min, \(a.stretches50) of 50+ min. \(a.distractions) distractions of 5 s or more (\(String(format: "%.1f", a.perFocusHour)) per focus hour, \(h(a.distractionMinutes)) in all).")
+        out.append("What ended stretches: " + a.distractors.prefix(8).map { "\($0.name) \($0.count)× (\(h($0.minutes)) away, ended stretches averaging \(String(format: "%.0f", $0.averageEnded)) min)" }.joined(separator: ", "))
         let hours = s.studyByHour.enumerated().filter { $0.element >= 10 }.map { "\($0.offset):00 \(h($0.element))" }
         out.append("\nSTUDY BY HOUR: " + hours.joined(separator: ", "))
         if !s.activityMinutes.isEmpty {

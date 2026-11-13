@@ -59,6 +59,7 @@ final class WindowTimelineRecorder {
         let now = Date()
         defer { lastPoll = now }
         guard settings?.screenWatch == true else {
+            FocusStreakStore.shared.tick(front: nil, now: now)
             if front != nil { emit(.away(now, reason: "off")); front = nil; flush() }
             return
         }
@@ -67,6 +68,7 @@ final class WindowTimelineRecorder {
             front = nil
         }
         if PresenceMonitor.shared.isAway {
+            FocusStreakStore.shared.tick(front: nil, now: now)
             if !away {
                 away = true
                 if front != nil { emit(.away(now.addingTimeInterval(-min(PresenceMonitor.idleSeconds, 3600)), reason: "away")) }
@@ -94,6 +96,7 @@ final class WindowTimelineRecorder {
         if Calendar.current.component(.day, from: now) != Calendar.current.component(.day, from: lastPoll), let f = front {
             emit(.window(now, app: f.app, bundle: f.bundle, title: f.title, url: f.url))
         }
+        FocusStreakStore.shared.tick(front: away ? nil : front, now: now)
         if polls % 5 == 0 {
             let c = Self.readCounters()
             let d = zip(c, counters).map { max(0, $0 - $1) }

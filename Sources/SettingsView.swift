@@ -1195,6 +1195,7 @@ private struct ScreenSettings: View {
                 Text("Leaving focus for something else switches after 8 min of it, backdated; shorter side trips stay in the block and count as distractions on the Insights page.")
                     .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
+                ToggleRow(label: "Offer to go back when Messages or a feed interrupts study", isOn: $settings.distractionNudge)
             }
             AIChatSettingsRows()
             HStack {

@@ -71,32 +71,6 @@ final class WindowTimelineTests: XCTestCase {
         XCTAssertEqual(l.map(\.source), [.reading, .privateApp, .sameWindow, .sameWindow, .none])
     }
 
-    func testAttentionFindsGlancesDetoursAndStretches() {
-        func seg(_ a: Double, _ b: Double, _ app: String, _ c: String?) -> WindowTimeline.LabeledSegment {
-            .init(segment: .init(start: at(a), end: at(b), app: app, bundle: app, title: app), category: c, source: .reading)
-        }
-        let segs = [
-            seg(0, 100, "Preview", "Math"), seg(100, 112, "Messages", "Private"), seg(112, 300, "Preview", "Math"),
-            seg(300, 380, "Chrome", "Leisure"), seg(380, 420, "Messages", "Private"), seg(420, 430, "Finder", nil),
-            seg(430, 600, "Preview", "Math"), seg(600, 700, "Chrome", "Leisure"),
-        ]
-        let life: Set<String> = ["Leisure", "Admin", "Private"]
-        let r = WindowTimeline.attention(segs, blocks: [.init(start: at(0), end: at(650), category: "Math")],
-                                         distracting: { life.contains($0) }, isFocus: { !life.contains($0) })
-        XCTAssertEqual(r.excursions.count, 3)
-        XCTAssertEqual(r.excursions[0].kind, .glance)
-        XCTAssertEqual(r.excursions[0].category, "Private")
-        XCTAssertTrue(r.excursions[0].returned)
-        XCTAssertEqual(r.excursions[1].seconds, 120)
-        XCTAssertEqual(r.excursions[1].category, "Leisure")
-        XCTAssertEqual(r.excursions[1].apps, ["Chrome", "Messages"])
-        XCTAssertFalse(r.excursions[2].returned)
-        XCTAssertEqual(r.excursions[2].seconds, 50)
-        XCTAssertEqual(r.stretches.map(\.seconds), [300, 170])
-        XCTAssertEqual(r.onTaskSeconds, 458)
-        XCTAssertEqual(r.seenSeconds, 650)
-    }
-
     func testEventRowsAreCompact() throws {
         let data = try JSONEncoder().encode(E.input(at(5), keys: 3, clicks: 1, scrolls: 0, moves: 9))
         let s = String(decoding: data, as: UTF8.self)

@@ -55,13 +55,12 @@ final class InsightsTests: XCTestCase {
         XCTAssertEqual(s.confirmedMinutes, 174, accuracy: 0.01)
         XCTAssertEqual(s.offTaskMinutes, 6, accuracy: 0.01)
         XCTAssertEqual(s.unseenMinutes, 0, accuracy: 0.01)
-        XCTAssertEqual(s.attention.excursions, 2)
-        XCTAssertEqual(s.attention.detours, 1)
-        XCTAssertEqual(s.attention.drifts, 1)
+        XCTAssertEqual(s.attention.distractions, 2)
         XCTAssertEqual(s.attention.distractors.map(\.name).sorted(), ["Messages", "X"])
         XCTAssertEqual(s.attention.perFocusHour, 2.0 / 3, accuracy: 0.01)
         XCTAssertEqual(s.attention.longestStretchMinutes, 60, accuracy: 0.01)
-        XCTAssertEqual(s.days.first?.excursionsPerHour ?? 0, 2.0 / 3, accuracy: 0.01)
+        XCTAssertEqual(s.days.first?.longestStretch ?? 0, 60, accuracy: 0.01)
+        XCTAssertEqual(s.days.first?.distractionsPerHour ?? 0, 2.0 / 3, accuracy: 0.01)
     }
 
     func testStudyMixAndQuestions() {

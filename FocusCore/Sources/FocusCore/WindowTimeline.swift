@@ -168,8 +168,11 @@ public enum WindowTimeline {
         public var bundle: String
         public var title: String
         public var category: String?
-        public init(start: Date, end: Date, bundle: String, title: String, category: String?) {
+        /// Where the label came from ("you", "model", "rule" for the Focus-project rule…).
+        public var source: String?
+        public init(start: Date, end: Date, bundle: String, title: String, category: String?, source: String? = nil) {
             self.start = start; self.end = end; self.bundle = bundle; self.title = title; self.category = category
+            self.source = source
         }
     }
 
@@ -181,9 +184,11 @@ public enum WindowTimeline {
         /// From 15 s screen readings (before the window log), whose spans
         /// have processing holes of up to 2 min between them.
         public var coarse = false
+        public var labelSource: String?
 
-        public init(segment: Segment, category: String?, source: Source, coarse: Bool = false) {
+        public init(segment: Segment, category: String?, source: Source, coarse: Bool = false, labelSource: String? = nil) {
             self.segment = segment; self.category = category; self.source = source; self.coarse = coarse
+            self.labelSource = labelSource
         }
     }
 
@@ -200,21 +205,23 @@ public enum WindowTimeline {
             if privateBundles.contains(s.bundle) { return LabeledSegment(segment: s, category: privateCategory, source: .privateApp) }
             let same = byBundle[s.bundle] ?? []
             var overlap: [String: Double] = [:]
+            var sources: [String: String] = [:]
             for l in same where l.end > s.start && l.start < s.end {
                 guard let c = l.category else { continue }
                 overlap[c, default: 0] += min(l.end, s.end).timeIntervalSince(max(l.start, s.start))
+                if let src = l.source { sources[c] = src }
             }
             if let best = overlap.max(by: { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }) {
-                return LabeledSegment(segment: s, category: best.key, source: .reading)
+                return LabeledSegment(segment: s, category: best.key, source: .reading, labelSource: sources[best.key])
             }
             let before = same.filter { $0.start < s.end && $0.category != nil }
             if let t = s.title, !t.isEmpty,
                let l = before.last(where: { ($0.title == t || t.hasPrefix($0.title) || $0.title.hasPrefix(t))
                    && s.start.timeIntervalSince($0.end) < 4 * 3600 }) {
-                return LabeledSegment(segment: s, category: l.category, source: .sameWindow)
+                return LabeledSegment(segment: s, category: l.category, source: .sameWindow, labelSource: l.source)
             }
             if let l = before.last, s.start.timeIntervalSince(l.end) < 600 {
-                return LabeledSegment(segment: s, category: l.category, source: .sameApp)
+                return LabeledSegment(segment: s, category: l.category, source: .sameApp, labelSource: l.source)
             }
             return LabeledSegment(segment: s, category: nil, source: .none)
         }
@@ -228,104 +235,5 @@ public enum WindowTimeline {
         public var end: Date
         public var category: String
         public init(start: Date, end: Date, category: String) { self.start = start; self.end = end; self.category = category }
-    }
-
-    /// Leaving the block's work for something else and (usually) coming back.
-    public struct Excursion: Equatable, Sendable {
-        public enum Kind: String, Sendable { case glance, detour, drift }
-        public var start: Date
-        public var end: Date
-        public var blockCategory: String
-        /// The category that took the most of it ("Private" for Messages etc.).
-        public var category: String
-        public var apps: [String]
-        public var titles: [String]
-        /// The app behind the "Private" part, when there was one (Messages).
-        public var privateApp: String? = nil
-        /// Back on the block's work before the block ended.
-        public var returned: Bool
-        /// Another focus category rather than a distraction.
-        public var otherWork: Bool
-        public var seconds: Double { end.timeIntervalSince(start) }
-        public var kind: Kind { seconds < 30 ? .glance : seconds < 300 ? .detour : .drift }
-    }
-
-    /// On-task stretch between excursions.
-    public struct Stretch: Equatable, Sendable {
-        public var start: Date
-        public var end: Date
-        public var category: String
-        public var seconds: Double { end.timeIntervalSince(start) }
-    }
-
-    public struct BlockAttention: Equatable, Sendable {
-        public var excursions: [Excursion]
-        public var stretches: [Stretch]
-        /// Seconds the block's own work was in front.
-        public var onTaskSeconds: Double
-        /// Seconds anything was in front during tracked focus (the rest is away or no record).
-        public var seenSeconds: Double
-    }
-
-    /// Walks the windows inside each focus block. `distracting` says which
-    /// labels count as leaving the work (life categories, Private); another
-    /// focus category is "other work"; unlabeled windows (Finder, Focus
-    /// itself) are neutral and neither break nor extend anything.
-    public static func attention(_ labeled: [LabeledSegment], blocks: [Block], distracting: (String) -> Bool,
-                                 isFocus: (String) -> Bool) -> BlockAttention {
-        var excursions: [Excursion] = []
-        var stretches: [Stretch] = []
-        var onTask = 0.0, seen = 0.0
-        let segs = labeled.sorted { $0.segment.start < $1.segment.start }
-        for b in blocks {
-            var run: Excursion?
-            var weights: [String: Double] = [:]
-            var stretch: Stretch?
-            func closeRun(returned: Bool) {
-                guard var r = run else { return }
-                let distractingWeights = weights.filter { distracting($0.key) }
-                r.category = (distractingWeights.isEmpty ? weights : distractingWeights).max { $0.value < $1.value }?.key ?? r.category
-                r.returned = returned
-                excursions.append(r)
-                run = nil
-                weights = [:]
-            }
-            func extendStretch(_ a: Date, _ e: Date, coarse: Bool) {
-                // A glance under 30 s doesn't end a stretch of work (it's
-                // still counted as an excursion).
-                if let s = stretch, a.timeIntervalSince(s.end) <= (coarse ? 120 : 30) { stretch!.end = e; return }
-                if let s = stretch, s.seconds > 0 { stretches.append(s) }
-                stretch = Stretch(start: a, end: e, category: b.category)
-            }
-            for l in segs where l.segment.end > b.start && l.segment.start < b.end {
-                let a = max(l.segment.start, b.start), e = min(l.segment.end, b.end)
-                guard e > a else { continue }
-                seen += e.timeIntervalSince(a)
-                guard let c = l.category else { continue }
-                if c == b.category {
-                    if run != nil { closeRun(returned: true) }
-                    onTask += e.timeIntervalSince(a)
-                    extendStretch(a, e, coarse: l.coarse)
-                } else if distracting(c) || isFocus(c) {
-                    weights[c, default: 0] += e.timeIntervalSince(a)
-                    if run == nil {
-                        run = Excursion(start: a, end: e, blockCategory: b.category, category: c, apps: [l.segment.app],
-                                        titles: l.segment.title.map { [$0] } ?? [], returned: false,
-                                        otherWork: !distracting(c))
-                    } else {
-                        run!.end = e
-                        if !run!.apps.contains(l.segment.app) { run!.apps.append(l.segment.app) }
-                        if let t = l.segment.title, !t.isEmpty, !run!.titles.contains(t), run!.titles.count < 5 { run!.titles.append(t) }
-                        if distracting(c) { run!.otherWork = false }
-                    }
-                    // Other study is still work for stretch lengths.
-                    if c == privateCategory, run!.privateApp == nil { run!.privateApp = l.segment.app }
-                    if !distracting(c) { extendStretch(a, e, coarse: l.coarse) }
-                }
-            }
-            closeRun(returned: false)
-            if let s = stretch, s.seconds > 0 { stretches.append(s) }
-        }
-        return BlockAttention(excursions: excursions, stretches: stretches, onTaskSeconds: onTask, seenSeconds: seen)
     }
 }

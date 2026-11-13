@@ -148,6 +148,10 @@ class AppSettings: ObservableObject {
     @Published var screenAutoAlways: Bool {
         didSet { sd.set(screenAutoAlways, forKey: "screenAutoAlways") }
     }
+    /// A corner card offering to go back when a distraction ends a stretch of study.
+    @Published var distractionNudge: Bool {
+        didSet { sd.set(distractionNudge, forKey: "distractionNudge") }
+    }
     var screenAutoAll: Bool { screenAutoAlways || screenAutoAllUntil > Date().timeIntervalSince1970 }
 
     /// The end of today for "today" settings: the next 4 AM.
@@ -280,6 +284,7 @@ class AppSettings: ObservableObject {
             "screenSuggestMinutes": 2,
             "screenAutoSwitch": true,
             "screenAutoAlways": true,
+            "distractionNudge": true,
             "screenEverySwitch": false,
             "screenAutoAllUntil": 0.0,
             "awayPromptMinutes": 15,
@@ -337,6 +342,7 @@ class AppSettings: ObservableObject {
         screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
         screenAutoSwitch = d.bool(forKey: "screenAutoSwitch")
         screenAutoAlways = d.bool(forKey: "screenAutoAlways")
+        distractionNudge = d.bool(forKey: "distractionNudge")
         screenEverySwitch = d.bool(forKey: "screenEverySwitch")
         screenAutoAllUntil = d.double(forKey: "screenAutoAllUntil")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
@@ -458,6 +464,7 @@ class AppSettings: ObservableObject {
         screenSuggestMinutes = d.integer(forKey: "screenSuggestMinutes")
         screenAutoSwitch = d.bool(forKey: "screenAutoSwitch")
         screenAutoAlways = d.bool(forKey: "screenAutoAlways")
+        distractionNudge = d.bool(forKey: "distractionNudge")
         screenEverySwitch = d.bool(forKey: "screenEverySwitch")
         screenAutoAllUntil = d.double(forKey: "screenAutoAllUntil")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")

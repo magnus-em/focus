@@ -73,9 +73,9 @@ struct InsightsContent: View {
             if let s = store.summary {
                 hero(s)
                 goalsSection(s)
+                attentionSection(s).id("insights-attention")
                 reportSection.id("insights-report")
                 timerSection(s)
-                attentionSection(s).id("insights-attention")
                 daysSection(s).id("insights-days")
                 studySection(s)
             } else {
@@ -113,14 +113,28 @@ struct InsightsContent: View {
     private func hero(_ s: Insights.Summary) -> some View {
         let avoided = goals.avoided.map(\.title)
         let total = s.avoidedMinutes + s.otherGoalMinutes + s.noGoalMinutes
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+        let a = s.attention
+        return HStack(alignment: .top, spacing: 40) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(pct(s.avoidedShare)).font(.system(size: 46, weight: .semibold)).monospacedDigit()
                 Text("of your focus went to \(avoided.isEmpty ? "the goals you put off" : avoided.joined(separator: " and "))")
                     .font(.system(size: 15, weight: .medium))
+                Text("\(hm(s.avoidedMinutes)) of \(hm(total)) of focus work the screen saw. First block of the day went there on \(s.avoidedFirstDays) of \(s.days.filter { $0.firstFocus != nil }.count) days.")
+                    .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Text("\(hm(s.avoidedMinutes)) of \(hm(total)) of focus work the screen saw in the last \(store.days) days. First block of the day went there on \(s.avoidedFirstDays) of \(s.days.filter { $0.firstFocus != nil }.count) days.")
-                .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(a.longestStretchMinutes > 0 ? hm(a.longestStretchMinutes) : "–")
+                    .font(.system(size: 46, weight: .semibold)).monospacedDigit()
+                Text("your longest study without a distraction").font(.system(size: 15, weight: .medium))
+                Text(a.longestStretchMinutes > 0
+                     ? "Half your study time came in stretches of \(hm(a.halfTimeMinutes)) or more. \(a.distractors.first.map { "\($0.name) ended the most (\($0.count)×)." } ?? "")"
+                     : "Nothing yet in focus blocks the Mac saw.")
+                    .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -199,50 +213,65 @@ struct InsightsContent: View {
 
     private func attentionSection(_ s: Insights.Summary) -> some View {
         let a = s.attention
-        return VStack(alignment: .leading, spacing: 12) {
-            SectionTitle("When you leave the work",
-                         subtitle: "Every time something else came to the front during a focus block, timed to the second. Other study doesn't count")
-            HStack(spacing: 28) {
-                stat(String(format: "%.1f", a.perFocusHour), "times an hour")
-                stat("\(a.glances)", "glances under 30 s")
-                stat("\(a.detours)", "detours up to 5 min")
-                stat("\(a.drifts)", "drifts over 5 min")
-                stat(hm(a.medianStretchMinutes), "typical stretch on task")
+        let studyDays = s.days.filter { $0.longestStretch != nil || $0.trackedFocus > 0 }
+        return VStack(alignment: .leading, spacing: 14) {
+            SectionTitle("How long you stay focused",
+                         subtitle: "Stretches of study with nothing else in front. AI chats about the work count as study; Messages, feeds, email and side projects end a stretch after 5 seconds")
+            HStack(alignment: .top, spacing: 28) {
                 stat(hm(a.longestStretchMinutes), "longest stretch")
+                stat(hm(a.halfTimeMinutes) + "+", "half your study came in stretches this long")
+                stat("\(a.stretches25)", a.stretches25 == 1 ? "stretch of 25+ min" : "stretches of 25+ min")
+                stat(String(format: "%.1f", a.perFocusHour), "distractions an hour")
             }
             HStack(alignment: .top, spacing: 32) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Where it went").font(.system(size: 13, weight: .semibold))
-                    ForEach(a.distractors.prefix(8)) { d in
-                        HStack {
-                            Text(d.name).font(.system(size: 13))
-                            Spacer()
-                            Text("\(d.count)× · \(hm(d.minutes))").font(.system(size: 12)).foregroundStyle(Color.secondaryText).monospacedDigit()
+                    Text("Longest stretch each day").font(.system(size: 13, weight: .semibold))
+                    Chart {
+                        ForEach(studyDays) { d in
+                            BarMark(x: .value("Day", d.date, unit: .day), y: .value("Minutes", d.longestStretch ?? 0))
+                                .foregroundStyle(Color.accentColor.opacity(0.8))
+                                .annotation(position: .top) {
+                                    if let m = d.longestStretch {
+                                        Text("\(Int(m.rounded()))").font(.system(size: 10)).foregroundStyle(Color.secondaryText)
+                                    }
+                                }
                         }
+                        RuleMark(y: .value("25 min", 25))
+                            .foregroundStyle(Color.green.opacity(0.6)).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                            .annotation(position: .top, alignment: .leading) {
+                                Text("25 min").font(.system(size: 10)).foregroundStyle(.green)
+                            }
+                    }
+                    .chartXAxis { AxisMarks(values: .stride(by: .day)) { _ in AxisValueLabel(format: .dateTime.weekday(.narrow)) } }
+                    .frame(height: 150)
+                }
+                .frame(maxWidth: .infinity)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("What ended your stretches").font(.system(size: 13, weight: .semibold))
+                    ForEach(a.distractors.prefix(7)) { d in
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(d.name).font(.system(size: 13)).lineLimit(1)
+                            Spacer(minLength: 8)
+                            Text("\(d.count)× · \(hm(d.minutes)) away").font(.system(size: 12)).foregroundStyle(Color.secondaryText).monospacedDigit()
+                        }
+                        .help("Ended stretches that had reached \(hm(d.averageEnded)) on average")
                     }
                     if a.distractors.isEmpty { Text("Nothing yet").font(.system(size: 12)).foregroundStyle(Color.secondaryText) }
-                }.frame(width: 300)
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Minutes away from the work, by hour").font(.system(size: 13, weight: .semibold))
-                    Chart {
-                        ForEach(Array(a.byHour.enumerated()), id: \.offset) { h, m in
-                            BarMark(x: .value("Hour", h), y: .value("Minutes", m)).foregroundStyle(.orange.opacity(0.8))
-                        }
-                        ForEach(Array(s.studyByHour.enumerated()), id: \.offset) { h, m in
-                            LineMark(x: .value("Hour", h), y: .value("Study", m / 6)).foregroundStyle(.green)
-                        }
-                    }
-                    .chartXAxis { AxisMarks(values: [0, 6, 9, 12, 15, 18, 21]) { v in
-                        AxisValueLabel { if let h = v.as(Int.self) { Text(h == 0 ? "12a" : h < 12 ? "\(h)a" : h == 12 ? "12p" : "\(h - 12)p") } }
-                    } }
-                    .frame(height: 140)
-                    Text("Bars: minutes away. Line: study on screen (÷6)").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                 }
+                .frame(width: 320)
             }
-            Text(a.focusHoursSeen < 1 ? "Second-by-second timing starts with this version; earlier days use the 15-second screen readings."
-                 : "From \(String(format: "%.1f", a.focusHoursSeen)) h of focus blocks the Mac saw. \(pct(a.longStretchShare)) of on-task time came in stretches of 25 min or more.")
-                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+            Text(attentionFootnote(a)).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func attentionFootnote(_ a: Insights.Attention) -> String {
+        guard a.focusHoursSeen >= 0.1 else { return "No focus blocks the Mac saw yet." }
+        var t = "From \(String(format: "%.1f", a.focusHoursSeen)) h of focus blocks the Mac saw: \(a.distractions) distractions, \(hm(a.distractionMinutes)) away in all."
+        if a.fineShare < 0.95 {
+            t += " Days before Nov 10 come from 15-second screen readings, which miss short trips away, so their stretches look longer than they were."
+        }
+        return t
     }
 
     private func stat(_ value: String, _ label: String) -> some View {
@@ -256,10 +285,10 @@ struct InsightsContent: View {
 
     private func daysSection(_ s: Insights.Summary) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionTitle("Day by day", subtitle: "When the put-off work started, if it did")
+            SectionTitle("Day by day", subtitle: "When the put-off work started, and how long you stayed focused")
             Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
                 GridRow {
-                    ForEach(["Day", "Timer focus", "On screen", "Put-off goals", "First focus", "First put-off work", "Away / hour", "AI msgs"], id: \.self) {
+                    ForEach(["Day", "Timer focus", "On screen", "Put-off goals", "First focus", "First put-off work", "Longest stretch", "Distractions / h", "AI msgs"], id: \.self) {
                         Text($0).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.secondaryText)
                     }
                 }
@@ -272,7 +301,8 @@ struct InsightsContent: View {
                             .foregroundStyle(d.avoidedMinutes > 0 ? Color.primary : Color.orange)
                         Text(d.firstFocus.map { $0.formatted(date: .omitted, time: .shortened) } ?? "–")
                         Text(d.firstAvoided.map { $0.formatted(date: .omitted, time: .shortened) } ?? "–")
-                        Text(d.excursionsPerHour.map { String(format: "%.1f", $0) } ?? "–").monospacedDigit()
+                        Text(d.longestStretch.map { hm($0) } ?? "–").monospacedDigit()
+                        Text(d.distractionsPerHour.map { String(format: "%.1f", $0) } ?? "–").monospacedDigit()
                         Text(d.aiMessages > 0 ? "\(d.aiMessages)" : "–").monospacedDigit()
                     }.font(.system(size: 13))
                 }

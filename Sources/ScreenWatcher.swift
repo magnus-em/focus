@@ -1351,6 +1351,85 @@ final class ScreenCoach {
 
     var sessions: [WorkSession] { timer.sessionStore?.sessions ?? [] }
     var appSettings: AppSettings { settings }
+    /// The focus category running unpaused, nil for life time, breaks, Class or nothing.
+    var focusBlock: String? {
+        guard timer.isActive, timer.isRunning, !timer.isOnBreak, !timer.currentLabel.isEmpty,
+              timer.currentLabel != "Class", !FocusCategories.isLife(timer.currentLabel) else { return nil }
+        return timer.currentLabel
+    }
+
+    // MARK: - Back to it
+
+    /// When Messages, a feed or anything else the screen calls life time has
+    /// been in front 10 s and ended a stretch of 3+ min of study, one corner
+    /// card offers to go back (user, 11/10: "I want to stop going to Messages
+    /// etc. while focused"). Nothing switches: the timer keeps running the
+    /// study; the card goes away by itself when you're back. At most every
+    /// 10 min; Not now quiets it for 30. Answers in `Focus/insights/nudges.jsonl`.
+    private var distractionCardShowing = false
+    private var lastDistractionCard = Date.distantPast
+    private var distractionQuietUntil = Date.distantPast
+
+    func distractionNudge(name: String, minutes: Double, best: Double, returnTo: NSRunningApplication?) {
+        guard settings.distractionNudge, let block = focusBlock, !panel.isBusy, !(AwayCoach.shared?.isBusy ?? false),
+              !LeetCodeSolveDraftStore.isShowing, Date() > distractionQuietUntil,
+              Date().timeIntervalSince(lastDistractionCard) > 600, ClassCalendar.shared.currentClass() == nil else { return }
+        lastDistractionCard = Date()
+        let m = Int(minutes.rounded())
+        let bestText = best >= minutes + 1 ? "Your best today is \(Int(best.rounded())) min." : "That was your longest today."
+        let card = AwayPromptModel(
+            icon: "arrow.uturn.backward",
+            title: "Back to \(block)?",
+            subtitle: "\(name) ended \(m) min of \(block) without a distraction",
+            question: bestText,
+            keep: "Not now",
+            options: [block], tags: settings.tags
+        )
+        func log(_ answer: String) {
+            Self.logNudge(["kind": "distraction", "by": name, "block": block, "streakMinutes": m, "answer": answer])
+        }
+        log("shown")
+        card.onPick = { [weak self] _ in
+            log("back")
+            returnTo?.activate()
+            self?.distractionCardShowing = false
+            self?.panel.dismiss()
+        }
+        card.onKeep = { [weak self] in
+            log("not now")
+            self?.distractionQuietUntil = Date().addingTimeInterval(30 * 60)
+            self?.distractionCardShowing = false
+            self?.panel.dismiss()
+        }
+        panel.show(card)
+        distractionCardShowing = true
+        let close = card.onClose
+        card.onClose = { [weak self] in
+            log("closed")
+            self?.distractionCardShowing = false
+            close?()
+        }
+    }
+
+    /// You came back on your own: the card has nothing left to ask.
+    func distractionEnded() {
+        guard distractionCardShowing else { return }
+        distractionCardShowing = false
+        Self.logNudge(["kind": "distraction", "answer": "came back"])
+        panel.dismiss()
+    }
+
+    private static func logNudge(_ fields: [String: Any]) {
+        var line = fields
+        line["at"] = ISO8601DateFormatter().string(from: Date())
+        let url = InsightsStore.directory.appendingPathComponent("nudges.jsonl")
+        try? FileManager.default.createDirectory(at: InsightsStore.directory, withIntermediateDirectories: true)
+        guard let data = try? JSONSerialization.data(withJSONObject: line, options: [.sortedKeys]) else { return }
+        if let h = try? FileHandle(forWritingTo: url) {
+            _ = try? h.seekToEnd(); try? h.write(contentsOf: data + Data("\n".utf8)); try? h.close()
+        } else { try? (data + Data("\n".utf8)).write(to: url) }
+    }
+
     /// What the timer is counting right now, from when.
     var runningBlock: (start: Date, label: String)? {
         guard timer.isActive, let start = timer.sessionStartTime else { return nil }

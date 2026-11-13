@@ -31,6 +31,7 @@ struct TimerView: View {
     var onOpenDose: () -> Void = {}
     @ObservedObject private var syncMonitor = CloudSyncMonitor.shared
     @ObservedObject private var watcher = ScreenWatcher.shared
+    @ObservedObject private var streak = FocusStreakStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var savedCategoryTotals: [String: Double] = [:]
     @State private var whereWasI: WhereWasI.Line?
@@ -238,6 +239,7 @@ struct TimerView: View {
                         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: timer.timeString)
                     subline
                 }
+                streakLine
                 doseLine
             }
             Spacer(minLength: 0)
@@ -366,6 +368,18 @@ struct TimerView: View {
             .buttonStyle(.plain)
             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// How long you've studied with nothing else in front (`FocusStreakStore`).
+    @ViewBuilder
+    private var streakLine: some View {
+        if streak.focusing, streak.minutes >= 1, timer.isActive, !onBreak {
+            let best = streak.bestMinutes > streak.minutes ? " · best today \(streak.bestMinutes)" : ""
+            Label("\(streak.minutes) min without a distraction\(best)", systemImage: "scope")
+                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                .lineLimit(1).minimumScaleFactor(0.85)
+                .help("Study with nothing else in front. AI chats about the work count; Messages, feeds and other apps end it after 5 seconds.")
         }
     }
 
