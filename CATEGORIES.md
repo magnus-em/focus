@@ -48,9 +48,9 @@ So study happens on the Mac, and most of the rest of the day happens off it.
 
 | Group | Old categories it takes, for all past and future rows | Counts toward focus |
 |---|---|---|
-| School | HW, Math, Class | Yes, except Class (as today) |
+| School | HW, Math, SWE, Class | Yes, except Class (as today) |
 | Career | Recruiting, LeetCode, Quant | Yes |
-| Learning & projects | AI, SWE (deep learning, incl. CPSC 7770, and your own coding) | Yes |
+| Learning & projects | AI (deep learning, incl. CPSC 7770, and the work you choose) | Yes |
 | Wellbeing | Reading, Journaling, Exercise | No |
 | Sleep | Sleep | No |
 | Life | Meals, Chores, Commute, Admin (incl. building Focus) | No |
@@ -70,7 +70,40 @@ The translation is fixed by old category, not guessed per block:
 - **Old blocks have no detail,** and say so ("Math, before 11/13").
 - **HW stops being picked.** Homework = School time doing problem sets, which is what the put-off goal measures.
 
-**Known seam:** going forward, CPSC 3231 coding goes to School. Before, it may have been logged as SWE, under Learning & projects. SWE was 5.5 h over 11/3–11/13, so the shift is small, and the Week page marks the date it changed.
+**SWE goes to School.** On screen, since 10/14, SWE time was:
+- 53% coursework (CPSC 3231 problem sets, CPSC 4585 Pluck homework);
+- 12% LeetCode, from before LeetCode was its own category;
+- the rest unclear.
+
+Before September, SWE was 7 h in all. Quant was 56 h of May interview prep, so it goes to Career.
+
+### Why these seven (11/13)
+
+**1. The study groups are your goals.**
+- School = Homework ("problem sets done early, not the night they're due").
+- Career = Recruiting ("land a summer internship, SWE or quant").
+- Learning & projects = Deep learning ("CPSC 7770 and building models from scratch").
+
+Research backs tracking progress toward a goal: across 138 experiments, it improved goal attainment (d ≈ 0.40), more so when progress was recorded (Harkin et al. 2016, Psychological Bulletin). So the chart should read as progress on your goals, not a diary of activities.
+
+**2. They split what you skip from what you choose.**
+- Your diagnosis (11/9): good at hard technical work you enjoy, failing at homework and recruiting.
+- Your request (10/16): a daily minimum on the topics you skip, "so then I can move on to other focus tasks that … are more self-guided and interesting".
+- School + Career is the first half, Learning & projects the second.
+- In these groups, the week of 11/2 shows it plainly: 31 h of deep learning against 7 h of school work and no Career.
+- "Skipped work first, then the work you enjoy" is popular advice with thin direct evidence (reviews of the Premack principle). So Focus should measure whether doing the minimum first changes your totals, not assume it.
+
+**3. The rest of the day in four broad buckets.**
+- Time-use practice (BLS American Time Use Survey; Vanderkam's 168-hour log) sorts a week into a few broad groups and compares the totals with what you'd want: sleep, work, chores, exercise, leisure.
+- Free time is kept apart from Life because it's the time you choose how to spend: Leisure was 147 h since October, the largest after sleep.
+- Wellbeing is your own grouping from 10/16: Reading, Journaling, Exercise.
+
+**4. Some things are not categories at all.** Each of these is its own measure, which is how seven groups stay enough:
+- **How you worked** (problem set, reading, coding, asking AI): detail inside a group.
+- **What you delivered** (submitted, replied, attended, followed through): the "Outside View" from 11/10, a record of loops, not hours.
+- **Messages:** it shows up inside every category. During focus it's a distraction (the streak); toward people it's reply time.
+- **Building Focus** stays in Life, as Admin under your rule, shown as detail.
+
 
 ## What you'd do on the Mac: two directions
 
