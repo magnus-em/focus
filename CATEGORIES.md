@@ -42,25 +42,40 @@ So study happens on the Mac, and most of the rest of the day happens off it.
 
 **What this says:** the screen is good at subjects with a visible marker (LeetCode's site, a course code, math notation). It's weak at categories that describe what kind of time it is rather than the subject: HW, Class, Journaling, Admin. Math homework is both "Math" and "HW", and the screen can only see the Math. It also never sees the off-Mac half of the day.
 
-## The idea: subject plus kind of work
+## The idea: seven groups that never change, with detail inside
 
-Replace the one hand-picked category with two things Focus fills in itself:
+**Update 11/13, the user:** "I don't want a million categories, and I want our old data in whatever we decide, so where time went is shown one consistent way over time." So the top level is fixed and small, and Focus never adds to it on its own.
 
-1. **Category** = the subject, proposed by Focus and approved by you once. A first proposal from the data:
-   - **Courses:** MATH 244, CPSC 3231, CPSC 4585, CPSC 7770.
-   - **Other focus work:** Deep learning on your own (micrograd/makemore), LeetCode, Recruiting.
-   - **Life:** Building Focus, Leisure.
-   - **Off the Mac:** Class, Sleep, Meals, Exercise, Social, Chores, Commute.
-2. **Kind of work** = what you were doing in it: problem set, notes/reading, coding, asking AI, applying.
-   - Observations already record this; `practiceShare` and the activity kinds come from it.
-   - **HW stops being a category.** Homework becomes "a course + problem set", which is exactly what the put-off Homework goal is about.
+| Group | Old categories it takes, for all past and future rows | Counts toward focus |
+|---|---|---|
+| School | HW, Math, Class | Yes, except Class (as today) |
+| Career | Recruiting, LeetCode, Quant | Yes |
+| Learning & projects | AI, SWE (deep learning, incl. CPSC 7770, and your own coding) | Yes |
+| Wellbeing | Reading, Journaling, Exercise | No |
+| Sleep | Sleep | No |
+| Life | Meals, Chores, Commute, Admin (incl. building Focus) | No |
+| Free time | Leisure, Social, Break | No |
 
-Focus vs life stays a property of each category, as today.
+**Every saved block fits:** all 821 since 5/11 (19 old labels), with nothing left over.
+
+**The focus total is unchanged:** the three focus groups hold exactly today's focus categories, so the goal ring, streaks and every past focus total read the same.
+
+The translation is fixed by old category, not guessed per block:
+- **Why fixed:** course codes appear in only 1–3% of window titles, so re-sorting old blocks by course would be noise.
+- **It matches the goals.** The Homework goal is MATH 244, CPSC 3231 and CPSC 4585; CPSC 7770 already sits with Deep learning.
+
+**Inside a group, Focus fills in the detail itself:**
+- **What:** the course or topic (MATH 244, CPSC 3231, makemore, applications…) and the kind of work (problem set, reading, coding, asking AI).
+- **Detail is never a category.** It only shows when you open a group (Week page, Insights).
+- **Old blocks have no detail,** and say so ("Math, before 11/13").
+- **HW stops being picked.** Homework = School time doing problem sets, which is what the put-off goal measures.
+
+**Known seam:** going forward, CPSC 3231 coding goes to School. Before, it may have been logged as SWE, under Learning & projects. SWE was 5.5 h over 11/3–11/13, so the shift is small, and the Week page marks the date it changed.
 
 ## What you'd do on the Mac: two directions
 
 - **A. Nothing to pick.** The timer runs whenever you're at the Mac. The popover shows what Focus thinks you're doing, and you correct it only when it's wrong.
-- **B. One switch: Focus on / off (recommended).** You say only whether you mean to work. Focus names the category and keeps switching it as you move between courses.
+- **B. One switch: Focus on / off (recommended).** You say only whether you mean to work. Focus names the group and the detail, and keeps switching as you move between courses.
 
 **Why B:** what you meant is the one thing the screen can't know.
 - An ML lecture on YouTube is study in a work block and leisure at midnight.
@@ -96,31 +111,29 @@ Each step ships on its own.
    - Insights gets a daily line with the four measures above.
 2. **A course on every reading.** Store the subject (`CoachCourse.resolver`: course code, calendar class, same chat, neighbours) on each screen span next to the category.
    - Uses the on-device resolver and the cloud readings already approved, so it adds no new spend.
-3. **Focus proposes the categories.** A "Your categories" section in Insights:
-   - It shows the proposed list with hours per week, example windows and which goal each feeds.
-   - You approve, rename, merge or split.
-   - When a new topic passes 2 h in a week, it asks: "Stat 110: 3 h this week. Make it a category?"
-4. **Shadow week.** Focus labels every block with the new categories in the background. The Day page shows its label next to yours, and Insights measures agreement against the bar above.
+3. **The seven groups everywhere.**
+   - Week, Insights and the Day page draw the groups, with old rows translated by the table above at read time; nothing is rewritten.
+   - Detail (course, kind of work) opens under each group.
+   - Goals point at groups plus courses.
+4. **Shadow week.** Focus labels every block with a group and detail in the background. The Day page shows its label next to yours, and Insights measures agreement against the bar above.
 5. **Switch the Mac to the chosen direction.**
    - The popover drops the category grid for Focus on/off plus what Focus sees.
    - ⌃⌥⌘K stays as start/stop. Picking a category by hand moves into the switcher (⌃⌥⌘J), as an override.
    - Cards between focus categories go away; only switches with Undo remain.
    - Leaving focus for leisure stays a distraction until 8 min, then a switch, backdated (as now).
-6. **Goals and Insights by the new categories.** Old rows stay as they are, mapped for charts:
-   - HW → the course the screen saw, else "Homework, course unknown".
-   - Math → MATH 244 when that was on screen.
-7. **Phone.** The life grid stays. Its study grid becomes one Focus button, and the Mac names the category.
+6. **Retire picking old categories.** The 19 old names stay readable forever, so old rows open, edit and chart. New blocks are saved as a group plus detail.
+7. **Phone.** The life grid stays. Its study grid becomes one Focus button, and the Mac names the group.
 
 ## Risks
 
 - **Mistakes nobody sees.** Once you stop picking, nothing contradicts a wrong label. The menu bar reading, corrections and the weekly numbers have to be enough; if agreement drops below the bar, cards come back.
 - **Intent.** Only direction B handles it. Under A, every ML video at midnight is study.
-- **Losing history.** Old categories stay in old rows; the charts map them rather than rewrite them.
+- **Losing history.** Old categories stay in old rows; the charts translate them with one fixed table, so a week in October and a week in December read the same way.
 - **Privacy and cost.** Nothing new leaves the Mac. Steps 1–5 add no cloud calls.
 
 ## Decisions for the user
 
 1. **A or B.** Recommended: B.
-2. **HW becomes "course + problem set"** instead of a category. Recommended: yes.
-3. **Who sets the category list:** Focus proposes and you approve (recommended), or fully automatic.
+2. **The seven groups and the table above.** Rename, merge or move an old category now; after that the top level doesn't grow.
+3. **HW becomes School + problem set** instead of something you pick. Recommended: yes.
 4. **Off-Mac life time:** from the phone, calendar, Health and being away only. The Mac stops offering life categories except Break.
