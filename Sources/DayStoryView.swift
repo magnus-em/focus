@@ -13,8 +13,10 @@ final class DayStoryModel: ObservableObject {
         var events: [DayStory.CalendarEvent] = []
     }
 
-    @Published private(set) var story: DayStory.Story?
-    @Published private(set) var lanes = Lanes()
+    @Published private(set) var story: DayStory.Story? { didSet { revision &+= 1 } }
+    @Published private(set) var lanes = Lanes() { didSet { revision &+= 1 } }
+    /// Bumped whenever the story or lanes change, so views can cache what they derive from them.
+    private(set) var revision = 0
     @Published private(set) var spent: Double?
     private var task: Task<Void, Never>?
 
@@ -32,7 +34,8 @@ final class DayStoryModel: ObservableObject {
         let context = CoachDayWorker.courseContext(for: [day])
         CoachDayWorker.shared.load(day)
         let record = CoachDayWorker.shared.record(for: day)
-        lanes = Lanes(tracked: tracked, screen: screen, events: events)
+        let next = Lanes(tracked: tracked, screen: screen, events: events)
+        if next != lanes { lanes = next }
         task?.cancel()
         task = Task { [weak self] in
             let story = await Task.detached(priority: .userInitiated) {
@@ -42,7 +45,7 @@ final class DayStoryModel: ObservableObject {
                                       categories: categories, course: CoachCourse.resolver(observations, context: context))
             }.value
             guard !Task.isCancelled, let self else { return }
-            self.story = story
+            if story != self.story { self.story = story }
             self.spent = cal.isDateInToday(day) ? await Coach.budget.spent(on: now) : nil
         }
     }

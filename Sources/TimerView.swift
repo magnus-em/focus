@@ -929,7 +929,9 @@ struct FloatingGlass: ViewModifier {
 /// so the preview says so.
 @available(macOS 26.0, *)
 struct LogFixView: View {
-    @ObservedObject var timer: TimerManager
+    /// Not observed: the timer publishes every second, which redrew this and
+    /// relaid out the Day page around it. Apply re-checks the running block.
+    let timer: TimerManager
     @ObservedObject var store: SessionStore
     let categories: [String]
 

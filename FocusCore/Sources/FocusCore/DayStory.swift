@@ -575,6 +575,50 @@ public enum DayStory {
 
     /// The category the screen showed for most of [start, end), if it covered
     /// at least half of it: the obvious pick for an untracked stretch.
+    /// Where each of a day's blocks sits on the Day page's hour grid.
+    public struct Column: Equatable, Sendable {
+        public var column: Int
+        public var columns: Int
+        /// Indices of the blocks this one overlaps by more than the slack.
+        public var overlaps: [Int]
+    }
+
+    /// Calendar-style columns for blocks sorted by start: each run of
+    /// overlapping blocks gets as many columns as it needs at its busiest,
+    /// so overlapping blocks sit side by side instead of on top of each other.
+    /// Back-to-back blocks often share a few seconds; within `slack` that
+    /// isn't an overlap.
+    public static func columns(_ ranges: [(start: Date, end: Date)], slack: TimeInterval = 60) -> [Column] {
+        var out = ranges.map { _ in Column(column: 0, columns: 1, overlaps: []) }
+        var i = 0
+        while i < ranges.count {
+            var runEnd = ranges[i].end
+            var j = i + 1
+            while j < ranges.count, ranges[j].start.addingTimeInterval(slack) < runEnd {
+                runEnd = max(runEnd, ranges[j].end)
+                j += 1
+            }
+            var columnEnds: [Date] = []
+            for k in i..<j {
+                if let c = columnEnds.firstIndex(where: { $0 <= ranges[k].start.addingTimeInterval(slack) }) {
+                    out[k].column = c
+                    columnEnds[c] = ranges[k].end
+                } else {
+                    out[k].column = columnEnds.count
+                    columnEnds.append(ranges[k].end)
+                }
+            }
+            for k in i..<j {
+                out[k].columns = columnEnds.count
+                out[k].overlaps = (i..<j).filter { m in
+                    m != k && min(ranges[m].end, ranges[k].end).timeIntervalSince(max(ranges[m].start, ranges[k].start)) > slack
+                }
+            }
+            i = j
+        }
+        return out
+    }
+
     public static func dominantScreen(_ screen: [Screen], from start: Date, to end: Date) -> String? {
         guard end > start else { return nil }
         var minutes: [String: TimeInterval] = [:]
@@ -595,15 +639,20 @@ public enum DayStory {
         let t = text.lowercased(), name = title.lowercased()
         guard t.count < 60 else { return false }
         let stem = String(name.prefix(max(4, name.count - 1)))
-        return t.contains(stem) && (t.range(of: #"\d+ ?(min|minutes|h)\b"#, options: .regularExpression) != nil
-            || t.hasPrefix(stem) || t.hasPrefix("short " + stem) || t.hasPrefix("tracked " + stem))
+        guard t.contains(stem) else { return false }
+        return t.hasPrefix(stem) || t.hasPrefix("short " + stem) || t.hasPrefix("tracked " + stem)
+            || durationPattern?.firstMatch(in: t, range: NSRange(t.startIndex..., in: t)) != nil
     }
+
+    // Compiled once: the Day page calls these for every line under every block.
+    private static let durationPattern = try? NSRegularExpression(pattern: #"\d+ ?(min|minutes|h)\b"#)
+    private static let clockPattern = try? NSRegularExpression(
+        pattern: #"(?<![\d:])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])(?!\s?[AaPp]\.?[Mm])"#)
 
     /// The coach writes 24-hour clock times ("still running at 21:19"); the
     /// pages show 12-hour ones.
     public static func twelveHour(_ text: String) -> String {
-        guard let re = try? NSRegularExpression(pattern: #"(?<![\d:])([01]?\d|2[0-3]):([0-5]\d)(?![\d:])(?!\s?[AaPp]\.?[Mm])"#)
-        else { return text }
+        guard text.contains(":"), let re = clockPattern else { return text }
         var out = text
         for m in re.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed() {
             guard let r = Range(m.range, in: text), let hr = Range(m.range(at: 1), in: text),

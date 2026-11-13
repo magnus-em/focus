@@ -16,6 +16,9 @@ class DashboardWindowController: ObservableObject {
         }
         let view = DashboardView(sessionStore: sessionStore, problemStore: problemStore, homeworkStore: homeworkStore, settings: settings, dayStore: dayStore, timerManager: timerManager, browserStore: browserStore)
         let vc = NSHostingController(rootView: view)
+        // The window sets its own sizes; by default SwiftUI re-measured the
+        // whole page for the window's minimum size on every update.
+        vc.sizingOptions = []
         let w = NSWindow(contentViewController: vc)
         w.title = "Focus"
         w.setContentSize(NSSize(width: 1020, height: 740))

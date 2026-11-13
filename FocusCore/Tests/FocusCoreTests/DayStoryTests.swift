@@ -68,6 +68,39 @@ final class DayStoryTests: XCTestCase {
                               focus: focus, calendar: calendar)
     }
 
+    func testOverlappingBlocksSitSideBySide() {
+        // 11/11: a phone edit started the running Exercise at 4:15 over saved Math and Exercise rows.
+        let ranges = [(at(16, 15), at(18, 32)),    // running Exercise
+                      (at(16, 15), at(16, 31)),    // Math, saved
+                      (at(16, 31), at(17, 30))]    // Exercise, saved, 2 s after Math ended
+        let c = DayStory.columns(ranges.map { (start: $0.0, end: $0.1) })
+        XCTAssertEqual(c.map(\.column), [0, 1, 1])
+        XCTAssertEqual(c.map(\.columns), [2, 2, 2])
+        XCTAssertEqual(c[0].overlaps, [1, 2])
+        XCTAssertEqual(c[1].overlaps, [0])
+    }
+
+    func testBackToBackBlocksSharingSecondsKeepOneColumn() {
+        let ranges = [(start: at(15, 27), end: at(16, 10).addingTimeInterval(20)),
+                      (start: at(16, 10), end: at(16, 15).addingTimeInterval(3)),
+                      (start: at(16, 15), end: at(17, 0))]
+        let c = DayStory.columns(ranges)
+        XCTAssertEqual(c.map(\.columns), [1, 1, 1])
+        XCTAssertTrue(c.allSatisfy(\.overlaps.isEmpty))
+    }
+
+    func testThreeWayOverlapReusesAFreedColumn() {
+        let ranges = [(start: at(9, 0), end: at(12, 0)),
+                      (start: at(9, 30), end: at(10, 0)),
+                      (start: at(10, 30), end: at(11, 0)),
+                      (start: at(10, 45), end: at(11, 30)),
+                      (start: at(13, 0), end: at(14, 0))]
+        let c = DayStory.columns(ranges)
+        XCTAssertEqual(c.map(\.column), [0, 1, 1, 2, 0])
+        XCTAssertEqual(c.map(\.columns), [3, 3, 3, 3, 1])
+        XCTAssertEqual(c[4].overlaps, [])
+    }
+
     func testStudyOfOneCourseIsOneBlockWithItsSideTrips() {
         let s = story()
         XCTAssertEqual(s.headline, "MATH 244 midterm review, mostly asking ChatGPT.")
