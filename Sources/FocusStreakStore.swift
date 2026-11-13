@@ -20,6 +20,16 @@ final class FocusStreakStore: ObservableObject {
     @Published private(set) var since: Date?
     /// The distraction that ended the last stretch, while it's still in front.
     @Published private(set) var away: (name: String, since: Date)?
+    /// What the streak makes of the window in front right now, for the menu bar.
+    @Published private(set) var reading: Reading?
+
+    struct Reading: Equatable {
+        /// nil: no label (not read yet, unsure, or a window that shows no task).
+        var category: String?
+        var detail: String
+        var state: State = .labeled
+        enum State { case labeled, unsure, unread }
+    }
 
     private var live: FocusStreak.Live
     /// The app you were studying in, to go back to.
@@ -34,11 +44,14 @@ final class FocusStreakStore: ObservableObject {
     func tick(front: WindowTimelineRecorder.Front?, now: Date = Date()) {
         let day = CoachDay.dayKey(now)
         var kind: FocusStreak.Kind?
+        var seen: Reading?
         if let front, let block = ScreenCoach.shared?.focusBlock, !PresenceMonitor.shared.isAway {
             if front.bundle == ScreenWatcher.ownBundle {
                 kind = .neutral
+                seen = Reading(category: nil, detail: "Focus")
             } else {
-                let (category, source) = label(for: front, now: now)
+                let (category, source, sample) = label(for: front, now: now)
+                seen = Self.reading(front, category: category, sample: sample)
                 let life = Set(ScreenCoach.shared?.appSettings.lifeTags ?? []).union(["Leisure", "Admin", "Social", "Meals"])
                 kind = FocusStreak.kind(app: front.app, bundle: front.bundle, title: front.title, url: front.url,
                                         category: category, labelSource: source, life: life.subtracting([block]))
@@ -48,6 +61,7 @@ final class FocusStreakStore: ObservableObject {
             }
         }
         let event = live.tick(now, kind: kind, day: day)
+        if seen != reading { reading = seen }
         focusing = kind != nil
         let m = Int(live.current(at: now) / 60), b = Int(live.best(at: now, day: day) / 60)
         if m != minutes { minutes = m }
@@ -78,13 +92,23 @@ final class FocusStreakStore: ObservableObject {
 
     /// The screen's latest label for this window: the same title within 4 h,
     /// else whatever it last read in the same app in the last minute.
-    private func label(for f: WindowTimelineRecorder.Front, now: Date) -> (String?, String?) {
-        if ScreenWatcher.privateApps.contains(f.bundle) { return (WindowTimeline.privateCategory, nil) }
+    private func label(for f: WindowTimelineRecorder.Front, now: Date) -> (String?, String?, ScreenSample?) {
+        if ScreenWatcher.privateApps.contains(f.bundle) { return (WindowTimeline.privateCategory, nil, nil) }
         let samples = ScreenWatcher.shared.samples
         let match = f.title.flatMap { t in
             samples.last { $0.bundleID == f.bundle && $0.title == t && now.timeIntervalSince($0.date) < 4 * 3600 }
         } ?? samples.last.flatMap { $0.bundleID == f.bundle && now.timeIntervalSince($0.date) < 60 ? $0 : nil }
-        guard let s = match, !s.uncertain else { return (nil, nil) }
-        return (s.category, s.source)
+        guard let s = match, !s.uncertain else { return (nil, nil, match) }
+        return (s.category, s.source, s)
+    }
+
+    private static func reading(_ f: WindowTimelineRecorder.Front, category: String?, sample: ScreenSample?) -> Reading {
+        if category == WindowTimeline.privateCategory { return Reading(category: category, detail: f.app) }
+        guard let s = sample else { return Reading(category: nil, detail: f.title ?? f.app, state: .unread) }
+        var d = s.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if d.hasPrefix(s.app + ": ") { d = String(d.dropFirst(s.app.count + 2)) }
+        if d.isEmpty || d == "Private" { d = s.title.isEmpty ? s.app : s.title }
+        if d.hasSuffix(".") { d.removeLast() }
+        return Reading(category: category, detail: d, state: s.uncertain ? .unsure : .labeled)
     }
 }

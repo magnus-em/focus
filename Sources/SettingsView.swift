@@ -1197,6 +1197,9 @@ private struct ScreenSettings: View {
                     .fixedSize(horizontal: false, vertical: true)
                 ToggleRow(label: "Offer to go back when Messages or a feed interrupts study", isOn: $settings.distractionNudge)
                 ToggleRow(label: "Count time without a distraction in the menu bar", isOn: $settings.menuBarStreak)
+                if settings.menuBarStreak {
+                    ToggleRow(label: "Show what Focus thinks you're doing next to it", isOn: $settings.menuBarReading)
+                }
             }
             AIChatSettingsRows()
             HStack {

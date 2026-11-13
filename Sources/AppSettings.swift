@@ -156,6 +156,10 @@ class AppSettings: ObservableObject {
     @Published var menuBarStreak: Bool {
         didSet { sd.set(menuBarStreak, forKey: "menuBarStreak") }
     }
+    /// Next to that count, what the screen makes of the window in front.
+    @Published var menuBarReading: Bool {
+        didSet { sd.set(menuBarReading, forKey: "menuBarReading") }
+    }
     var screenAutoAll: Bool { screenAutoAlways || screenAutoAllUntil > Date().timeIntervalSince1970 }
 
     /// The end of today for "today" settings: the next 4 AM.
@@ -290,6 +294,7 @@ class AppSettings: ObservableObject {
             "screenAutoAlways": true,
             "distractionNudge": true,
             "menuBarStreak": true,
+            "menuBarReading": true,
             "screenEverySwitch": false,
             "screenAutoAllUntil": 0.0,
             "awayPromptMinutes": 15,
@@ -349,6 +354,7 @@ class AppSettings: ObservableObject {
         screenAutoAlways = d.bool(forKey: "screenAutoAlways")
         distractionNudge = d.bool(forKey: "distractionNudge")
         menuBarStreak = d.bool(forKey: "menuBarStreak")
+        menuBarReading = d.bool(forKey: "menuBarReading")
         screenEverySwitch = d.bool(forKey: "screenEverySwitch")
         screenAutoAllUntil = d.double(forKey: "screenAutoAllUntil")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")
@@ -472,6 +478,7 @@ class AppSettings: ObservableObject {
         screenAutoAlways = d.bool(forKey: "screenAutoAlways")
         distractionNudge = d.bool(forKey: "distractionNudge")
         menuBarStreak = d.bool(forKey: "menuBarStreak")
+        menuBarReading = d.bool(forKey: "menuBarReading")
         screenEverySwitch = d.bool(forKey: "screenEverySwitch")
         screenAutoAllUntil = d.double(forKey: "screenAutoAllUntil")
         awayPromptMinutes = d.integer(forKey: "awayPromptMinutes")

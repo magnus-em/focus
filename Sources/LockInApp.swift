@@ -466,9 +466,30 @@ struct MenuBarTitle: View {
     private var extra: (symbol: String?, text: String)? {
         guard settings.menuBarStreak, timer.isRunning, !timer.isOnBreak else { return nil }
         let now = Date()
-        if let since = streak.since { return ("flame.fill", Self.clock(now.timeIntervalSince(since))) }
-        if let away = streak.away { return (nil, "\(Self.short(away.name)) \(Self.clock(now.timeIntervalSince(away.since)))") }
-        return nil
+        var out: (symbol: String?, text: String)
+        if let since = streak.since {
+            out = ("flame.fill", Self.clock(now.timeIntervalSince(since)))
+        } else if let away = streak.away {
+            out = (nil, "\(Self.short(away.name)) \(Self.clock(now.timeIntervalSince(away.since)))")
+        } else {
+            return nil
+        }
+        if settings.menuBarReading, let r = streak.reading, r.category != WindowTimeline.privateCategory {
+            out.text += "   ·   " + Self.describe(r)
+        }
+        return out
+    }
+
+    /// "HW: hw2.ipynb — hw2", "unsure: Downloads", "not read yet: Walk through…".
+    static func describe(_ r: FocusStreakStore.Reading) -> String {
+        let head: String
+        switch r.state {
+        case .unread: head = "not read yet"
+        case .unsure: head = "unsure"
+        case .labeled: head = r.category ?? "no label"
+        }
+        let d = r.detail.count > 36 ? r.detail.prefix(35).trimmingCharacters(in: .whitespaces) + "…" : r.detail
+        return "\(head): \(d)"
     }
 
     /// The menu bar drops symbols inside a Text, so this line is drawn as one template image.
