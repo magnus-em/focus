@@ -1196,6 +1196,7 @@ private struct ScreenSettings: View {
                     .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                 ToggleRow(label: "Offer to go back when Messages or a feed interrupts study", isOn: $settings.distractionNudge)
+                ToggleRow(label: "Count time without a distraction in the menu bar", isOn: $settings.menuBarStreak)
             }
             AIChatSettingsRows()
             HStack {

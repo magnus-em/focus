@@ -436,13 +436,48 @@ struct FocusApp: App {
         } label: {
             if timerManager.isActive {
                 TimerTicking(clock: timerManager.clock) {
-                    Text("\(timerManager.isOnBreak ? "Break" : timerManager.currentLabel)  \(timerManager.menuBarTimeText)")
+                    MenuBarTitle(timer: timerManager, settings: settings)
                 }
             } else {
                 Image(nsImage: MenuBarRing.mark)
             }
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+/// "Math  24:13" and, during focus, the stretch without a distraction
+/// counting up ("🔥 12:05"), or what ended it and for how long ("Messages 0:34").
+struct MenuBarTitle: View {
+    @ObservedObject var timer: TimerManager
+    @ObservedObject var settings: AppSettings
+    @ObservedObject private var streak = FocusStreakStore.shared
+
+    var body: some View {
+        var text = Text("\(timer.isOnBreak ? "Break" : timer.currentLabel)  \(timer.menuBarTimeText)")
+        if settings.menuBarStreak, timer.isRunning, !timer.isOnBreak {
+            let now = Date()
+            if let since = streak.since {
+                text = text + Text("   \(Image(systemName: "flame.fill")) \(Self.clock(now.timeIntervalSince(since)))")
+            } else if let away = streak.away {
+                text = text + Text("   \(Self.short(away.name)) \(Self.clock(now.timeIntervalSince(away.since)))")
+            }
+        }
+        return text.monospacedDigit()
+    }
+
+    static func clock(_ t: TimeInterval) -> String {
+        let s = max(0, Int(t))
+        return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
+            : String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    /// "Leisure browsing" → "Leisure", "ChatGPT (Leisure)" → "ChatGPT".
+    static func short(_ name: String) -> String {
+        var n = name
+        if let i = n.range(of: " (") { n = String(n[..<i.lowerBound]) }
+        if n.hasSuffix(" browsing") { n = String(n.dropLast(" browsing".count)) }
+        return n
     }
 }
 

@@ -16,6 +16,10 @@ final class FocusStreakStore: ObservableObject {
     @Published private(set) var minutes = 0
     @Published private(set) var bestMinutes = 0
     @Published private(set) var focusing = false
+    /// When the stretch running now began; nil when none is, or a distraction ended it.
+    @Published private(set) var since: Date?
+    /// The distraction that ended the last stretch, while it's still in front.
+    @Published private(set) var away: (name: String, since: Date)?
 
     private var live: FocusStreak.Live
     /// The app you were studying in, to go back to.
@@ -48,6 +52,11 @@ final class FocusStreakStore: ObservableObject {
         let m = Int(live.current(at: now) / 60), b = Int(live.best(at: now, day: day) / 60)
         if m != minutes { minutes = m }
         if b != bestMinutes { bestMinutes = b }
+        let broken = live.brokeMinutes != nil
+        let start = broken ? nil : live.streakStart
+        if start != since { since = start }
+        let gone = broken ? live.distractionStart.map { (name: live.distractionName ?? "Away", since: $0) } : nil
+        if gone?.name != away?.name || gone?.since != away?.since { away = gone }
         switch event {
         case .broke(let name, let minutes):
             SyncLog.event("focusStreakBroke", ["by": name, "minutes": Int(minutes)])
