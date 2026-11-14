@@ -216,61 +216,80 @@ struct InsightsContent: View {
     private var accuracySection: some View {
         let days = store.accuracy.filter { $0.readSeconds >= 60 || $0.autoSwitches > 0 || $0.corrections > 0 }
         let t = ReadingAccuracy.total(days)
+        let anyCorrections = days.contains { $0.corrections > 0 }
         return VStack(alignment: .leading, spacing: 14) {
             SectionTitle("How well Focus reads your screen",
-                         subtitle: "During focus blocks. Focus names blocks from the screen, so these say whether it can be trusted to. Wrong? next to what it reads in the popover, or ⌃⌥⌘', teaches it")
+                         subtitle: "Last \(store.days) days of focus blocks: how often what Focus saw on your screen matched the category on your timer")
             HStack(alignment: .top, spacing: 28) {
-                measure(t.right.map(pct) ?? "–", "read as the block's category", bar: "goal 90%",
-                        met: t.right.map { $0 >= ReadingAccuracy.rightBar })
-                measure(t.unlabeled.map(pct) ?? "–", "with no label", bar: "goal 5% or less",
-                        met: t.unlabeled.map { $0 <= ReadingAccuracy.unlabeledBar })
-                measure(t.autoSwitches > 0 ? "\(t.undone) of \(t.autoSwitches)" : "–", "switches without asking you undid",
-                        bar: "goal 1 in 10", met: t.undoneShare.map { $0 <= ReadingAccuracy.undoneBar })
-                measure("\(t.corrections)", t.corrections == 1 ? "correction from you" : "corrections from you",
-                        bar: t.courseCorrections > 0 ? "\(t.courseCorrections) named a class" : "", met: nil)
+                measure(t.right.map(pct) ?? "–", "matched your timer", goal: 0.9, value: t.right, higherIsBetter: true, bar: "goal 90%")
+                measure(t.unlabeled.map(pct) ?? "–", "couldn't tell what it was", goal: 0.05, value: t.unlabeled, higherIsBetter: false,
+                        bar: "goal 5% or less")
+                measure(t.autoSwitches > 0 ? "\(t.undone) of \(t.autoSwitches)" : "–", "automatic switches you undid",
+                        goal: 0.1, value: t.undoneShare, higherIsBetter: false, bar: "goal 1 in 10")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(t.corrections)").font(.system(size: 22, weight: .semibold)).monospacedDigit()
+                    Text(t.corrections == 1 ? "time you corrected it" : "times you corrected it")
+                        .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    if t.courseCorrections > 0 {
+                        Text("\(t.courseCorrections) named a class").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                    }
+                }
             }
             if !days.isEmpty {
-                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
+                Grid(alignment: .trailing, horizontalSpacing: 24, verticalSpacing: 6) {
                     GridRow {
-                        ForEach(["Day", "Read right", "No label", "Undone", "Your corrections"], id: \.self) {
-                            Text($0).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.secondaryText)
-                        }
+                        Text("Day").gridColumnAlignment(.leading)
+                        Text("Matched")
+                        Text("Couldn't tell")
+                        Text("Switches undone")
+                        if anyCorrections { Text("Corrections") }
                     }
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.secondaryText)
                     ForEach(days.reversed()) { d in
                         GridRow {
-                            Text(d.day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                            Text(Calendar.current.isDateInToday(d.day) ? "Today (so far)"
+                                 : d.day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
                             cell(d.right.map(pct), met: d.right.map { $0 >= ReadingAccuracy.rightBar })
                             cell(d.unlabeled.map(pct), met: d.unlabeled.map { $0 <= ReadingAccuracy.unlabeledBar })
                             cell(d.autoSwitches > 0 ? "\(d.undone) of \(d.autoSwitches)" : nil,
                                  met: d.undoneShare.map { $0 <= ReadingAccuracy.undoneBar })
-                            Text(d.corrections > 0 ? "\(d.corrections)" : "none").monospacedDigit()
-                                .foregroundStyle(d.corrections > 0 ? Color.primary : Color.secondaryText)
+                            if anyCorrections { cell(d.corrections > 0 ? "\(d.corrections)" : nil, met: nil) }
                         }
                         .font(.system(size: 13))
                     }
                 }
             }
-            Text("Read right: screen time during focus blocks where its category matched the block's, unless you corrected that window. Trips to Messages or a feed count as not matching, as in the 73% measured on Nov 13. No label: time it read but couldn't name.")
+            Text("Matched: time Focus labeled during a focus block with the same category as your timer. A window you corrected counts as wrong until you corrected it, and a trip to Messages or a feed counts as not matching. ✓ marks a day that met the goal. To correct a reading, click the button next to what Focus sees, under the timer, or press ⌃⌥⌘ and the ' key.")
                 .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                .frame(maxWidth: 640, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func measure(_ value: String, _ label: String, bar: String, met: Bool?) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(.system(size: 22, weight: .semibold)).monospacedDigit()
+    private func measure(_ text: String, _ label: String, goal: Double, value: Double?, higherIsBetter: Bool, bar: String) -> some View {
+        let met = value.map { higherIsBetter ? $0 >= goal : $0 <= goal }
+        let gap = value.map { Int((abs($0 - goal) * 100).rounded()) }
+        let status: String = {
+            guard let met, let gap else { return bar }
+            if met { return bar + " · met" }
+            if text.contains(" of ") { return bar + " · not met" }
+            return bar + " · \(gap) point\(gap == 1 ? "" : "s") \(higherIsBetter ? "short" : "over")"
+        }()
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(text).font(.system(size: 22, weight: .semibold)).monospacedDigit()
                 .foregroundStyle(met == true ? Color.good : Color.primary)
             Text(label).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-            if !bar.isEmpty {
-                Label(bar, systemImage: met == true ? "checkmark.circle.fill" : "flag")
-                    .font(.system(size: 11)).foregroundStyle(met == true ? Color.good : Color.secondaryText)
-            }
+            Label(status, systemImage: met == true ? "checkmark.circle.fill" : "flag")
+                .font(.system(size: 11)).foregroundStyle(met == true ? Color.good : Color.secondaryText)
         }
     }
 
     private func cell(_ value: String?, met: Bool?) -> some View {
-        Text(value ?? "–").monospacedDigit()
-            .foregroundStyle(value == nil ? Color.secondaryText : (met == true ? Color.good : Color.primary))
+        HStack(spacing: 4) {
+            if met == true { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Color.good) }
+            Text(value ?? "–").monospacedDigit()
+                .foregroundStyle(value == nil ? Color.secondaryText : (met == true ? Color.good : Color.primary))
+        }
     }
 
     // MARK: Attention

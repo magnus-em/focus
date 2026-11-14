@@ -337,15 +337,17 @@ struct TimerView: View {
         if timer.isActive, !onBreak, !label.isEmpty {
             let reading = streak.reading.flatMap { $0.category == WindowTimeline.privateCategory || $0.bundle.isEmpty ? nil : $0 }
             let seen = reading.map { r -> String in
-                r.category == label ? [r.course, String(r.detail.prefix(40))].compactMap { $0 }.joined(separator: " · ")
-                    : "on screen " + MenuBarTitle.describe(r)
+                if r.category == label { return [r.course, r.detail].compactMap { $0 }.joined(separator: " · ") }
+                let head = r.state == .unread ? "not read yet" : r.state == .unsure ? "unsure" : r.course ?? r.category ?? "no label"
+                return "on screen: \(head) · \(r.detail)"
             }
             HStack(spacing: 8) {
                 Text([label, seen].compactMap { $0 }.joined(separator: " · "))
                     .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-                    .lineLimit(1).truncationMode(.tail)
+                    .lineLimit(1).truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .help("What Focus named this block, and what it reads on your screen now")
-                if let reading {
+                if let reading, reading.state != .unread {
                     WrongMenu(window: reading.title.isEmpty ? reading.app : reading.title, category: reading.category,
                               course: reading.course,
                               study: settings.tags.filter { !settings.lifeTags.contains($0) },
@@ -1205,7 +1207,7 @@ struct CategoryMenu: View, Equatable {
 
     var body: some View {
         Menu {
-            Text(renames ? "Not this? It's…" : "Focus on…")
+            Text(renames ? "Rename this block to…" : "Focus on…")
             ForEach([CategoryGroup.school, .career, .learning], id: \.self) { g in
                 let items = focus.filter { CategoryGroup.of($0, isLife: false) == g }
                 if !items.isEmpty {
@@ -1268,11 +1270,13 @@ struct WrongMenu: View, Equatable {
                 ForEach(other, id: \.self) { t in item(t, current: t == category) { pick(t, conflicting(t)) } }
             }
         } label: {
-            Text("Wrong?")
+            Text(question)
                 .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
                 .padding(.horizontal, 10)
                 .frame(minHeight: 22)
-                .background(Capsule().fill(Color.primary.opacity(0.06)))
+                .background(Capsule().fill(Color.primary.opacity(0.1)))
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
                 .frame(minHeight: 36)
                 .contentShape(Rectangle())
         }
@@ -1281,7 +1285,13 @@ struct WrongMenu: View, Equatable {
         .menuIndicator(.hidden)
         .fixedSize()
         .padding(.vertical, -7)
-        .help("Focus read this wrong? Tell it the class or category, and it learns this window. ⌃⌥⌘' from anywhere.")
+        .help("Focus read this window wrong? Tell it the class or category and it learns the window. Or press ⌃⌥⌘ and the ' key from anywhere.")
+    }
+
+    /// About the window, not the block: "Not MATH 244?", "Not Admin?".
+    private var question: String {
+        guard let name = course ?? category else { return "What is it?" }
+        return "Not \(name)?"
     }
 
     /// A category the window's class doesn't count toward means the class was wrong too.

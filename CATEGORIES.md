@@ -140,16 +140,16 @@ Each step ships on its own.
 
 1. **See and correct.**
    - The menu bar shows what Focus thinks is in front, next to the streak (built 11/13).
-   - Next: under the streak line in the popover, the same reading with a "Wrong?" button, plus a hotkey. The menu bar can't take a click of its own. A correction asks what it was, teaches the window (as the ✗ check does), and goes to `Focus/screen-corrections.jsonl`.
-   - Insights gets a daily line with the four measures above.
-2. **A course on every reading.** Store the subject (`CoachCourse.resolver`: course code, calendar class, same chat, neighbours) on each screen span next to the category.
-   - Uses the on-device resolver and the cloud readings already approved, so it adds no new spend.
+   - **Built 11/14:** "Wrong?" beside the reading in the popover, and ⌃⌥⌘' from anywhere. It asks which class or category the window is, teaches the window, renames a study block named from it, and logs to `Focus/screen-corrections.jsonl`.
+   - **Built 11/14:** Insights → How well Focus reads your screen, per day: read right, no label, switches undone, corrections. Time to label a new window isn't measured (the plan keeps it the same; watch the menu bar). First numbers, 11/8–11/14: 79%, 10%, 5 of 29.
+2. **A course on every reading.** Built 11/14 (`ScreenCourse`): your answer, the cloud reading's course, a code in the title or address, the calendar class, or the same window earlier. Not from the category alone, and not from neighbours: AI and SWE are also your own projects, so a reading without evidence shows no course and Wrong? names it.
+   - Uses the cloud readings already approved, so it adds no new spend.
 3. **The seven groups everywhere.**
    - **Week page done (11/13):** How much you focused stacks the three focus groups; Where time went lists the seven groups (categories inside) and adds Week by week, 8 weeks stacked to 24 h. Old rows are translated at read time; nothing is rewritten.
    - **Rest of the app done (11/13):** popover title, Details totals, Stats split, Day page totals, menu bar, phone Now/Today/Week; every category draws in its group's colour (`categoryColor`). Insights still follows goals, which map onto the groups.
    - Detail (course, kind of work) opens under each group.
    - Goals point at groups plus courses.
-4. **Shadow week.** Focus labels every block with a group and detail in the background. The Day page shows its label next to yours, and Insights measures agreement against the bar above.
+4. **Shadow week.** Superseded: Focus has named blocks since 11/13, so the accuracy section measures the real thing instead of a background copy (originally: Focus labels every block in the background, the Day page shows its label next to yours).
 5. **Switch the Mac to the chosen direction.** Done 11/13 at the user's request, before the shadow week: Start names it (`startFocus`), the title menu is "Not this? It's…" (renames and teaches), life categories under "Something else".
    - The popover drops the category grid for Focus on/off plus what Focus sees.
    - ⌃⌥⌘K stays as start/stop. Picking a category by hand moves into the switcher (⌃⌥⌘J), as an override.

@@ -2,7 +2,15 @@
 
 Short-lived notes between sessions (Claude Code, Codex, whoever picks up next). Durable architecture lives in `CLAUDE.md`, design rules in `DESIGN.md`. Trim aggressively as items land.
 
-Last touched: 2026-11-10 (Claude: Insights, goals, window timeline).
+Last touched: 2026-11-14 (Claude: Wrong?, course on every reading, reading accuracy; iPad/iPhone on current main).
+
+## Wrong? and reading accuracy — 11/14 (Claude)
+
+- Built and installed (`fe8d7f3`, 842 sessions before/after): course on every screen reading, "Wrong?" in the popover + ⌃⌥⌘', `Focus/screen-corrections.jsonl`, Insights → How well Focus reads your screen. Details in CLAUDE.md (ScreenCourse row) and CATEGORIES.md steps 1–2.
+- Not exercised by Claude: opening the Wrong? menu and picking (gallery windows ignore clicks; a menu would open over the user's screen), the ⌃⌥⌘' switcher in correction mode, and a cloud reading's course reaching a live sample. Check `screen-corrections.jsonl` and sync.log `readingCorrected` after the user's first corrections.
+- First numbers (11/8–11/14): read right 79% (bar 90%), no label 10% (bar 5%), 5 of 29 switches undone (bar 1 in 10). Watch these before dropping more of the picker (CATEGORIES.md step 6).
+- Decisions still the user's: HW becomes School + problem set; off-Mac life only from phone/calendar/Health; Recruiting target (10 a week, or 3 from a company list).
+- iPad and iPhone installed from `fe8d7f3` on 11/14 (the iPad had been on a pre-10/30 timer build).
 
 ## Insights, goals, second-by-second capture — 11/10 (Claude)
 
@@ -14,7 +22,7 @@ Last touched: 2026-11-10 (Claude: Insights, goals, window timeline).
 
 ## Cross-device timer rewrite — 10/30 (Claude)
 
-- `7252af9` (see CLAUDE.md → Cross-device timer) is installed on the Mac and the iPhone. **The iPad still runs the old build** (it was locked); install with `./install_ios.sh` from a clean checkout of main (the main checkout carries Codex's untracked AI Usage work). Until then the old iPad can still re-announce a stale block on relaunch; new builds ignore old-build states that began before their own block, and never log a block on an old build's say-so.
+- Installed on the Mac, iPhone and (since 11/14) the iPad.
 - Not yet verified on real devices: read the iPhone's and Mac's sync.log (`statePublish`, `liveAdopt`, `liveAdoptMp`, `liveSave`) after a day of normal use.
 - Repaired 10/30 at the user's word through `focus://log`: Class 10/28 now 9:25–11:30 AM then Leisure to the existing Sleep; LeetCode 10/24 now 4:25–6:25 PM, then Leisure, Sleep 8:38 AM–2:36 PM (Mac asleep per presence.json), Leisure; today Chores 10:50–12:28 (the stop at 12:28 had been dropped as a "copy" of a zero-length row; fixed in TimeIntegrity.sameBlock).
 
