@@ -139,6 +139,7 @@ struct WhereTimeWentSection: View {
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
+        .id("week-where")
     }
 
     // MARK: - 7 × 24h strips
