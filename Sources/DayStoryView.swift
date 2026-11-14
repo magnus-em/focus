@@ -150,14 +150,14 @@ struct DayStoryPage: View {
         let calendar = Calendar.current
         let start = calendar.startOfDay(for: day)
         let end = min(calendar.date(byAdding: .day, value: 1, to: start)!, Date())
-        var totals: [String: Double] = [:]
+        var totals: [CategoryGroup: [String: Double]] = [:]
         for block in model.lanes.tracked {
             let minutes = min(block.end, end).timeIntervalSince(max(block.start, start)) / 60
-            if minutes > 0 { totals[block.label, default: 0] += minutes }
+            if minutes > 0 { totals[CategoryGroup.of(block.label, isBreak: block.label == "Break"), default: [:]][block.label, default: 0] += minutes }
         }
-        let rows = totals.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
+        let rows = CategoryGroup.allCases.compactMap { g in totals[g].map { (key: g.rawValue, value: $0.values.reduce(0, +), group: g, inside: $0) } }
         return VStack(alignment: .leading, spacing: 8) {
-            SectionTitle("Where your time went", subtitle: "Time by category from your timer")
+            SectionTitle("Where your time went", subtitle: "Time in the seven groups from your timer; hover one for what's in it")
             if rows.isEmpty {
                 Text(isToday ? "No time tracked yet today." : "No time tracked on this day.")
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
@@ -165,7 +165,7 @@ struct DayStoryPage: View {
                 FlowLayout(spacing: 8) {
                     ForEach(rows, id: \.key) { row in
                         HStack(spacing: 6) {
-                            Circle().fill(categoryColor(row.key)).frame(width: 7, height: 7)
+                            Circle().fill(row.group.color).frame(width: 7, height: 7)
                                 .accessibilityHidden(true)
                             Text(row.key)
                             Text(row.value < 1 ? "<1m" : durationText(minutes: row.value))
@@ -175,6 +175,7 @@ struct DayStoryPage: View {
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(Capsule().fill(Color.primary.opacity(0.06)))
                         .accessibilityElement(children: .combine)
+                        .help(row.inside.sorted { $0.value > $1.value }.map { "\($0.key) \(durationText(minutes: $0.value))" }.joined(separator: " · "))
                     }
                 }
             }

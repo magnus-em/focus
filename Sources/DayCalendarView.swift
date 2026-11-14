@@ -1324,36 +1324,50 @@ struct DayCalendarPage: View {
         }
     }
 
+    /// The day in the seven groups (CATEGORIES.md), always in the same
+    /// order, with the categories inside each on a second line.
     private var timeBars: some View {
-        var totals: [String: Double] = [:]
+        var totals: [CategoryGroup: [String: Double]] = [:]
         for t in model.lanes.tracked {
             let m = min(t.end, limit).timeIntervalSince(max(t.start, dayStart)) / 60
-            if m > 0 { totals[t.label, default: 0] += m }
+            if m > 0 { totals[CategoryGroup.of(t.label, isBreak: t.label == "Break"), default: [:]][t.label, default: 0] += m }
         }
-        var rows = totals.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { ($0.key, $0.value, false) }
+        var rows: [(name: String, minutes: Double, color: Color, inside: String?)] = CategoryGroup.allCases.compactMap { g in
+            guard let parts = totals[g] else { return nil }
+            let sorted = parts.sorted { $0.value > $1.value }
+            let inside = sorted.count == 1 && sorted[0].key == g.rawValue ? nil
+                : sorted.map { "\($0.key) \($0.value < 1 ? "<1m" : durationText(minutes: $0.value))" }.joined(separator: " · ")
+            return (g.rawValue, sorted.reduce(0) { $0 + $1.value }, g.color, inside)
+        }
         let unlogged = gaps.reduce(0.0) { $0 + $1.end.timeIntervalSince($1.start) / 60 }
-        if unlogged >= 1 { rows.append(("Not logged", unlogged, true)) }
-        let top = rows.map(\.1).max() ?? 1
+        if unlogged >= 1 { rows.append(("Not logged", unlogged, Color.primary.opacity(0.2), nil)) }
+        let top = rows.map(\.minutes).max() ?? 1
         return card {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Where your time went").font(.system(size: 14, weight: .semibold))
-                Text("From your timer").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                Text("From your timer, in the seven groups").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             }
             if rows.isEmpty {
                 Text(isToday ? "Nothing tracked yet today." : "Nothing tracked on this day.")
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
             }
-            ForEach(rows, id: \.0) { row in
-                HStack(spacing: 8) {
-                    Text(row.0).font(.system(size: 12)).lineLimit(1).frame(width: 80, alignment: .leading)
-                    GeometryReader { geo in
-                        Capsule().fill(row.2 ? Color.primary.opacity(0.2) : categoryColor(row.0))
-                            .frame(width: max(4, geo.size.width * CGFloat(row.1 / top)), height: 8)
-                            .frame(maxHeight: .infinity)
+            ForEach(rows, id: \.name) { row in
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 8) {
+                        Text(row.name).font(.system(size: 12)).lineLimit(1).frame(width: 116, alignment: .leading)
+                        GeometryReader { geo in
+                            Capsule().fill(row.color)
+                                .frame(width: max(4, geo.size.width * CGFloat(row.minutes / top)), height: 8)
+                                .frame(maxHeight: .infinity)
+                        }
+                        .frame(height: 16)
+                        Text(row.minutes < 1 ? "<1m" : durationText(minutes: row.minutes)).font(.system(size: 12)).monospacedDigit()
+                            .foregroundStyle(Color.secondaryText).frame(width: 52, alignment: .trailing)
                     }
-                    .frame(height: 16)
-                    Text(row.1 < 1 ? "<1m" : durationText(minutes: row.1)).font(.system(size: 12)).monospacedDigit()
-                        .foregroundStyle(Color.secondaryText).frame(width: 52, alignment: .trailing)
+                    if let inside = row.inside {
+                        Text(inside).font(.system(size: 11)).monospacedDigit().foregroundStyle(Color.secondaryText)
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .accessibilityElement(children: .combine)
             }
