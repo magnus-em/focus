@@ -41,17 +41,25 @@ public enum CategoryGroup: String, CaseIterable, Codable, Sendable {
     /// orange, AI purple, Leisure pink), lightness spread so neighbours in a
     /// stacked bar differ by 10+ L* (DESIGN.md: distinct in lightness, not
     /// only hue). Wellbeing leans cyan so it isn't read as "good" green.
+    /// School, Wellbeing and Sleep lighten in dark mode to keep 3:1 on the
+    /// dark card; Life sits well apart from the "not logged" grey; Free time
+    /// (Break too) stays soft, as a life group should.
     public var color: Color {
         switch self {
-        case .school: return Color(red: 0.12, green: 0.36, blue: 1.00)
+        case .school: return Self.schoolColor
         case .career: return Color(red: 0.90, green: 0.40, blue: 0.08)
         case .learning: return Color(red: 0.70, green: 0.55, blue: 0.95)
-        case .wellbeing: return Color(red: 0.16, green: 0.51, blue: 0.59)
-        case .sleep: return Color(red: 0.28, green: 0.30, blue: 0.46)
-        case .life: return Color(red: 0.84, green: 0.80, blue: 0.71)
-        case .freeTime: return Color(red: 0.90, green: 0.55, blue: 0.69)
+        case .wellbeing: return Self.wellbeingColor
+        case .sleep: return Self.sleepColor
+        case .life: return Color(red: 0.61, green: 0.51, blue: 0.37)
+        case .freeTime: return Color(red: 0.89, green: 0.64, blue: 0.75)
         }
     }
+
+    // Built once: two dynamic colours built separately never compare equal.
+    private static let schoolColor = dynamic(light: (0.12, 0.36, 1.00), dark: (0.43, 0.52, 1.00))
+    private static let wellbeingColor = dynamic(light: (0.16, 0.51, 0.59), dark: (0.30, 0.64, 0.71))
+    private static let sleepColor = dynamic(light: (0.28, 0.30, 0.46), dark: (0.40, 0.42, 0.62))
 
     /// Untracked time in charts of the groups: a grey that reads as a fill,
     /// not as empty plot area.
