@@ -12,4 +12,10 @@ final class ScreenNoteTitleTests: XCTestCase {
         XCTAssertEqual(ScreenNoteTitle.clean("**Title: Partial orders**", category:"Math"), "Partial orders")
         XCTAssertEqual(ScreenNoteTitle.resolve("Category: Math", previous: nil, windows: [], category:"Math"), "Activity notes")
     }
+    func testModelPreambleIsNotATitle() {
+        for bad in ["Here are the updated notes:", "Here's what you studied", "Sure, here are the notes"] {
+            XCTAssertNil(ScreenNoteTitle.clean(bad, category: "LeetCode"), bad)
+        }
+        XCTAssertEqual(ScreenNoteTitle.clean("Course Schedule - LeetCode:", category: "LeetCode"), "Course Schedule - LeetCode")
+    }
 }
