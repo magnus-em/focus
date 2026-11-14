@@ -85,10 +85,12 @@ with the timer bar so it's in reach wherever the change was made.
 | Good | #1F8F55 | #4CD38A |
 | Accent | running category's color | same |
 
-Category colors come from `categoryColor(_:)` (FocusCore): focus categories
-vivid and far apart (SWE green, Math deep blue, Quant light cyan, AI purple,
-HW amber, Class coral), life categories quieter. Keep them distinct in
-lightness, not only hue; check new ones against the neighbours in grayscale.
+Colors are the seven groups' (11/13, CATEGORIES.md): `categoryColor(_:)`
+(FocusCore) returns the group's `CategoryGroup.color` for every category and
+for group names, so Math and HW are both School blue. Focus groups (School,
+Career, Learning & projects) vivid, the rest quieter; distinct in lightness,
+not only hue. Break keeps its own blue. Show the category itself as text
+(detail), not as another color.
 
 ## SwiftUI rules
 
@@ -103,7 +105,7 @@ lightness, not only hue; check new ones against the neighbours in grayscale.
 
 ## When information shows (popover)
 
-Categories have three presentation groups: Focus (goal-counting), Wellbeing (Reading, Journaling, Exercise, each with its own daily total), Life. Wellbeing counts up without site blocking and has no combined goal, score or streak; show it above Life and alongside Focus in the idle picker. Keep the existing goal ring focus-only.
+Since 11/13 (direction B of CATEGORIES.md): you press Start and Focus names what it is from the screen. The title is the group ("School"), with the category and what the screen reads on one secondary line under it. The title menu is a correction ("Not this? It's…": study categories in their groups, renaming the running block) with Wellbeing and Life one level down under "Something else". Totals count by group; a group's categories show on hover or a second line. Wellbeing counts up without site blocking and has no combined goal, score or streak. Keep the existing goal ring focus-only.
 
 Quick Panel (chosen 2026-10-14, simplified 2026-10-21): visible Dashboard action; running category and timer beside the Fitness-style focus-goal ring; duration choices when idle; at most one attention line; native glass Stop / Pause / Resume / Start / Break controls; labeled Details disclosure; Now / Stats / Problems / Notes / Health / More navigation stays visible. Compact default, no drag handle or gesture requirement. Pick the category from the title menu instead of repeating every category as chips. Details holds daily focus and nonzero wellbeing totals, the LeetCode daily goal, where you left off, the day strip and log correction. A compact LeetCode row may surface above Start only while its timer or a problem draft is active.
 
@@ -129,6 +131,6 @@ https://claude.ai/artifact/KSWGrRXt5A5qfnpwmQRKx4
 
 ## LeetCode practice — 10/18
 
-LeetCode is a separate focus category with its own orange accent and daily timer minutes, not a nested SWE label. Details shows a quiet daily card with problem and focused-time progress, new/redo counts, and explicit Start LeetCode / Choose or log actions. Starting interview-prep targets are4 problems and2 focused hours, editable in Settings. Do not repeat LeetCode minutes in both the daily card and the category capsules; the main goal ring still includes all focus time. Logged solves and tracked time are different evidence and both have labels.
+LeetCode is a separate focus category with its own orange accent and daily timer minutes, not a nested SWE label. Details shows a quiet daily card with problem and focused-time progress, new/redo counts, and explicit Start LeetCode / Choose or log actions. Starting interview-prep targets are4 problems and2 focused hours, editable in Settings. LeetCode minutes count in the Career group capsule like any Career time; the daily card is about problems. The main goal ring still includes all focus time. Logged solves and tracked time are different evidence and both have labels.
 
 During a known LeetCode problem, the daily card adds its title and work clock, with Done with problem replacing Start. Show Done only for the active problem. Finishing opens the detailed log by user action; merely detecting a page opens nothing. The form labels the outcome, confidence, difficulty/pattern, hints, recorded time and notes, and retains unfinished drafts via Finish later.
