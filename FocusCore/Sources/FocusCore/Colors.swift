@@ -38,7 +38,9 @@ public extension Confidence {
 /// Brand color palette shared across Mac + iPad.
 public enum FocusColors {
     public static let focusRed   = Color(red: 0.96, green: 0.36, blue: 0.36)
-    public static let breakBlue  = Color(red: 0.27, green: 0.62, blue: 0.83)
+    /// Break counts under Free time, so it draws in Free time's color (11/13;
+    /// it was a light blue that read as School). The name stayed.
+    public static let breakBlue  = CategoryGroup.freeTime.color
     public static let goalGreen  = Color(red: 0.25, green: 0.72, blue: 0.53)
     public static let goalAmber  = Color(red: 0.98, green: 0.70, blue: 0.18)
 }

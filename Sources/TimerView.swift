@@ -42,7 +42,8 @@ struct TimerView: View {
     @State private var hoveredSegment: Date?
     @State private var stripUndo: SessionStore.ReviewUndo?
 
-    static let breakBlue = Color(red: 0.27, green: 0.62, blue: 0.83)
+    /// Free time's color: Break counts there (11/13).
+    static let breakBlue = CategoryGroup.freeTime.color
 
     private var onBreak: Bool { timer.isActive && timer.isOnBreak }
 
@@ -407,7 +408,7 @@ struct TimerView: View {
                     } icon: { Image(systemName: "pills") }
                         .help("Each med dose today and how long since. Click to log or edit a dose.")
                 } else {
-                    Label("Log morning dose", systemImage: "pills")
+                    Label("Log a dose", systemImage: "pills")
                 }
             }
             .buttonStyle(.plainHit)
@@ -833,6 +834,7 @@ struct CategoryWash: View {
 struct NativeGlassControl: ViewModifier {
     var prominent: Bool
     var tint: Color
+    @Environment(\.colorScheme) private var colorScheme
 
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -843,6 +845,13 @@ struct NativeGlassControl: ViewModifier {
             } else {
                 if prominent { content.buttonStyle(.borderedProminent).tint(tint) }
                 else { content.buttonStyle(.bordered) }
+            }
+        }
+        // On the light popover, plain glass matched the panel: Stop was a
+        // floating square and Break a bare word (review 11/13).
+        .overlay {
+            if !prominent && colorScheme == .light {
+                Capsule().strokeBorder(Color.black.opacity(0.12), lineWidth: 1).allowsHitTesting(false)
             }
         }
         .environment(\.controlActiveState, .active)
@@ -1259,7 +1268,7 @@ struct LeetCodeDailyGoalRow: View {
                     .font(.system(size: 13, weight: .semibold))
                 Spacer(minLength: 0)
             }
-            progress("Problems", value: "\(count) / \(max(1, problemGoal))", fraction: Double(count) / Double(max(1, problemGoal)))
+            progress("Problems", value: "\(count) solved · goal \(max(1, problemGoal))", fraction: Double(count) / Double(max(1, problemGoal)))
             if minutesGoal > 0 {
                 progress("Focused time", value: "\(durationText(minutes: minutes)) / \(durationText(minutes: Double(minutesGoal)))",
                          fraction: minutes / Double(minutesGoal))
@@ -1276,13 +1285,17 @@ struct LeetCodeDailyGoalRow: View {
                     .accessibilityElement(children: .combine)
                 }
             }
-            Text("\(newCount) new · \(redoCount) redo\(minutesGoal > 0 || minutes < 1 ? "" : " · \(durationText(minutes: minutes)) on the timer") · from your log and timer")
+            // Minutes count in the Career total above; this card is about problems.
+            Text("\(newCount) new · \(redoCount) redo · from your log")
                 .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
             HStack(spacing: 12) {
                 if activeTitle != nil {
-                    Button("Done with problem", action: done)
-                        .font(.system(size: 12, weight: .semibold)).buttonStyle(.plainHit)
-                        .frame(minHeight: 44)
+                    Button(action: done) {
+                        Text("Done with problem").font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 12).frame(height: 30)
+                            .background(Capsule().fill(color.opacity(0.16)))
+                    }
+                    .buttonStyle(.plainHit).frame(minHeight: 36)
                 } else if tracking {
                     Label("Tracking LeetCode", systemImage: "timer")
                         .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
@@ -1293,9 +1306,12 @@ struct LeetCodeDailyGoalRow: View {
                         .frame(minHeight: 36)
                 }
                 Spacer(minLength: 0)
-                Button(tracking && activeTitle == nil ? "Choose problem" : "Choose / log", action: open)
-                    .font(.system(size: 12, weight: .medium)).buttonStyle(.plainHit)
-                    .frame(minHeight: 36)
+                Button(action: open) {
+                    Text(tracking && activeTitle == nil ? "Choose problem" : "Choose / log").font(.system(size: 12, weight: .medium))
+                        .padding(.horizontal, 12).frame(height: 30)
+                        .background(Capsule().fill(Color.primary.opacity(0.07)))
+                }
+                .buttonStyle(.plainHit).frame(minHeight: 36)
                     .help("Choose a problem or log a solve in LeetCode")
             }
         }
@@ -1311,9 +1327,16 @@ struct LeetCodeDailyGoalRow: View {
                 Text(value).monospacedDigit()
             }
             .font(.system(size: 12))
-            ProgressView(value: min(1, max(0, fraction)))
-                .tint(fraction >= 1 ? Color.good : color)
-                .accessibilityLabel(title + ": " + value)
+            // Drawn by hand: ProgressView's tint is ignored here and a met goal looked empty.
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule().fill(fraction >= 1 ? Color.good : color)
+                        .frame(width: max(6, geo.size.width * CGFloat(min(1, max(0, fraction)))))
+                }
+            }
+            .frame(height: 6)
+            .accessibilityElement().accessibilityLabel(title + ": " + value)
         }
     }
 }

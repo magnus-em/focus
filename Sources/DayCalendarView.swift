@@ -1335,7 +1335,8 @@ struct DayCalendarPage: View {
         var rows: [(name: String, minutes: Double, color: Color, inside: String?)] = CategoryGroup.allCases.compactMap { g in
             guard let parts = totals[g] else { return nil }
             let sorted = parts.sorted { $0.value > $1.value }
-            let inside = sorted.count == 1 && sorted[0].key == g.rawValue ? nil
+            // One category: just its name, the total is already on the row.
+            let inside: String? = sorted.count == 1 ? (sorted[0].key == g.rawValue ? nil : sorted[0].key)
                 : sorted.map { "\($0.key) \($0.value < 1 ? "<1m" : durationText(minutes: $0.value))" }.joined(separator: " · ")
             return (g.rawValue, sorted.reduce(0) { $0 + $1.value }, g.color, inside)
         }
@@ -1345,25 +1346,25 @@ struct DayCalendarPage: View {
         return card {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Where your time went").font(.system(size: 14, weight: .semibold))
-                Text("From your timer, in the seven groups").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                Text("From your timer, by group").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             }
             if rows.isEmpty {
                 Text(isToday ? "Nothing tracked yet today." : "Nothing tracked on this day.")
                     .font(.system(size: 13)).foregroundStyle(Color.secondaryText)
             }
             ForEach(rows, id: \.name) { row in
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
-                        Text(row.name).font(.system(size: 12)).lineLimit(1).frame(width: 116, alignment: .leading)
-                        GeometryReader { geo in
-                            Capsule().fill(row.color)
-                                .frame(width: max(4, geo.size.width * CGFloat(row.minutes / top)), height: 8)
-                                .frame(maxHeight: .infinity)
-                        }
-                        .frame(height: 16)
+                        Text(row.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                        Spacer(minLength: 8)
                         Text(row.minutes < 1 ? "<1m" : durationText(minutes: row.minutes)).font(.system(size: 12)).monospacedDigit()
-                            .foregroundStyle(Color.secondaryText).frame(width: 52, alignment: .trailing)
+                            .foregroundStyle(Color.secondaryText)
                     }
+                    GeometryReader { geo in
+                        Capsule().fill(row.color)
+                            .frame(width: max(4, geo.size.width * CGFloat(row.minutes / top)), height: 6)
+                    }
+                    .frame(height: 6)
                     if let inside = row.inside {
                         Text(inside).font(.system(size: 11)).monospacedDigit().foregroundStyle(Color.secondaryText)
                             .lineLimit(2).fixedSize(horizontal: false, vertical: true)

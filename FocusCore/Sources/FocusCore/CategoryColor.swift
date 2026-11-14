@@ -5,10 +5,10 @@ private let groupByName = Dictionary(uniqueKeysWithValues: CategoryGroup.allCase
 
 /// Every category is drawn in its group's color (user, 11/13: one consistent
 /// way to see where time went, not a color per category; CATEGORIES.md).
-/// Break and categories outside the table keep their own below.
+/// Categories outside the table keep their own below.
 public func categoryColor(_ tag: String) -> Color {
     let key = tag.lowercased()
-    if key != "break", let group = groupByLowercased[key] ?? groupByName[key] { return group.color }
+    if let group = groupByLowercased[key] ?? groupByName[key] { return group.color }
     return ownCategoryColor(key)
 }
 

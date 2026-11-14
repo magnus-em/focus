@@ -49,7 +49,7 @@ struct StatsView: View {
         let consistency = store.consistencyScore(days: 14)
 
         return VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("Last 7 days")
+            sectionLabel("Focus, last 7 days")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(formatMinutes(last))
@@ -72,9 +72,6 @@ struct StatsView: View {
                     RuleMark(y: .value("Goal", goal))
                         .foregroundStyle(Color.secondary.opacity(0.6))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                        .annotation(position: .top, alignment: .leading) {
-                            Text("\(Int(goal))h goal").font(.system(size: 11)).foregroundStyle(.secondary)
-                        }
                 }
             }
             .chartYScale(domain: 0...max(goal, days.map(\.hours).max() ?? 0, 1))
@@ -87,6 +84,11 @@ struct StatsView: View {
                 }
             }
             .frame(height: 96)
+            if goal > 0 {
+                // Said under the chart: drawn on the line it sat on the first bar.
+                Text("Dashed line: your \(Int(goal))h goal · green days met it")
+                    .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+            }
 
             HStack(spacing: 0) {
                 metric(formatMinutes(last / 7), "a day")

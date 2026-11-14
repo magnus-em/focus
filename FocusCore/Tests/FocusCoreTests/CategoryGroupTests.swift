@@ -48,6 +48,7 @@ final class CategoryGroupTests: XCTestCase {
         XCTAssertEqual(categoryColor("Leisure"), CategoryGroup.freeTime.color)
         XCTAssertEqual(categoryColor("Free time"), CategoryGroup.freeTime.color)
         XCTAssertEqual(categoryColor("Learning & projects"), CategoryGroup.learning.color)
-        XCTAssertNotEqual(categoryColor("Break"), CategoryGroup.freeTime.color)
+        XCTAssertEqual(categoryColor("Break"), CategoryGroup.freeTime.color)
+        XCTAssertEqual(FocusColors.breakBlue, CategoryGroup.freeTime.color)
     }
 }
