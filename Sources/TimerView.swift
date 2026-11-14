@@ -342,7 +342,7 @@ struct TimerView: View {
                 case .unsure: return "on screen: \(r.detail) (unsure what it is)"
                 case .labeled:
                     let head = r.course.map { r.category == label ? $0 : "\($0) (\(r.category ?? ""))" }
-                        ?? (r.category == label ? "also \(label)" : r.category ?? "no label")
+                        ?? (r.category == label ? "also\u{00A0}\(label)" : r.category ?? "no label")
                     return "on screen: \(head), \(r.detail)"
                 }
             }

@@ -259,7 +259,7 @@ struct InsightsContent: View {
                     }
                 }
             }
-            Text("Matched: focus time where Focus's reading of the screen was the same category as your timer. Time on a window before you corrected it counts as not matching, and so does a trip to Messages or a feed. ✓ marks a day that met the goal. To correct a reading, click the Not …? button under the timer in the menu bar, or press ⌃⌥⌘ and the ' key.")
+            Text("Matched: focus time where Focus's reading of the screen was the same category as your timer. Time on a window before you corrected it counts as not matching, and so does a trip to Messages or a feed. ✓ marks a day that met the goal. To correct a reading, click the button under the timer in the menu bar that names what Focus read (\u{201C}Not SWE?\u{201D}), or press ⌃⌥⌘ and the ' key.")
                 .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 .frame(maxWidth: 640, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
