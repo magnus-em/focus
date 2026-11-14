@@ -138,4 +138,5 @@ User said the main screen had become too crowded on 10/21. Compact Now is again 
 
 ## Adderall experience check-in — 11/10 (Codex)
 
-- Mac integration in validation: Health → Adderall → Daily check-in. The previously untracked model/store/form are now connected. Phone check-in UI remains unimplemented.
+- Phone check-in UI remains unimplemented (Mac Health → Adderall has Daily check-in). iCloud KVS mirroring has not been exercised across devices.
+- Optional visual refinements: show numeric ratings as N/10 and enlarge primary buttons to 44 pt. Independent screenshot review passed: Health 89/89, form 86/88 (light/dark).
