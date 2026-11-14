@@ -409,9 +409,11 @@ struct WeekByWeekChart: View {
         let color: Color
         let hoursPerDay: Double
         var id: String { "\(week.timeIntervalSince1970)|\(name)" }
+        /// The x value: one named column per week, so every week gets its label.
+        var label: String { week.formatted(.dateTime.month(.abbreviated).day()) }
     }
 
-    @State private var selected: Date?
+    @State private var selected: String?
 
     var body: some View {
         let slices = Self.slices(sessions: sessions, endDay: endDay, weeks: weeks)
@@ -425,12 +427,12 @@ struct WeekByWeekChart: View {
                 .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             Chart {
                 ForEach(slices) { s in
-                    BarMark(x: .value("Week", s.week, unit: .weekOfYear), y: .value("Hours a day", s.hoursPerDay))
+                    BarMark(x: .value("Week", s.label), y: .value("Hours a day", s.hoursPerDay), width: .ratio(0.7))
                         .foregroundStyle(s.color)
-                        .opacity(selected == nil || Calendar.current.isDate(s.week, equalTo: selected!, toGranularity: .weekOfYear) ? 1 : 0.4)
+                        .opacity(selected == nil || selected == s.label ? 1 : 0.4)
                 }
-                if let sel = selected, let week = slices.map(\.week).last(where: { $0 <= sel }) {
-                    RuleMark(x: .value("Week", week, unit: .weekOfYear))
+                if let sel = selected, let week = slices.first(where: { $0.label == sel })?.week {
+                    RuleMark(x: .value("Week", sel))
                         .foregroundStyle(.clear)
                         .annotation(position: .top, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
                             readout(slices.filter { $0.week == week }, week: week)
@@ -443,11 +445,6 @@ struct WeekByWeekChart: View {
                 AxisMarks(position: .leading, values: [0, 6, 12, 18, 24]) { v in
                     AxisGridLine()
                     AxisValueLabel { if let h = v.as(Double.self) { Text("\(Int(h))h") } }
-                }
-            }
-            .chartXAxis {
-                AxisMarks(values: Array(Set(slices.map(\.week))).sorted()) { _ in
-                    AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
                 }
             }
             .frame(height: 180)
