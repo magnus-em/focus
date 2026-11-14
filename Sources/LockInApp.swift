@@ -567,10 +567,19 @@ struct PopoverContent: View {
     // Prevents onAppear re-triggering commitment (and microphone requests) after each session end
     @AppStorage("lastCommitmentPromptDay") private var lastCommitmentPromptDay: Double = 0
 
+    /// The content's own height, measured once per change. A fixed frame means
+    /// AppKit's per-frame min/max size checks don't lay out the whole popover
+    /// again (11/13 profile: the Break/Back animations got a few frames each).
+    @State private var contentHeight: CGFloat = 460
+
     var body: some View {
         popoverBody
             .frame(width: 360)
             .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                if abs(h - contentHeight) > 0.5 { contentHeight = h }
+            }
+            .frame(width: 360, height: contentHeight, alignment: .top)
             .background(PopoverWindowFitter())
             .popoverPanel(tint: washColor)
             .onAppear {

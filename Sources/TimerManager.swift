@@ -269,6 +269,8 @@ class TimerManager: ObservableObject {
         SyncLog.event("liveAction", ["what": what])
         run(fx, notify: false)
         run(local, notify: notify)
+        let ms = Int(Date().timeIntervalSince(now) * 1000)
+        if ms >= 30 { SyncLog.event("slowAction", ["what": what, "ms": ms]) }
     }
 
     private func catchUp(_ states: [LiveState]) {

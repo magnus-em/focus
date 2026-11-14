@@ -235,8 +235,9 @@ struct TimerView: View {
                         .font(.system(size: 46, weight: .semibold, design: .rounded).monospacedDigit())
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+                        // No per-second roll: each animation frame relaid out the whole
+                        // popover (~12 a second, 11/13 profile: 68% of the main thread).
                         .contentTransition(.numericText())
-                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: timer.timeString)
                     subline
                 }
                 streakLine
