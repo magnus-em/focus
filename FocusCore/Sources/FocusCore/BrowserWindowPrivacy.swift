@@ -15,17 +15,26 @@ public enum BrowserWindowPrivacy {
         guard isChrome, nativeWindowMatches, let report, report.at > windowChangedAt,
               capturedAt.timeIntervalSince(report.at) >= 0, capturedAt.timeIntervalSince(report.at) <= 45 else { return .unknown }
         if report.incognito || report.windowID == -1 { return .incognito }
-        guard report.windowID >= 0, !report.title.isEmpty else { return .unknown }
+        guard report.windowID >= 0 else { return .unknown }
+        return sameTab(windowTitle: capturedTitle, tabTitle: report.title) ? .regular : .unknown
+    }
+
+    /// Whether Chrome's window title shows this tab title. The window title
+    /// can end in " - Google Chrome" or a sound/playback mark, and Chrome
+    /// cuts a long one in the middle, more so with 🔊 after it ("(713) The
+    /// Most Successful Ide…Computer Science - YouTube 🔊"); both ends of a
+    /// cut title must match.
+    public static func sameTab(windowTitle: String, tabTitle: String) -> Bool {
+        guard !tabTitle.isEmpty else { return false }
         let suffix = " - Google Chrome"
-        var normalized = capturedTitle.hasSuffix(suffix) ? String(capturedTitle.dropLast(suffix.count)) : capturedTitle
-        for indicator in [" 🔊", " 🔇", " ▶️", " ⏸️", " ▶", " ⏸"] where normalized.hasSuffix(indicator) {
-            normalized = String(normalized.dropLast(indicator.count))
+        var w = windowTitle.trimmingCharacters(in: .whitespaces)
+        if w.hasSuffix(suffix) { w = String(w.dropLast(suffix.count)) }
+        for indicator in [" 🔊", " 🔇", " ▶️", " ⏸️", " ▶", " ⏸"] where w.hasSuffix(indicator) {
+            w = String(w.dropLast(indicator.count))
         }
-        if normalized == report.title { return .regular }
-        if let ellipsis = normalized.range(of: "…") {
-            let prefix = String(normalized[..<ellipsis.lowerBound]), suffix = String(normalized[ellipsis.upperBound...])
-            if !prefix.isEmpty, !suffix.isEmpty, report.title.hasPrefix(prefix), report.title.hasSuffix(suffix) { return .regular }
-        }
-        return .unknown
+        if w == tabTitle { return true }
+        guard let ellipsis = w.range(of: "…") else { return false }
+        let prefix = String(w[..<ellipsis.lowerBound]), end = String(w[ellipsis.upperBound...])
+        return !prefix.isEmpty && !end.isEmpty && tabTitle.hasPrefix(prefix) && tabTitle.hasSuffix(end)
     }
 }

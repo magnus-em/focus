@@ -39,4 +39,17 @@ final class BrowserWindowPrivacyTests: XCTestCase {
         XCTAssertEqual(BrowserWindowPrivacy.decide(report: nil, capturedTitle: "Article",
             windowChangedAt: at.addingTimeInterval(-10), capturedAt: at, nativeWindowMatches: true, isChrome: true), .unknown)
     }
+
+    /// 11/14: full-screen YouTube. The window log blanked the title and the
+    /// reading lost the video's address because only a plain prefix was checked.
+    func testCutTitleWithSoundMarkIsTheSameTab() {
+        let tab = "(713) The Most Successful Idea in Computer Science - YouTube"
+        XCTAssertTrue(BrowserWindowPrivacy.sameTab(windowTitle: "(713) The Most Successful Ide…Computer Science - YouTube 🔊", tabTitle: tab))
+        XCTAssertTrue(BrowserWindowPrivacy.sameTab(windowTitle: tab + " 🔊 - Google Chrome", tabTitle: tab))
+        XCTAssertTrue(BrowserWindowPrivacy.sameTab(windowTitle: tab, tabTitle: tab))
+        XCTAssertFalse(BrowserWindowPrivacy.sameTab(windowTitle: "(713) A PROGRAM is not a PROCESS. - YouTube 🔊", tabTitle: tab))
+        XCTAssertFalse(BrowserWindowPrivacy.sameTab(windowTitle: "(713) The Most Successful Ide…Biology - YouTube 🔊", tabTitle: tab))
+        XCTAssertFalse(BrowserWindowPrivacy.sameTab(windowTitle: "…Computer Science - YouTube", tabTitle: tab))
+        XCTAssertFalse(BrowserWindowPrivacy.sameTab(windowTitle: "", tabTitle: tab))
+    }
 }

@@ -507,7 +507,9 @@ final class ScreenWatcher: ObservableObject {
         // The Chrome extension knows the tab's address; the picture doesn't.
         var url: String?
         if Self.browsers.contains(bundle), let tab = browserTabAtCapture,
-           now.timeIntervalSince(tab.at) < 300, !tab.title.isEmpty, shot.title.hasPrefix(tab.title) || tab.title.hasPrefix(shot.title) {
+           now.timeIntervalSince(tab.at) < 300, !tab.title.isEmpty,
+           BrowserWindowPrivacy.sameTab(windowTitle: shot.title, tabTitle: tab.title)
+            || shot.title.hasPrefix(tab.title) || tab.title.hasPrefix(shot.title) {
             url = tab.url
         }
         keepPageText(text, window: title.isEmpty ? appName : "\(appName): \(title)", at: now)

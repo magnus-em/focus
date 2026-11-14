@@ -123,8 +123,11 @@ final class WindowTimelineRecorder {
         }
         let raw = Self.title(pid: app.processIdentifier).map(WindowTimeline.normalizedTitle) ?? ""
         if ScreenWatcher.browsers.contains(bundle) {
+            // 11/14: a full-screen YouTube video's title is cut in the middle with 🔊
+            // after it; a plain prefix check failed and the log said Chrome, no title.
             guard let tab = BrowserBridge.shared.activeTab, Date().timeIntervalSince(tab.at) < 300, !tab.title.isEmpty,
-                  !raw.isEmpty, raw.hasPrefix(tab.title) || tab.title.hasPrefix(raw) else {
+                  !raw.isEmpty, BrowserWindowPrivacy.sameTab(windowTitle: raw, tabTitle: tab.title)
+                    || raw.hasPrefix(tab.title) || tab.title.hasPrefix(raw) else {
                 return Front(app: name, bundle: bundle)
             }
             return Front(app: name, bundle: bundle, title: raw, url: tab.url)
