@@ -100,7 +100,7 @@ struct DayOpenCoverView: View {
                 )
                 .shadow(color: inkColor.opacity(0.35), radius: 12, y: 4)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .keyboardShortcut(.return, modifiers: [])
 
             if let onReviewYesterday {
@@ -116,7 +116,7 @@ struct DayOpenCoverView: View {
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(Capsule().fill(Color.secondary.opacity(0.1)))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .padding(.top, 12)
                 }
             }
@@ -214,7 +214,7 @@ struct DayClosedCoverView: View {
                 .padding(.vertical, 6)
                 .glassChip()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
 
             Spacer(minLength: 14)
         }

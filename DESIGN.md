@@ -69,7 +69,7 @@ with the timer bar so it's in reach wherever the change was made.
 - **Spacing**: 4 · 8 · 12 · 16 · 24 · 32. Popover padding 16, gaps 12–16.
 - **Corners** (concentric: inner = outer − padding): popover 26 · cards 18 ·
   wells/toolbars 16–20 · buttons 12–15 · chips full pill.
-- **Hit targets**: 44 pt for primary controls, 36+ elsewhere.
+- **Hit targets**: 44 pt for primary controls, 36+ elsewhere. The whole button takes the click, not just its glyph: `.buttonStyle(.plainHit)`, `.iconTarget()` for icon-only buttons.
 - **Contrast**: text 4.5:1 against what's actually behind it (check on glass
   over a busy wallpaper); secondary text no lighter than #5E606B on light,
   #A9AAB4 on dark.

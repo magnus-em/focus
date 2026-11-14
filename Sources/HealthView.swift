@@ -91,7 +91,7 @@ struct HealthView: View {
                             .background(RoundedRectangle(cornerRadius: 8).fill(accent.opacity(0.85)))
                             .foregroundStyle(.white)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
 
                 Button {
@@ -104,7 +104,7 @@ struct HealthView: View {
                         .frame(width: 36, height: 34)
                         .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.12)))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .help("Log at an earlier time")
                 .popover(isPresented: $showBackdate, arrowEdge: .bottom) { backdatePopover }
             }
@@ -118,7 +118,7 @@ struct HealthView: View {
                         store.delete(id: id)
                         withAnimation { justLogged = nil }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .foregroundStyle(accent)
                 }
                 .font(.system(size: 11, weight: .medium))
@@ -312,9 +312,10 @@ struct HealthView: View {
                     Button {
                         store.delete(id: e.id)
                     } label: {
-                        Image(systemName: "xmark").font(.system(size: 9))
+                        Image(systemName: "xmark").font(.system(size: 9)).iconTarget(28, height: 18)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
+                    .padding(.horizontal, -9).padding(.vertical, -4)
                     .foregroundStyle(.tertiary)
                     .help("Delete")
                 }

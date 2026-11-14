@@ -86,8 +86,10 @@ struct SettingsView: View {
                             Button { probeSync() } label: {
                                 Image(systemName: "arrow.triangle.2.circlepath")
                                     .font(.system(size: 11))
+                                    .iconTarget()
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
+                            .padding(-12)
                             .foregroundStyle(.secondary)
                         }
                         if !cloudDetail.isEmpty {
@@ -301,14 +303,14 @@ struct SettingsView: View {
                                 }
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(Color.accentColor)
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plainHit)
                             } else {
                                 Button("Re-install") {
                                     DispatchQueue.global(qos: .userInitiated).async { SiteBlocker.setUp() }
                                 }
                                 .font(.system(size: 11))
                                 .foregroundStyle(.tertiary)
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plainHit)
                             }
                         }
                         chromeExtensionRow
@@ -423,8 +425,10 @@ struct SettingsView: View {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 14))
                                     .foregroundStyle(.tertiary)
+                                    .iconTarget()
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
+                            .padding(-11)
                         }
                     } else {
                         Button {
@@ -438,7 +442,7 @@ struct SettingsView: View {
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                     }
                 }
 
@@ -475,8 +479,10 @@ struct SettingsView: View {
                                     Image(systemName: "xmark")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(.tertiary)
+                                        .iconTarget(28, height: 18)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plainHit)
+                                .padding(.horizontal, -9).padding(.vertical, -4)
                             }
                         }
 
@@ -489,7 +495,7 @@ struct SettingsView: View {
                                 Button("Add") { addSource() }
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundStyle(Color.accentColor)
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.plainHit)
                             }
                         }
                         .padding(.horizontal, 8)
@@ -527,7 +533,7 @@ struct SettingsView: View {
                                             .background(noneSelected ? Color.secondary.opacity(0.18) : Color.secondary.opacity(0.07))
                                             .foregroundStyle(noneSelected ? .primary : .secondary)
                                             .cornerRadius(6)
-                                            .buttonStyle(.plain)
+                                            .buttonStyle(.plainHit)
                                         ForEach(settings.tags, id: \.self) { tag in
                                             let sel = manualLabel == tag
                                             Button(tag) { manualLabel = sel ? "" : tag }
@@ -537,7 +543,7 @@ struct SettingsView: View {
                                                 .background(sel ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.07))
                                                 .foregroundStyle(sel ? Color.accentColor : Color.secondary)
                                                 .cornerRadius(6)
-                                                .buttonStyle(.plain)
+                                                .buttonStyle(.plainHit)
                                         }
                                     }
                                 }
@@ -577,7 +583,7 @@ struct SettingsView: View {
                                     .stroke(manualLogged ? Color.green.opacity(0.3) : Color.accentColor.opacity(0.2), lineWidth: 1)
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                         .animation(.easeInOut(duration: 0.2), value: manualLogged)
                     }
                 }
@@ -597,7 +603,7 @@ struct SettingsView: View {
                         .background(Color.secondary.opacity(0.06))
                         .cornerRadius(7)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
 
                     Button {
                         let n = FocusMigration.dedupeWorkSessions(container: modelContext.container)
@@ -621,7 +627,7 @@ struct SettingsView: View {
                         .background(Color.secondary.opacity(0.06))
                         .cornerRadius(7)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     Text("Removes only rows matching another row on time-to-the-second, type, label, AND duration. Use if Mac/iPad show a doubled session.")
                         .font(.system(size: 11))
                         .foregroundStyle(Color.secondaryText)
@@ -644,7 +650,7 @@ struct SettingsView: View {
                         .background(Color.secondary.opacity(0.06))
                         .cornerRadius(7)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
 
 
@@ -667,7 +673,7 @@ struct SettingsView: View {
                                     .background(.secondary.opacity(0.1))
                                     .cornerRadius(6)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
 
                             Button {
                                 store.clearAllData()
@@ -681,7 +687,7 @@ struct SettingsView: View {
                                     .background(Color.red.opacity(0.85))
                                     .cornerRadius(6)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
                         }
                     }
                     .padding(12)
@@ -694,7 +700,7 @@ struct SettingsView: View {
                             Text("Reset All Data")
                                 .font(.system(size: 12, weight: .medium))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                         .foregroundStyle(.red.opacity(0.8))
                         Spacer()
                     }
@@ -1090,7 +1096,7 @@ private struct CategoriesEditor: View {
                 if !newTag.isEmpty {
                     Button("Add", action: add)
                         .font(.system(size: 13, weight: .semibold))
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                 }
             }
             .frame(minHeight: 32)

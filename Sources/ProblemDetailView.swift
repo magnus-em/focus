@@ -47,7 +47,7 @@ struct ProblemDetailView: View {
                         }
                         .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
 
                     Spacer()
 
@@ -58,7 +58,7 @@ struct ProblemDetailView: View {
                             }
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
 
                             Button("Delete") {
                                 store.delete(id: problem.id)
@@ -66,7 +66,7 @@ struct ProblemDetailView: View {
                             }
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.red)
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
                         }
                     } else {
                         Button {
@@ -75,8 +75,10 @@ struct ProblemDetailView: View {
                             Image(systemName: "trash")
                                 .font(.system(size: 13))
                                 .foregroundStyle(.tertiary)
+                                .iconTarget()
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
+                        .padding(-11)
                     }
                 }
                 .padding(.horizontal, 18)
@@ -141,7 +143,7 @@ struct ProblemDetailView: View {
                                             RoundedRectangle(cornerRadius: 8)
                                                 .stroke(sel ? conf.color.opacity(0.5) : Color.clear, lineWidth: 1.5)
                                         )
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(.plainHit)
                                 }
                             }
                         }
@@ -165,7 +167,7 @@ struct ProblemDetailView: View {
                                             RoundedRectangle(cornerRadius: 7)
                                                 .stroke(sel ? Color(red: 0.27, green: 0.62, blue: 0.83).opacity(0.4) : Color.clear, lineWidth: 1)
                                         )
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(.plainHit)
                                 }
                             }
                         }
@@ -196,7 +198,7 @@ struct ProblemDetailView: View {
                                     .stroke(needsReview ? Color.orange.opacity(0.3) : Color.clear, lineWidth: 1)
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
 
                         Divider()
 
@@ -219,8 +221,10 @@ struct ProblemDetailView: View {
                                         Image(systemName: "arrow.up.right.square.fill")
                                             .font(.system(size: 16))
                                             .foregroundStyle(Color(red: 0.27, green: 0.62, blue: 0.83))
+                                            .iconTarget()
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.plainHit)
+                                    .padding(-10)
                                 }
                             }
                         }

@@ -107,7 +107,7 @@ struct OnboardingView: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 14).padding(.vertical, 8)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
             Spacer()
             Button {
@@ -127,7 +127,7 @@ struct OnboardingView: View {
                     .background(continueEnabled ? red : Color.secondary.opacity(0.3))
                     .cornerRadius(8)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .disabled(!continueEnabled)
         }
         .padding(.horizontal, 22)
@@ -209,7 +209,7 @@ struct OnboardingView: View {
                         .background(canAdd ? blue : Color.secondary.opacity(0.15))
                         .cornerRadius(8)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .disabled(!canAdd)
             }
 
@@ -230,8 +230,10 @@ struct OnboardingView: View {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 11))
                                     .foregroundStyle(blue.opacity(0.6))
+                                    .iconTarget(24)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
+                            .padding(-6)
                         }
                         .padding(.horizontal, 9).padding(.vertical, 5)
                         .background(blue.opacity(0.12))
@@ -260,7 +262,7 @@ struct OnboardingView: View {
                             .background(Color.secondary.opacity(0.07))
                             .cornerRadius(8)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                     }
                 }
             }
@@ -289,7 +291,7 @@ struct OnboardingView: View {
                         .overlay(RoundedRectangle(cornerRadius: 12)
                             .stroke(sel ? blue.opacity(0.5) : Color.clear, lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
             }
 

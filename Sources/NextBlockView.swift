@@ -71,7 +71,7 @@ struct NextBlockEditor: View {
                     .frame(maxWidth: .infinity, alignment: .leading).padding(12)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
             Text("Saved with your commitment. Your timer changes when you choose to start.")
                 .font(.system(size: 12)).foregroundStyle(Color.secondaryText)

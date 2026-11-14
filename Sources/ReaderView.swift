@@ -574,13 +574,13 @@ private struct ArticleDetail: View {
                 }
                 .help("Larger text")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary.opacity(0.6)))
 
             HStack(spacing: 14) {
                 ForEach(ReaderStyle.Theme.allCases, id: \.self) { t in
                     Button { theme = t.rawValue } label: { ThemeSwatch(theme: t, selected: theme == t.rawValue) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                         .help(t.rawValue.capitalized)
                 }
             }
@@ -598,7 +598,7 @@ private struct ArticleDetail: View {
                         .frame(minHeight: 30)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
             }
 

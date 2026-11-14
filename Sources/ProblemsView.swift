@@ -179,7 +179,7 @@ struct ProblemsView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
 
             if reviewExpanded {
                 Divider().padding(.horizontal, 10)
@@ -348,7 +348,7 @@ struct ProblemsView: View {
             .frame(minHeight: 26)
             .background(Capsule().fill(Color.accentColor))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     // MARK: - Recent list (problems + homework merged)
@@ -418,12 +418,12 @@ struct ProblemsView: View {
                                 Button { selectedProblem = p } label: {
                                     ProblemRow(problem: p)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plainHit)
                             case .homework(let h):
                                 Button { editingHomework = h } label: {
                                     HomeworkInlineRow(item: h)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plainHit)
                             }
                         }
                     }
@@ -534,7 +534,7 @@ private struct ReviewRow: View {
                 .padding(.leading, 12)
                 .padding(.vertical, 7)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
 
             Button {
                 withAnimation { store.clearReview(id: item.id) }
@@ -548,7 +548,7 @@ private struct ReviewRow: View {
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .padding(.trailing, 10)
         }
     }
@@ -736,8 +736,10 @@ struct LogProblemOverlay: View {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 16))
                             .foregroundStyle(.tertiary)
+                            .iconTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
+                    .padding(-10)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
@@ -769,7 +771,7 @@ struct LogProblemOverlay: View {
                                     .background(sel ? domain.color : domain.color.opacity(0.1))
                                     .cornerRadius(9)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plainHit)
                             }
                         }
 
@@ -842,7 +844,7 @@ struct LogProblemOverlay: View {
                                                     RoundedRectangle(cornerRadius: 8)
                                                         .stroke(sel ? Color(red: 0.27, green: 0.62, blue: 0.83).opacity(0.4) : Color.clear, lineWidth: 1)
                                                 )
-                                                .buttonStyle(.plain)
+                                                .buttonStyle(.plainHit)
                                         }
                                     }
                                 }
@@ -879,7 +881,7 @@ struct LogProblemOverlay: View {
                                         RoundedRectangle(cornerRadius: 6)
                                             .stroke(sel ? selectedDomain.color.opacity(0.4) : Color.clear, lineWidth: 1)
                                     )
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.plainHit)
                                 }
                             }
                         }
@@ -903,7 +905,7 @@ struct LogProblemOverlay: View {
                                             RoundedRectangle(cornerRadius: 8)
                                                 .stroke(sel ? diff.color.opacity(0.5) : Color.clear, lineWidth: 1.5)
                                         )
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(.plainHit)
                                 }
                             }
                         }
@@ -932,7 +934,7 @@ struct LogProblemOverlay: View {
                                             RoundedRectangle(cornerRadius: 7)
                                                 .stroke(sel ? Color(red: 0.27, green: 0.62, blue: 0.83).opacity(0.4) : Color.clear, lineWidth: 1)
                                         )
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(.plainHit)
                                 }
                             }
                         }
@@ -956,7 +958,7 @@ struct LogProblemOverlay: View {
                                             RoundedRectangle(cornerRadius: 8)
                                                 .stroke(sel ? conf.color.opacity(0.5) : Color.clear, lineWidth: 1.5)
                                         )
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(.plainHit)
                                 }
                             }
                         }
@@ -1004,7 +1006,7 @@ struct LogProblemOverlay: View {
                                     .stroke(usedAIHelp ? Color.orange.opacity(0.3) : Color.clear, lineWidth: 1)
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
 
                         // Log
                         Button {
@@ -1018,7 +1020,7 @@ struct LogProblemOverlay: View {
                                 .background(canLog ? selectedDomain.color : Color.secondary.opacity(0.1))
                                 .cornerRadius(10)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                         .disabled(!canLog)
                     }
                     .padding(18)
@@ -1051,7 +1053,7 @@ struct LogProblemOverlay: View {
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
 
             ProgressView(value: Double(done.count), total: Double(Grind75Catalog.all.count))
@@ -1078,7 +1080,7 @@ struct LogProblemOverlay: View {
                     .background(Color.secondary.opacity(0.07))
                     .cornerRadius(7)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
 
             if showGrindBrowser {
@@ -1153,7 +1155,7 @@ private struct Grind75Row: View {
             .padding(.vertical, 5)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 }
 
@@ -1185,7 +1187,7 @@ private struct LCSuggestionRow: View {
             .padding(.vertical, 5)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 }
 
@@ -1247,7 +1249,7 @@ private struct HomeworkRow: View {
             .padding(.vertical, 7)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     private func shortDateStr(_ d: Date) -> String {
@@ -1297,7 +1299,7 @@ private struct HomeworkFields: View {
                                     .background(sel ? Color.secondary.opacity(0.2) : Color.secondary.opacity(0.07))
                                     .foregroundStyle(sel ? .primary : .secondary)
                                     .cornerRadius(7)
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.plainHit)
                             }
                         }
                     }
@@ -1314,7 +1316,7 @@ private struct HomeworkFields: View {
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(sel ? d.color.opacity(0.15) : Color.secondary.opacity(0.07))
                             .foregroundStyle(sel ? d.color : .secondary)
-                            .cornerRadius(7).buttonStyle(.plain)
+                            .cornerRadius(7).buttonStyle(.plainHit)
                     }
                 }
             }
@@ -1329,7 +1331,7 @@ private struct HomeworkFields: View {
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(sel ? c.color.opacity(0.15) : Color.secondary.opacity(0.07))
                             .foregroundStyle(sel ? c.color : .secondary)
-                            .cornerRadius(7).buttonStyle(.plain)
+                            .cornerRadius(7).buttonStyle(.plainHit)
                     }
                 }
             }
@@ -1422,7 +1424,8 @@ struct HomeworkLogOverlay: View {
                     Button { isShowing = false } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 16)).foregroundStyle(.tertiary)
-                    }.buttonStyle(.plain)
+                            .iconTarget()
+                    }.buttonStyle(.plainHit).padding(-10)
                 }
                 .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
                 Divider()
@@ -1459,7 +1462,7 @@ struct HomeworkLogOverlay: View {
                                     : Color(red: 0.27, green: 0.62, blue: 0.83))
                         .cornerRadius(8)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
                 .padding(16)
             }
@@ -1494,7 +1497,8 @@ struct HomeworkEditOverlay: View {
                     Button { isShowing = false } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 16)).foregroundStyle(.tertiary)
-                    }.buttonStyle(.plain)
+                            .iconTarget()
+                    }.buttonStyle(.plainHit).padding(-10)
                 }
                 .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
                 Divider()
@@ -1519,7 +1523,7 @@ struct HomeworkEditOverlay: View {
                             .padding(.horizontal, 14).padding(.vertical, 9)
                             .background(Color.red.opacity(0.1))
                             .cornerRadius(8)
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(.plainHit)
                     Spacer()
                     Button {
                         var updated = item
@@ -1540,7 +1544,7 @@ struct HomeworkEditOverlay: View {
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
                             .background(Color(red: 0.27, green: 0.62, blue: 0.83))
                             .cornerRadius(8)
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(.plainHit)
                 }
                 .padding(16)
             }

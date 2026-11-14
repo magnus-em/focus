@@ -128,7 +128,7 @@ struct LeetCodeSolveDraftCard: View {
                 Label("Your solve today?",systemImage:"checkmark.circle").font(.system(size:15,weight:.semibold))
                 Spacer()
                 Button(action:dismiss) { Image(systemName:"xmark").frame(width:36,height:36) }
-                    .buttonStyle(.plain).help("Dismiss without logging").accessibilityLabel("Dismiss solve draft")
+                    .buttonStyle(.plainHit).help("Dismiss without logging").accessibilityLabel("Dismiss solve draft")
                     .keyboardShortcut(.cancelAction)
             }
             Text(title).font(.system(size:14,weight:.semibold)).lineLimit(2)
@@ -142,7 +142,7 @@ struct LeetCodeSolveDraftCard: View {
                     Button { confidence = choice } label: {
                         Text(choice.rawValue).frame(maxWidth:.infinity,minHeight:36)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .background(confidence == choice ? categoryColor("SWE").opacity(0.2) : Color.primary.opacity(0.06),in:Capsule())
                     .accessibilityAddTraits(confidence == choice ? .isSelected : [])
                 }

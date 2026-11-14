@@ -184,8 +184,10 @@ struct PracticeView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
+                    .iconTarget()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
+            .padding(-12)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 10).fill(b.color.opacity(0.18)))
@@ -239,7 +241,7 @@ struct PracticeView: View {
                     .background(RoundedRectangle(cornerRadius: 10).fill(Color.green.opacity(0.85)))
                     .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
 
                 // Topic mix preview — gives a sense of what's coming.
                 let mix = masteryStore.dueTopicMix()
@@ -314,7 +316,7 @@ struct PracticeView: View {
                     .fill(Color.accentColor.opacity(0.12)))
                 .foregroundStyle(Color.accentColor)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .help("Open the full Stat 110 catalog to pick something new to familiarize.")
         }
     }
@@ -403,7 +405,7 @@ struct PracticeView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .help("Delete all past attempts and homework rows. Sessions, day records, scratchpad, and problem entries are untouched.")
             .alert("Reset all practice history?", isPresented: $showResetConfirm) {
                 Button("Reset", role: .destructive) {
@@ -497,7 +499,7 @@ struct PracticeView: View {
 
         if let problem = resumeProblem {
             Button { store.start(problem: problem) } label: { rowContents }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .onHover { hovering in
                     if hovering { NSCursor.pointingHand.push() }
                     else { NSCursor.pop() }
@@ -699,10 +701,10 @@ struct PracticeView: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 22, height: 22)
+                        .iconTarget()
                         .foregroundStyle(store.canNavigatePrevious ? .primary : .tertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .disabled(!store.canNavigatePrevious)
                 .keyboardShortcut(.leftArrow, modifiers: [])
                 .help("Previous problem (←)")
@@ -728,10 +730,10 @@ struct PracticeView: View {
                 } label: {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 22, height: 22)
+                        .iconTarget()
                         .foregroundStyle(store.canNavigateNext ? .primary : .tertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .disabled(!store.canNavigateNext)
                 .keyboardShortcut(.rightArrow, modifiers: [])
                 .help("Next problem (→)")
@@ -1230,7 +1232,7 @@ struct PracticeView: View {
                     .fill((copiedProblem ? Color.green : Color.gray).opacity(0.10))
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
         .help("Copy the problem text — paste into an AI chat for hints")
     }
 
@@ -1245,7 +1247,7 @@ struct PracticeView: View {
                     .font(.system(size: 11, weight: .semibold))
                     .frame(width: 22, height: 22)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .keyboardShortcut("-", modifiers: .command)
             .help("Smaller text (⌘−)")
 
@@ -1256,7 +1258,7 @@ struct PracticeView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .frame(width: 22, height: 22)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .keyboardShortcut("=", modifiers: .command)
             .help("Larger text (⌘=)")
         }
@@ -1317,8 +1319,10 @@ struct PracticeView: View {
                         Image(systemName: "xmark")
                             .font(.system(size: 9 * fontScale, weight: .semibold))
                             .foregroundStyle(.tertiary)
+                            .iconTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
+                    .padding(-12)
                     .help("Hide the answer")
                 }
                 AutoSizingMathView(content: p.answer, fontSize: 14 * fontScale)
@@ -1534,7 +1538,7 @@ struct PracticeView: View {
                              label: store.isPaused ? "Resume" : "Pause",
                              tint: .secondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
 
                 Button {
                     toggleAnswer()
@@ -1543,7 +1547,7 @@ struct PracticeView: View {
                              label: isAnswerRevealed ? "Hide answer" : "Show answer",
                              tint: .secondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .help(answerButtonHelp)
                 .disabled(answerButtonDisabled)
 
@@ -1552,7 +1556,7 @@ struct PracticeView: View {
                 } label: {
                     toolChip(icon: "function", label: "Monte Carlo", tint: .secondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .help("Monte Carlo: simulate the problem in code (e.g. 100,000 random trials in Python) to estimate the answer numerically.")
             }
         }
@@ -1628,7 +1632,7 @@ struct PracticeView: View {
                         }
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                     }
                     Spacer()
                     Button(store.isInReviewSession ? "End review session" : "Discard") {
@@ -1636,7 +1640,7 @@ struct PracticeView: View {
                     }
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
             }
         }
@@ -1705,7 +1709,7 @@ struct PracticeView: View {
                     }
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .help("Wipe this problem's ladder record entirely. Past attempts in the audit log are kept.")
                 }
             }
@@ -1747,7 +1751,7 @@ struct PracticeView: View {
                 )
                 .foregroundStyle(tint)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
         .help(isCurrent ? "Currently at this stage" : "Pin to \(label)")
     }
 
@@ -1787,7 +1791,7 @@ struct PracticeView: View {
             )
             .foregroundStyle(.primary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     private var nudgeColor: Color {
@@ -2014,7 +2018,7 @@ private struct PracticeProblemPicker: View {
                                 .padding(.horizontal, 16).padding(.vertical, 10)
                                 .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
                             .onHover { hovering in
                                 if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
                             }
@@ -2053,7 +2057,7 @@ private struct PracticeProblemPicker: View {
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                             .contentShape(Rectangle())
                                         }
-                                        .buttonStyle(.plain)
+                                        .buttonStyle(.plainHit)
                                         .onHover { hovering in
                                             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
                                         }

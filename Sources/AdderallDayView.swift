@@ -29,7 +29,7 @@ struct AdderallDayView: View {
                 Button { moveDay(1) } label: { Image(systemName: "chevron.right").frame(width: 36, height: 36) }
                     .disabled(today).help("Next day").accessibilityLabel("Next day")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(today ? "Adderall today" : "Adderall that day").font(.system(size: 15, weight: .semibold))
@@ -104,7 +104,7 @@ struct AdderallDayView: View {
                         }
                         .help("Edit dose or time").accessibilityLabel("Edit \(dose.kind.displayName) taken at \(time(dose.date))")
                     }
-                    .font(.system(size: 13)).buttonStyle(.plain)
+                    .font(.system(size: 13)).buttonStyle(.plainHit)
                 }
             }
             .padding(16).contentCard()
@@ -128,7 +128,7 @@ struct AdderallDayView: View {
                             .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                             .contentShape(Rectangle())
                         }
-                        .font(.system(size: 13)).buttonStyle(.plain)
+                        .font(.system(size: 13)).buttonStyle(.plainHit)
                     }
                 }
             }

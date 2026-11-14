@@ -320,7 +320,7 @@ struct TimerView: View {
             }
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
         .menuIndicator(.hidden)
         .fixedSize()
         .help("Switch category (⌃⌥⌘J)")
@@ -365,7 +365,7 @@ struct TimerView: View {
                     Label("Log morning dose", systemImage: "pills")
                 }
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
         }
@@ -410,7 +410,7 @@ struct TimerView: View {
                         .foregroundStyle(selected ? accent : .primary)
                         .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
         }
     }
@@ -505,7 +505,7 @@ struct TimerView: View {
             Spacer(minLength: 4)
             if let action {
                 Button(action, action: perform)
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .font(.system(size: 13, weight: .semibold))
                     .padding(.horizontal, 12)
                     .frame(height: 28)
@@ -713,7 +713,7 @@ struct TimerView: View {
                 Button("Open day") {
                     if let url = URL(string: "focus://dashboard") { NSWorkspace.shared.open(url) }
                 }
-                .buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                .buttonStyle(.plainHit).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
             }
             .padding(.top, 2)
         }
@@ -749,7 +749,7 @@ struct TimerView: View {
             Label(detent == .large ? "Hide details" : "Details", systemImage: detent == .large ? "chevron.up" : "chevron.down")
                 .font(.system(size: 12, weight: .medium)).frame(minHeight: 36)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
         .foregroundStyle(Color.secondaryText)
         .help("Show or hide today's timeline and screen activity")
     }
@@ -1139,7 +1139,7 @@ struct WhereWasIRow: View {
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05)))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
         .help(line.text + (line.url == nil ? "" : "\nOpens the page you were on"))
     }
 }
@@ -1167,7 +1167,7 @@ struct LeetCodeSessionRow: View {
             }
             Spacer(minLength: 4)
             Button(title == nil ? "Choose" : "Done", action: title == nil ? choose : done)
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .font(.system(size: 12, weight: .semibold))
                 .padding(.horizontal, 12)
                 .frame(height: 30)
@@ -1229,7 +1229,7 @@ struct LeetCodeDailyGoalRow: View {
             HStack(spacing: 12) {
                 if activeTitle != nil {
                     Button("Done with problem", action: done)
-                        .font(.system(size: 12, weight: .semibold)).buttonStyle(.plain)
+                        .font(.system(size: 12, weight: .semibold)).buttonStyle(.plainHit)
                         .frame(minHeight: 44)
                 } else if tracking {
                     Label("Tracking LeetCode", systemImage: "timer")
@@ -1237,12 +1237,12 @@ struct LeetCodeDailyGoalRow: View {
                 } else {
                     Button("Start LeetCode", action: start)
                         .font(.system(size: 12, weight: .semibold))
-                        .buttonStyle(.plain).foregroundStyle(.primary)
+                        .buttonStyle(.plainHit).foregroundStyle(.primary)
                         .frame(minHeight: 36)
                 }
                 Spacer(minLength: 0)
                 Button(tracking && activeTitle == nil ? "Choose problem" : "Choose / log", action: open)
-                    .font(.system(size: 12, weight: .medium)).buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium)).buttonStyle(.plainHit)
                     .frame(minHeight: 36)
                     .help("Choose a problem or log a solve in LeetCode")
             }

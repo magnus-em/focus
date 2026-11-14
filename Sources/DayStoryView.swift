@@ -321,7 +321,7 @@ struct DayStoryPage: View {
                     Button(showAll ? "Show fewer" : "Show \(b.moments.count - 4) more") {
                         if showAll { expanded.remove(b.start) } else { expanded.insert(b.start) }
                     }
-                    .buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.accentColor)
+                    .buttonStyle(.plainHit).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.accentColor)
                 }
                 if !b.interruptions.isEmpty {
                     Text(interruptionLine(b.interruptions))
@@ -419,7 +419,7 @@ struct DayStoryPage: View {
                 .padding(.vertical, 2)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     private func dismiss(_ f: DayStory.Fix) {
@@ -461,7 +461,7 @@ struct DayStoryPage: View {
                         .font(.system(size: 13, weight: .medium)).padding(.horizontal, 14).frame(height: 36)
                         .background(Capsule().fill(Color.primary.opacity(0.07)))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .help("Talk this day through with Focus")
                 if let spent = model.spent {
                     Text("AI notes cost \(spent < 1 ? "\(Int((spent * 100).rounded()))¢" : String(format: "$%.2f", spent)) today")

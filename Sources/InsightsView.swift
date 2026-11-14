@@ -534,9 +534,12 @@ private struct GoalEditorCard: View {
             HStack {
                 Text("\(rank).").font(.system(size: 15, weight: .semibold)).monospacedDigit()
                 TextField("Goal", text: $goal.title).textFieldStyle(.roundedBorder).font(.system(size: 14, weight: .semibold))
-                Button { up?() } label: { Image(systemName: "chevron.up") }.disabled(up == nil).buttonStyle(.borderless)
-                Button { down?() } label: { Image(systemName: "chevron.down") }.disabled(down == nil).buttonStyle(.borderless)
-                Button(role: .destructive) { remove() } label: { Image(systemName: "trash") }.buttonStyle(.borderless)
+                Button { up?() } label: { Image(systemName: "chevron.up").foregroundStyle(Color.accentColor).iconTarget(28) }
+                    .buttonStyle(.plainHit).disabled(up == nil).help("Move up").accessibilityLabel("Move up")
+                Button { down?() } label: { Image(systemName: "chevron.down").foregroundStyle(Color.accentColor).iconTarget(28) }
+                    .buttonStyle(.plainHit).disabled(down == nil).help("Move down").accessibilityLabel("Move down")
+                Button(role: .destructive) { remove() } label: { Image(systemName: "trash").foregroundStyle(.red).iconTarget(28) }
+                    .buttonStyle(.plainHit).help("Remove goal").accessibilityLabel("Remove goal")
             }
             TextField("Why, or what done looks like", text: $goal.why).textFieldStyle(.roundedBorder)
             Toggle("I put this off (measure it first and nudge me)", isOn: $goal.avoided)
@@ -578,7 +581,7 @@ private struct GoalEditorCard: View {
                         Button(o) {
                             if on { selected.wrappedValue.removeAll { $0 == o } } else { selected.wrappedValue.append(o) }
                         }
-                        .buttonStyle(.plain).font(.system(size: 12, weight: on ? .semibold : .regular))
+                        .buttonStyle(.plainHit).font(.system(size: 12, weight: on ? .semibold : .regular))
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(Capsule().fill(on ? categoryColor(o).opacity(0.22) : Color.gray.opacity(0.12)))
                     }

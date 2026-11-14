@@ -455,10 +455,10 @@ struct AwayPromptView: View {
                 Spacer()
                 Button { model.dismissCard() } label: {
                     Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Color.secondaryText)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Circle())
+                        .iconTarget()
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
+                .padding(-6)
                 .keyboardShortcut(.cancelAction)
                 .help((model.keep.map { "\($0) — change nothing" } ?? "Dismiss") + " (⌃⌥⌘\\)")
                 .accessibilityLabel("Dismiss")
@@ -492,7 +492,7 @@ struct AwayPromptView: View {
                     .foregroundStyle(Color.secondaryText)
                     .padding(.horizontal, 12).frame(height: 30)
                     .background(Capsule().fill(Color.primary.opacity(0.06)))
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
             }
 
@@ -500,7 +500,7 @@ struct AwayPromptView: View {
                 Button(end) { model.onEnd?() }
                     .font(.system(size: 12))
                     .foregroundStyle(Color.secondaryText)
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
             }
 
             if let accept = model.acceptTitle {
@@ -535,7 +535,7 @@ struct AwayPromptView: View {
         }
         .font(.system(size: 13, weight: primary ? .semibold : .medium))
         .foregroundStyle(Color.primary)
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
         .keyboardShortcut(isDefault ? .defaultAction : nil)
     }
 }

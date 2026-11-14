@@ -265,7 +265,7 @@ private struct GapRow: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 9).padding(.vertical, 4)
                         .background(Capsule().stroke(Color.secondary.opacity(0.3), lineWidth: 0.5))
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                 }
             }
         }
@@ -285,7 +285,7 @@ private struct GapRow: View {
         .padding(.horizontal, 9).padding(.vertical, 4)
         .background(Capsule().fill(color.opacity(primary ? 0.28 : 0.15)))
         .foregroundStyle(color)
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     private func clock(_ d: Date) -> String {
@@ -614,8 +614,10 @@ struct YesterdayRecallView: View {
                 .font(.system(size: 26))
                 .foregroundStyle(dictation.isListening ? Color.red : Color.orange)
                 .symbolEffect(.pulse, isActive: dictation.isListening)
+                .iconTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
+        .padding(-5)
         .help(dictation.isListening ? "Stop dictating" : "Talk it through")
     }
 
@@ -1118,7 +1120,7 @@ struct EveningReviewView: View {
                 Button { withAnimation(.easeInOut(duration: 0.3)) { page = max(0, n - 1) } } label: {
                     Image(systemName: "chevron.left").frame(width: 36, height: 36).contentShape(Circle())
                 }
-                .buttonStyle(.plain).disabled(n == 0)
+                .buttonStyle(.plainHit).disabled(n == 0)
                 .accessibilityLabel("Previous page")
                 HStack(spacing: 6) {
                     ForEach(0..<pages.count, id: \.self) { k in
@@ -1128,7 +1130,7 @@ struct EveningReviewView: View {
                 Button { withAnimation(.easeInOut(duration: 0.3)) { page = min(pages.count - 1, n + 1) } } label: {
                     Image(systemName: "chevron.right").frame(width: 36, height: 36).contentShape(Circle())
                 }
-                .buttonStyle(.plain).disabled(n == pages.count - 1)
+                .buttonStyle(.plainHit).disabled(n == pages.count - 1)
                 .accessibilityLabel("Next page")
             }
             .font(.system(size: 15, weight: .semibold))
@@ -1210,7 +1212,7 @@ struct EveningReviewView: View {
             Spacer()
             if days.isDayStarted {
                 Button("Save") { save() }
-                    .buttonStyle(.plain).font(.system(size: 15)).foregroundStyle(.secondary)
+                    .buttonStyle(.plainHit).font(.system(size: 15)).foregroundStyle(.secondary)
             }
             Button {
                 save()
@@ -1225,7 +1227,7 @@ struct EveningReviewView: View {
                     .background(Capsule().fill(Color.indigo))
                     .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .keyboardShortcut(.defaultAction)
         }
     }
@@ -1319,7 +1321,7 @@ struct EveningReviewView: View {
                         Button("Keep all \(unsaved.count) as recall cards") {
                             for q in unsaved { keep(q) }
                         }
-                        .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.indigo)
+                        .buttonStyle(.plainHit).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.indigo)
                     }
                 }
             }
@@ -1338,13 +1340,13 @@ struct EveningReviewView: View {
                 Button(revealed.contains(q.id) ? "Hide answer" : "Show answer") {
                     if revealed.contains(q.id) { revealed.remove(q.id) } else { revealed.insert(q.id) }
                 }
-                .buttonStyle(.plain).font(.system(size: 13, weight: .medium)).foregroundStyle(Color.secondaryText)
+                .buttonStyle(.plainHit).font(.system(size: 13, weight: .medium)).foregroundStyle(Color.secondaryText)
                 Spacer()
                 if keptCards.contains(q.id) {
                     Label("Kept", systemImage: "checkmark").font(.system(size: 13)).foregroundStyle(Color.good)
                 } else {
                     Button("Keep as card") { keep(q) }
-                        .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.indigo)
+                        .buttonStyle(.plainHit).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.indigo)
                 }
             }
             if revealed.contains(q.id) {
@@ -1459,7 +1461,7 @@ struct EveningReviewView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(on ? color : .secondary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     private func field(_ prompt: String, text: Binding<String>) -> some View {

@@ -231,7 +231,7 @@ struct ZetamacView: View {
                     .frame(width: 140, height: 36)
                     .background(RoundedRectangle(cornerRadius: 8).fill(blue))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .keyboardShortcut(.defaultAction)
             Spacer(minLength: 0)
         }
@@ -276,7 +276,7 @@ struct ZetamacView: View {
             Spacer(minLength: 0)
 
             Button("Stop") { finishGame() }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
         }
@@ -322,7 +322,7 @@ struct ZetamacView: View {
                         .frame(width: 130, height: 32)
                         .background(RoundedRectangle(cornerRadius: 7).fill(blue))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .keyboardShortcut(.defaultAction)
 
                 Button {
@@ -334,7 +334,7 @@ struct ZetamacView: View {
                         .frame(width: 90, height: 32)
                         .background(RoundedRectangle(cornerRadius: 7).fill(Color.gray.opacity(0.1)))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
             Spacer(minLength: 0)
         }

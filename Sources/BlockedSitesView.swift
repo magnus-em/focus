@@ -21,8 +21,10 @@ struct BlockedSitesView: View {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 15))
                         .foregroundStyle(.secondary)
+                        .iconTarget()
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
+                .padding(-10)
                 .disabled(newDomain.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
@@ -32,7 +34,7 @@ struct BlockedSitesView: View {
                     settings.blockedSites += missingPreset
                 }
                 .font(.system(size: 11))
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .foregroundStyle(.secondary)
             }
 
@@ -51,8 +53,10 @@ struct BlockedSitesView: View {
                                 Image(systemName: "xmark")
                                     .font(.system(size: 8, weight: .bold))
                                     .foregroundStyle(.secondary.opacity(0.6))
+                                    .iconTarget(28, height: 18)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
+                            .padding(.horizontal, -10).padding(.vertical, -5)
                         }
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)

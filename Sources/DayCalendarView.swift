@@ -264,7 +264,7 @@ struct DayCalendarPage: View {
                             }
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                         .help("Step through them: Return takes the suggestion, Delete keeps your log, → skips")
                         Text("Where your log and your screen or calendar disagree")
                             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
@@ -330,7 +330,7 @@ struct DayCalendarPage: View {
                             .fill(selected ? Color.primary.opacity(0.09) : .clear))
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .help("\(d.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())): \(durationText(minutes: d.minutes)) of focus")
                     .accessibilityLabel("\(d.date.formatted(.dateTime.weekday(.wide).month(.wide).day())), \(durationText(minutes: d.minutes)) of focus")
                 }
@@ -360,7 +360,7 @@ struct DayCalendarPage: View {
                     reasonRow(r)
                 } else {
                     Button { show(r) } label: { reasonRow(r) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHit)
                         .help("Mark it on the calendar")
                         .accessibilityHint("Marks it on the calendar")
                 }
@@ -456,7 +456,7 @@ struct DayCalendarPage: View {
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.05)))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     private var columnHeaders: some View {
@@ -1059,7 +1059,7 @@ struct DayCalendarPage: View {
                 } label: {
                     Text("Remove from log").font(.system(size: 12, weight: .medium))
                 }
-                .buttonStyle(.plain).foregroundStyle(.red)
+                .buttonStyle(.plainHit).foregroundStyle(.red)
             }
         }
     }
@@ -1105,11 +1105,11 @@ struct DayCalendarPage: View {
                         edit([.clear(start: a, end: b)], "Cleared \(clock(a))–\(clock(b)).")
                         selection = nil
                     }
-                    .buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
+                    .buttonStyle(.plainHit).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.secondaryText)
                 }
                 Spacer()
                 Button("Cancel") { selection = nil }.keyboardShortcut(.cancelAction)
-                    .buttonStyle(.plain).font(.system(size: 12, weight: .medium))
+                    .buttonStyle(.plainHit).font(.system(size: 12, weight: .medium))
             }
         }
     }
@@ -1127,7 +1127,7 @@ struct DayCalendarPage: View {
                     .foregroundStyle(Color.secondaryText)
                 Spacer()
                 Button("Done") { closePopover() }.keyboardShortcut(.cancelAction)
-                    .buttonStyle(.plain).font(.system(size: 12, weight: .medium))
+                    .buttonStyle(.plainHit).font(.system(size: 12, weight: .medium))
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(clock(f.start)) – \(f.running ? "now" : clock(f.end))").font(.system(size: 15, weight: .semibold))
@@ -1157,8 +1157,8 @@ struct DayCalendarPage: View {
                 pill(f.tracked.map { "Keep \($0)" } ?? "Leave it", prominent: false) { keep(f); advance() }
                     .keyboardShortcut(.delete, modifiers: [])
                 Spacer(minLength: 0)
-                Button { advance() } label: { Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)) }
-                    .buttonStyle(.plain).keyboardShortcut(.rightArrow, modifiers: [])
+                Button { advance() } label: { Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).iconTarget() }
+                    .buttonStyle(.plainHit).padding(-4).keyboardShortcut(.rightArrow, modifiers: [])
                     .help("Next").accessibilityLabel("Next")
             }
             Text(shortcutLine(f)).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
@@ -1211,7 +1211,7 @@ struct DayCalendarPage: View {
                     .background(Capsule().fill(Color.primary.opacity(0.07)))
                     .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
         }
     }
@@ -1225,7 +1225,7 @@ struct DayCalendarPage: View {
                 .background(Capsule().fill(prominent ? Color.primary : Color.primary.opacity(0.08)))
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     // MARK: Review
@@ -1319,7 +1319,7 @@ struct DayCalendarPage: View {
                     .font(.system(size: 13, weight: .medium)).padding(.horizontal, 14).frame(height: 36)
                     .background(Capsule().fill(Color.primary.opacity(0.07)))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .help("Talk this day through with Focus")
         }
     }

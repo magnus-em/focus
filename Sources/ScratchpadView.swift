@@ -23,8 +23,10 @@ struct ScratchpadView: View {
                         Image(systemName: "return")
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(accent)
+                            .iconTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
+                    .padding(-11)
                     .transition(.opacity)
                 }
             }
@@ -96,7 +98,7 @@ struct ScratchpadView: View {
                     }
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
 
                 if store.items.count > 0 {
@@ -105,7 +107,7 @@ struct ScratchpadView: View {
                     }
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.tertiary)
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
             }
             .padding(.horizontal, 14)
@@ -140,8 +142,10 @@ private struct ScratchRow: View {
                     .foregroundStyle(item.isChecked
                         ? Color(red: 0.22, green: 0.72, blue: 0.45)
                         : Color.secondary.opacity(0.4))
+                    .iconTarget(32, height: 28)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
+            .padding(.horizontal, -8).padding(.vertical, -6)
 
             Text(item.text)
                 .font(.system(size: 12))
@@ -156,8 +160,10 @@ private struct ScratchRow: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.quaternary)
+                    .iconTarget(28, height: 28)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
+            .padding(.horizontal, -9).padding(.vertical, -9)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)

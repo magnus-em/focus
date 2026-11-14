@@ -269,7 +269,7 @@ struct DashboardView: View {
                     commitmentBadge(label: isSelectedDayToday ? "Check in" : "Review",
                                     icon: "questionmark.circle.fill", color: Color.orange)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
         }
     }
@@ -512,7 +512,7 @@ struct DashboardView: View {
                                 }
                             }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .foregroundStyle(item == destination ? Color.primary : Color.secondaryText)
                     .help(item.help)
                     .accessibilityAddTraits(item == destination ? .isSelected : [])
@@ -542,7 +542,7 @@ struct DashboardView: View {
                             .font(.system(size: 13, weight: .medium)).padding(.horizontal, 10).frame(height: 36)
                             .foregroundStyle(showTrackedLog ? Color.primary : .secondaryText)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .help("Show or hide your tracked log")
                     .accessibilityLabel("Show or hide your tracked log")
                 }
@@ -636,7 +636,7 @@ struct DashboardView: View {
                 .padding(.horizontal, 10).frame(height: 36)
                 .background { if layout == value { Capsule().fill(Color.primary.opacity(0.1)) } }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
         .foregroundStyle(layout == value ? Color.primary : Color.secondaryText)
         .help(help)
         .accessibilityAddTraits(layout == value ? .isSelected : [])
@@ -647,9 +647,11 @@ struct DashboardView: View {
         return Button(action: action) {
             Image(systemName: systemImage)
                 .font(.system(size: 13, weight: .semibold))
-                .frame(width: 36, height: 36)
+                .iconTarget(44)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
+        // Reaches over the capsule's 4 pt rim, so the whole capsule clicks.
+        .padding(-4)
         .disabled(disabled)
         .help(label)
         .accessibilityLabel(label)
@@ -744,11 +746,11 @@ struct DashboardView: View {
                     lastChange = ok ? nil : DayChange(text: "Couldn't undo: the log changed since.", undos: [])
                     refreshStory()
                 }
-                .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.accentColor)
+                .buttonStyle(.plainHit).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.accentColor)
                 .keyboardShortcut("z", modifiers: .command)
             }
-            Button { lastChange = nil } label: { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)) }
-                .buttonStyle(.plain).foregroundStyle(Color.secondaryText).help("Dismiss").accessibilityLabel("Dismiss")
+            Button { lastChange = nil } label: { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).iconTarget() }
+                .buttonStyle(.plainHit).foregroundStyle(Color.secondaryText).help("Dismiss").accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 18).frame(minHeight: 44)
         .modifier(FloatingGlass())
@@ -786,7 +788,7 @@ struct DashboardView: View {
                 .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background.secondary))
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .accessibilityHint(showTimeline ? "Hides the screen details" : "Shows the screen details")
             if showTimeline {
                 VStack(alignment: .leading, spacing: 24) {
@@ -1820,7 +1822,7 @@ struct DashboardView: View {
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(.orange)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
         }
         .contentShape(Rectangle())
@@ -2236,8 +2238,10 @@ private struct EventEditSheet: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 16))
                         .foregroundStyle(.tertiary)
+                        .iconTarget()
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
+                .padding(-10)
             }
             .padding(16)
 
@@ -2290,7 +2294,7 @@ private struct EventEditSheet: View {
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(noneSelected ? Color.secondary.opacity(0.18) : Color.secondary.opacity(0.07))
                         .foregroundStyle(noneSelected ? .primary : .secondary)
-                        .cornerRadius(6).buttonStyle(.plain)
+                        .cornerRadius(6).buttonStyle(.plainHit)
                     ForEach(settings.tags, id: \.self) { tag in
                         let sel = selectedLabel == tag
                         Button(tag) { selectedLabel = sel ? "" : tag }
@@ -2298,7 +2302,7 @@ private struct EventEditSheet: View {
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(sel ? red.opacity(0.15) : Color.secondary.opacity(0.07))
                             .foregroundStyle(sel ? red : .secondary)
-                            .cornerRadius(6).buttonStyle(.plain)
+                            .cornerRadius(6).buttonStyle(.plainHit)
                     }
                 }
             }
@@ -2334,7 +2338,7 @@ private struct EventEditSheet: View {
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(sel ? blue.opacity(0.15) : Color.secondary.opacity(0.07))
                     .foregroundStyle(sel ? blue : .secondary)
-                    .cornerRadius(6).buttonStyle(.plain)
+                    .cornerRadius(6).buttonStyle(.plainHit)
                 }
             }
         }
@@ -2364,7 +2368,7 @@ private struct EventEditSheet: View {
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(sel ? conf.color.opacity(0.15) : Color.secondary.opacity(0.07))
                         .foregroundStyle(sel ? conf.color : .secondary)
-                        .cornerRadius(6).buttonStyle(.plain)
+                        .cornerRadius(6).buttonStyle(.plainHit)
                 }
             }
         }
@@ -2379,7 +2383,7 @@ private struct EventEditSheet: View {
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(sel ? diff.color.opacity(0.15) : Color.secondary.opacity(0.07))
                         .foregroundStyle(sel ? diff.color : .secondary)
-                        .cornerRadius(6).buttonStyle(.plain)
+                        .cornerRadius(6).buttonStyle(.plainHit)
                 }
             }
         }
@@ -2405,7 +2409,7 @@ private struct EventEditSheet: View {
                 .background(red)
                 .cornerRadius(8)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     private func sheetLabel(_ t: String) -> some View {
@@ -2762,7 +2766,7 @@ private struct GapFillPopover: View {
             .padding(.horizontal, 9).padding(.vertical, 4)
             .background(Capsule().fill(color.opacity(0.18)))
             .foregroundStyle(color)
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .disabled(end.timeIntervalSince(start) < 60)
     }
 }
@@ -3155,7 +3159,7 @@ struct InsightsSection: View {
         } else if Coach.client != nil || RecallCoach.isConfigured {
             HStack {
                 Button(writing ? "Writing…" : "Write this week's letter") { Task { await write() } }
-                    .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.indigo)
+                    .buttonStyle(.plainHit).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.indigo)
                     .disabled(writing)
                 if !error.isEmpty { Text(error).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1) }
             }

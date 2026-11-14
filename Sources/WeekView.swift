@@ -158,7 +158,7 @@ struct WhereTimeWentSection: View {
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
                 .help("Show \(d.formatted(.dateTime.weekday(.wide).month().day())) in the day timeline")
             }
             HStack(spacing: 6) {

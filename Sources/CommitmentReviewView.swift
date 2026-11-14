@@ -66,7 +66,7 @@ struct CommitmentReviewView: View {
                         .background(green)
                         .cornerRadius(9)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
 
                     Button { answer(false) } label: {
                         HStack(spacing: 5) {
@@ -80,7 +80,7 @@ struct CommitmentReviewView: View {
                         .background(red)
                         .cornerRadius(9)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 10)

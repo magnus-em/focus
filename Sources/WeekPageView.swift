@@ -297,7 +297,7 @@ struct WeekPage: View {
                         Text(summary(fixes)).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Button("Open") { onSelectDay(day) }
-                            .buttonStyle(.plain).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.accentColor)
+                            .buttonStyle(.plainHit).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.accentColor)
                             .frame(minHeight: 36)
                     }
                 }

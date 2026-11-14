@@ -375,7 +375,7 @@ private struct ReviewSessionView: View {
                         .background(RoundedRectangle(cornerRadius: 8).fill(gradeColor(g).opacity(aiGrade?.score == g ? 0.22 : 0.1)))
                         .foregroundStyle(gradeColor(g))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .disabled(!allowed)
                     .opacity(allowed ? 1 : 0.35)
                     .keyboardShortcut(KeyEquivalent(Character("\(g.rawValue + 1)")), modifiers: [])

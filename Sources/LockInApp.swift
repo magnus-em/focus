@@ -789,7 +789,7 @@ struct PopoverContent: View {
                     Button("Quit Focus") {
                         NSApplication.shared.terminate(nil)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                 }
@@ -870,7 +870,7 @@ struct PageBar: View {
         HStack(spacing: 0) {
             ForEach(pages, id: \.tag) { p in
                 Button { selected = p.tag } label: { item(p.title, p.icon, on: selected == p.tag) }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .help(p.title)
             }
             Menu {
@@ -884,7 +884,7 @@ struct PageBar: View {
                 item("More", "ellipsis.circle", on: selected == 4)
             }
             .menuStyle(.button)
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             .menuIndicator(.hidden)
             .help("Settings, LeetCode, Practice, Recall, Math Sprint, Dashboard, End Day")
         }

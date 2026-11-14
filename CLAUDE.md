@@ -241,6 +241,7 @@ Read `DESIGN.md` first: principles, type/spacing/corner scale, color roles and t
 - **No comments in code unless WHY is non-obvious.** The user reads the diff; obvious comments are noise.
 - **No "what changed" recap summaries** at end of responses — keep responses tight.
 - **Edit existing files over creating new ones.**
+- **Buttons: `.buttonStyle(.plainHit)`, never `.plain`** (`Sources/GlassEffects.swift`). A plain button only takes clicks on drawn pixels, so the Dashboard's 36 pt day arrows answered only on the chevron and unselected tabs only on their text (11/13). Icon-only buttons get `.iconTarget()` (36 pt, DESIGN.md); to keep a tight row, pad the Button negatively (clicks still land across the square). An overlay reaching past the label doesn't widen the target; negative padding outside the Button does (checked with synthetic clicks).
 - Install with `./deploy.sh` (never bare `swift build`).
 
 ## Roadmap status

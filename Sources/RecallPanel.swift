@@ -184,8 +184,10 @@ private struct RecallPanelView: View {
             Spacer()
             Button { model.onClose?() } label: {
                 Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary)
+                    .iconTarget()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
+            .padding(-13)
             .help("Skip")
         }
     }

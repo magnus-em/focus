@@ -93,7 +93,7 @@ struct CommitmentView: View {
                             .background(text.trimmingCharacters(in: .whitespaces).isEmpty ? Color.secondary.opacity(0.1) : red)
                             .cornerRadius(9)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
 
                     Button {
@@ -106,7 +106,7 @@ struct CommitmentView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)

@@ -89,7 +89,7 @@ private struct CompletionToast: View {
                         .foregroundStyle(red)
                         .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
 
                 Spacer()
 
@@ -101,7 +101,7 @@ private struct CompletionToast: View {
                         .foregroundStyle(blue)
                         .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
         }
         .padding(.horizontal, 16)

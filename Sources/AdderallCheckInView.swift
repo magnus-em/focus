@@ -157,7 +157,7 @@ struct AdderallCheckInForm: View {
                                         .background(Capsule().fill(on ? checkInAccent.opacity(0.85) : Color.secondary.opacity(0.12)))
                                         .foregroundStyle(on ? Color.white : Color.primary)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plainHit)
                                 .accessibilityAddTraits(on ? .isSelected : [])
                             }
                         }
@@ -193,7 +193,7 @@ struct AdderallCheckInForm: View {
             Button { move(1) } label: { Image(systemName: "chevron.right").frame(width: 36, height: 36) }
                 .disabled(isToday).accessibilityLabel("Next day").help("Next day")
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     private func move(_ by: Int) {
@@ -471,7 +471,7 @@ struct AdderallCheckInCard: View {
             HStack {
                 Text("Daily check-in").font(.system(size: 15, weight: .semibold))
                 Spacer()
-                Button("Trends") { open(today, true) }.buttonStyle(.plain).foregroundStyle(checkInAccent)
+                Button("Trends") { open(today, true) }.buttonStyle(.plainHit).foregroundStyle(checkInAccent)
             }
             if let done {
                 Text("Done for today · focus \(done.focus), mood \(done.mood)\(done.worthIt.map { ", worth it \($0)" } ?? "")")
@@ -486,7 +486,7 @@ struct AdderallCheckInCard: View {
             }
             if missedYesterday {
                 Button("Missed yesterday? Check in for it") { open(yesterday, false) }
-                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(checkInAccent)
+                    .buttonStyle(.plainHit).font(.system(size: 12)).foregroundStyle(checkInAccent)
             }
         }
         .padding(16).contentCard()

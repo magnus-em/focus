@@ -87,7 +87,7 @@ struct ScreenActivitySection: View {
             if earlier.count > 15 {
                 Button(showAll ? "Show fewer" : "Show all \(earlier.count)") { showAll.toggle() }
                     .font(.system(size: 10.5))
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .foregroundStyle(.secondary)
             }
             Text("Read on-device. Click an activity for its screen evidence; review images stay on this Mac for up to seven days when enabled.")
@@ -118,7 +118,7 @@ struct ScreenActivitySection: View {
                 .foregroundStyle(.secondary)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
             if showInspector {
                 if let x = watcher.lastSnapshot {
                     VStack(alignment: .leading, spacing: 4) {
@@ -131,7 +131,7 @@ struct ScreenActivitySection: View {
                             Text("Text read (\(x.text.count) chars)").font(.system(size: 9.5, weight: .semibold)).foregroundStyle(.secondary)
                             Spacer()
                             Button("Ignore \(x.app)") { watcher.setIgnored(x.bundle, name: x.app, true) }
-                                .font(.system(size: 9.5)).buttonStyle(.plain).foregroundStyle(.orange)
+                                .font(.system(size: 9.5)).buttonStyle(.plainHit).foregroundStyle(.orange)
                         }
                         ScrollView {
                             Text(x.text.isEmpty ? "(no text)" : x.text)
@@ -291,8 +291,10 @@ struct ScreenActivitySection: View {
                 Button { watcher.setCheck(a, right: true) } label: {
                     Image(systemName: c?.right == true && c?.disposition == nil ? "checkmark.circle.fill" : "checkmark.circle")
                         .foregroundStyle(c?.right == true && c?.disposition == nil ? Color.good : .secondary)
+                        .iconTarget(28)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
+                .padding(-7)
                 .help("Label is right")
                 .accessibilityLabel("The suggested category is correct")
             }
@@ -506,7 +508,7 @@ struct DistractionSection: View {
                             Text(fmt(m)).monospacedDigit()
                             if let b = drifts.first(where: { $0.source == src })?.bundle {
                                 Button("Ignore app") { watcher.setIgnored(b, name: src.components(separatedBy: ":").first ?? src, true) }
-                                    .buttonStyle(.plain).foregroundStyle(.orange).font(.system(size: 9.5))
+                                    .buttonStyle(.plainHit).foregroundStyle(.orange).font(.system(size: 9.5))
                                     .help("Not a distraction: stop watching this app and drop it from the log")
                             }
                         }
@@ -819,7 +821,7 @@ struct ScreenTimelineSection: View {
             }
             if sw.count > 6 {
                 Button(showAllSwitches ? "Show fewer" : "Show all \(sw.count)") { showAllSwitches.toggle() }
-                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(.secondary).padding(.top, 4)
+                    .buttonStyle(.plainHit).font(.system(size: 12)).foregroundStyle(.secondary).padding(.top, 4)
             }
         }
     }
@@ -1024,7 +1026,7 @@ struct ScreenTimelineSection: View {
                         }
                         if s.active == false { Text("idle screen").foregroundStyle(.tertiary) }
                         Spacer()
-                        if pinned != nil { Button("Unpin") { pinned = nil }.buttonStyle(.plain).foregroundStyle(.secondary) }
+                        if pinned != nil { Button("Unpin") { pinned = nil }.buttonStyle(.plainHit).foregroundStyle(.secondary) }
                     }
                     .font(.system(size: 13))
                     Text("\(s.app) · \(s.title.isEmpty ? "untitled" : s.title)")
@@ -1315,7 +1317,7 @@ struct ScreenReviewSection: View {
             .background(Capsule().fill(color.opacity(enabled ? 0.2 : 0.06)))
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.5)
     }
@@ -1412,13 +1414,13 @@ struct ScreenReviewSection: View {
                     Spacer(minLength: 8)
                     if !ScreenWatcher.isGeneric(title: w.title, app: w.app), !FocusCategories.notFromScreen.contains(w.mostlyYours) {
                         Button("Always \(w.mostlyYours)") { ScreenWatcher.learn([w.key], as: w.mostlyYours) }
-                            .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
+                            .buttonStyle(.plainHit).font(.system(size: 12, weight: .semibold))
                             .padding(.horizontal, 10).frame(height: 26)
                             .background(Capsule().fill(categoryColor(w.mostlyYours).opacity(0.2)))
                             .help("From now on this window is \(w.mostlyYours)")
                     }
                     Button("Ignore app") { watcher.setIgnored(w.bundle, name: w.app, true) }
-                        .buttonStyle(.plain).font(.system(size: 12))
+                        .buttonStyle(.plainHit).font(.system(size: 12))
                         .foregroundStyle(Color.secondaryText)
                         .help("Never watch \(w.app)")
                 }

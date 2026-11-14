@@ -39,7 +39,33 @@ struct WindowTransparencyConfigurator: NSViewRepresentable {
     }
 }
 
+/// `.plain`, except the whole label takes the click. Plain buttons only
+/// hit-test drawn pixels, so a 36 pt day arrow answered only on its chevron
+/// and an unselected toolbar tab only on its text (11/13). Dims like `.plain`:
+/// a disabled plain button draws at 43% (measured).
+struct PlainHitButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.43)
+    }
+}
+
+extension ButtonStyle where Self == PlainHitButtonStyle {
+    static var plainHit: PlainHitButtonStyle { PlainHitButtonStyle() }
+}
+
 extension View {
+    /// An icon-only button's label: a square that takes the click, not just
+    /// the glyph (DESIGN.md: 36 pt targets). Where the row must stay tight,
+    /// pad the Button by a negative amount: clicks still count across the
+    /// whole square, the layout gets the space back.
+    func iconTarget(_ size: CGFloat = 36, height: CGFloat? = nil) -> some View {
+        frame(width: size, height: height ?? size).contentShape(Rectangle())
+    }
+
     @ViewBuilder
     func glassCard<S: InsettableShape>(in shape: S) -> some View {
         if #available(macOS 26.0, *) {

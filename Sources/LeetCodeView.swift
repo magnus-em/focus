@@ -161,8 +161,8 @@ struct LeetCodeView: View {
                     .textFieldStyle(.plain)
                     .onSubmit { if let first = items.first { selectedSlug = first.slug } }
                 if !query.isEmpty {
-                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary) }
-                        .buttonStyle(.plain)
+                    Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary).iconTarget(28) }
+                        .buttonStyle(.plainHit).padding(-7)
                 }
             }
             .font(.system(size: 12))
@@ -204,7 +204,7 @@ struct LeetCodeView: View {
                     Button("Clear filters") {
                         pattern = nil; list = nil; difficulty = nil; status = .all; query = ""
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 }
@@ -245,7 +245,7 @@ struct LeetCodeView: View {
                 .foregroundStyle(selected ? color : Color.secondary)
                 .background(Capsule().fill(selected ? color.opacity(0.16) : Color.secondary.opacity(0.07)))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     // MARK: Grind tab
@@ -388,8 +388,8 @@ struct LeetCodeView: View {
                 Text("\(p.number). \(p.title)").font(.system(size: 16, weight: .semibold))
                 if p.paidOnly { Image(systemName: "lock.fill").foregroundStyle(.tertiary) }
                 Spacer()
-                Button { selectedSlug = nil } label: { Image(systemName: "xmark").foregroundStyle(.tertiary) }
-                    .buttonStyle(.plain)
+                Button { selectedSlug = nil } label: { Image(systemName: "xmark").foregroundStyle(.tertiary).iconTarget() }
+                    .buttonStyle(.plainHit).padding(-11)
             }
             HStack(spacing: 6) {
                 pill(p.difficulty.rawValue, color: p.difficulty.color)
@@ -511,7 +511,7 @@ struct LeetCodeView: View {
                 Text("\(store.reviewQueue.count) due").font(.system(size: 10, weight: .semibold)).foregroundStyle(.orange)
                 Spacer()
                 Button("Show all") { status = .review }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
@@ -705,7 +705,7 @@ struct LeetCodeView: View {
                         .overlay(RoundedRectangle(cornerRadius: 8)
                             .stroke(focus.contains(s.category) ? lcOrange.opacity(0.7) : .clear, lineWidth: 1.2))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHit)
                 }
             }
             Text("Bar fills at 10 solved; colour is average confidence. Aim for 5–10 solid solves per pattern.")
@@ -845,7 +845,7 @@ struct LeetCodeView: View {
                             .controlSize(.small)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHit)
             }
         }
         .padding(14)
@@ -1053,7 +1053,7 @@ struct LCLogSheet: View {
                                 Text(choice.rawValue).frame(maxWidth: .infinity, minHeight: 36)
                                     .background(Capsule().fill(difficulty == choice ? categoryColor(FocusCategories.leetCode).opacity(0.2) : Color.primary.opacity(0.06)))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
                             .accessibilityAddTraits(difficulty == choice ? .isSelected : [])
                         }
                     }
@@ -1083,7 +1083,7 @@ struct LCLogSheet: View {
                                     .frame(maxWidth: .infinity, minHeight: 36)
                                     .background(Capsule().fill(confidence == choice ? categoryColor(FocusCategories.leetCode).opacity(0.2) : Color.primary.opacity(0.06)))
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plainHit)
                             .accessibilityAddTraits(confidence == choice ? .isSelected : [])
                         }
                     }

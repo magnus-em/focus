@@ -63,7 +63,8 @@ struct Stat110PickerOverlay: View {
             Button { isShowing = false } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.system(size: 16)).foregroundStyle(.tertiary)
-            }.buttonStyle(.plain)
+                    .iconTarget()
+            }.buttonStyle(.plainHit).padding(-10)
         }
         .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 12)
     }
@@ -101,7 +102,7 @@ struct Stat110PickerOverlay: View {
                 }
                 .padding(.horizontal, 12).padding(.vertical, 10)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHit)
 
             if isExpanded {
                 Divider().padding(.horizontal, 12)
@@ -170,7 +171,7 @@ struct Stat110PickerOverlay: View {
             }
             .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 4)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
     }
 
     private func problemRow(_ p: Stat110Problem) -> some View {
@@ -208,7 +209,7 @@ struct Stat110PickerOverlay: View {
             .opacity(isDone ? 0.55 : 1.0)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHit)
         .onHover { hovering in
             if hovering { NSCursor.pointingHand.push() }
             else { NSCursor.pop() }
