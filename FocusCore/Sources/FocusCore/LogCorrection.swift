@@ -67,7 +67,9 @@ public enum LogCorrection {
         "lecture": "Class", "seminar": "Class", "section": "Class", "lab": "Class",
         "lunch": "Meals", "dinner": "Meals", "breakfast": "Meals", "ate": "Meals", "eating": "Meals", "food": "Meals",
         "gym": "Exercise", "workout": "Exercise", "run": "Exercise", "rugby": "Exercise", "lift": "Exercise",
-        "nap": "Sleep", "slept": "Sleep", "sleeping": "Sleep",
+        "nap": "Sleep", "slept": "Sleep", "sleeping": "Sleep", "woke": "Sleep", "woken": "Sleep", "wake up": "Sleep",
+        "went to bed": "Sleep", "asleep": "Sleep",
+        "sauna": "Exercise", "swim": "Exercise", "swimming": "Exercise", "yoga": "Exercise",
         "youtube": "Leisure", "netflix": "Leisure", "chill": "Leisure", "chilled": "Leisure", "tv": "Leisure", "games": "Leisure",
         "homework": "HW", "pset": "HW", "problem set": "HW",
         "friends": "Social", "hung out": "Social", "party": "Social",
@@ -83,23 +85,25 @@ public enum LogCorrection {
     /// at commas and "then"; in each, a category (name or everyday word, not
     /// one it says it wasn't: "chores not reading") and times: "1-1:40",
     /// "from 12:20 to 12:50", "since 2", "until 1:40", "the last 30 min",
-    /// "20 min ago", "for 45 min", or none ("the rest was leisure"). A piece
-    /// with no category goes with its neighbour ("the last 30 min, chores").
-    /// Nil when nothing names a category or gives a time, so the model gets
-    /// a go.
+    /// "20 min ago", "for 45 min", "920" (9:20), or none ("the rest was
+    /// leisure"). A piece with no category goes with its neighbour ("the last
+    /// 30 min, chores"). A wake-up time ends Sleep ("woke up at 920 and sauna
+    /// until now", 11/14). Nil when nothing names a category or gives a time,
+    /// so the model gets a go.
     public static func parse(_ text: String, categories: [String]) -> [Raw]? {
         var t = " " + text.lowercased()
             .replacingOccurrences(of: "–", with: "-").replacingOccurrences(of: "—", with: "-")
             .replacingOccurrences(of: "’", with: "'") + " "
         t = t.replacingOccurrences(of: "noon", with: "12:00").replacingOccurrences(of: "midnight", with: "0:00")
-        let pieces = t.components(separatedBy: CharacterSet(charactersIn: ",;"))
-            .flatMap { $0.components(separatedBy: " then ") }
-            .flatMap { $0.components(separatedBy: " after that ") }
-            .map { " " + $0.trimmingCharacters(in: .whitespaces) + " " }
-            .filter { $0.trimmingCharacters(in: .whitespaces).count > 1 }
         let names = categories.map { ($0.lowercased(), $0) } + synonyms.compactMap { word, cat in
             (categories.contains(cat) || cat == "Break") ? (word, cat) : nil
         }
+        let pieces = t.components(separatedBy: CharacterSet(charactersIn: ",;"))
+            .flatMap { $0.components(separatedBy: " then ") }
+            .flatMap { $0.components(separatedBy: " after that ") }
+            .flatMap { splitAtAnd($0, names: names) }
+            .map { " " + $0.trimmingCharacters(in: .whitespaces) + " " }
+            .filter { $0.trimmingCharacters(in: .whitespaces).count > 1 }
         var clauses: [(text: String, category: String)] = []
         var pending = ""
         for piece in pieces {
@@ -115,17 +119,19 @@ public enum LogCorrection {
             let joined = last.text + pending
             clauses.append((joined, category(in: joined, names: names) ?? last.category))
         }
-        let clock = try! NSRegularExpression(pattern: #"(?<![\d:])(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?![\d:])"#)
+        // "9:20", "9", "9pm" and "920" / "1140" (no colon).
+        let clock = try! NSRegularExpression(pattern: #"(?<![\d:])(\d{1,2})(?::?(\d{2}))?\s*(am|pm)?(?![\d:])"#)
         var out: [Raw] = []
         var anyTime = false
         for (c, category) in clauses {
             // "for 20 min", "the last 5 min" and "10 min ago" aren't clock times.
             var clockText = c
-            for pattern in [durationPattern, lastPattern, agoPattern] { clockText = blank(pattern, in: clockText) }
+            for pattern in [durationPattern, lastPattern, agoPattern, bareLengthPattern] { clockText = blank(pattern, in: clockText) }
             let ns = clockText as NSString
             var tokens = clock.matches(in: clockText, range: NSRange(location: 0, length: ns.length)).compactMap { m -> (Int, String)? in
                 guard let h = Int(ns.substring(with: m.range(at: 1))), h <= 23 else { return nil }
                 let min = m.range(at: 2).location == NSNotFound ? "00" : ns.substring(with: m.range(at: 2))
+                guard let mm = Int(min), mm <= 59 else { return nil }
                 let ampm = m.range(at: 3).location == NSNotFound ? "" : ns.substring(with: m.range(at: 3))
                 return (m.range.location, "\(h):\(min)\(ampm)")
             }
@@ -136,7 +142,7 @@ public enum LogCorrection {
             let length = duration(c)
             let span = matches(lastPattern, in: c).first.flatMap { spanMinutes((c as NSString).substring(with: $0.range(at: 1))) }
             let has = { (w: String) in c.range(of: "\\b\(w)\\b", options: .regularExpression) != nil }
-            let ends = ["until", "till", "til", "stopped", "ended", "finished", "done", "before"].contains(where: has)
+            let ends = ["until", "till", "til", "stopped", "ended", "finished", "done", "before", "woke", "woken", "wake"].contains(where: has)
             let starts = ["since", "from", "starting", "started", "began", "at", "around", "about"].contains(where: has)
             let first = !anyTime
             anyTime = anyTime || !times.isEmpty || span != nil || length != nil
@@ -158,7 +164,31 @@ public enum LogCorrection {
             default: out.append(Raw(from: times[0], to: times[1], category: category))
             }
         }
-        return anyTime && !out.isEmpty ? out : nil
+        // "went to bed at 1:15, woke up at 9:20": one range said in two pieces.
+        var joined: [Raw] = []
+        for r in out {
+            if let p = joined.last, p.category == r.category, !p.from.isEmpty, p.to.isEmpty, r.from.isEmpty, !r.to.isEmpty {
+                joined[joined.count - 1] = Raw(from: p.from, to: r.to, category: r.category)
+            } else { joined.append(r) }
+        }
+        return anyTime && !joined.isEmpty ? joined : nil
+    }
+
+    /// "woke up at 920 and sauna until now": "and" starts a new piece when
+    /// the part before it gives a time and the part after names a category;
+    /// "math and cs from 2 to 4" and "an hour and a half" stay one.
+    static func splitAtAnd(_ piece: String, names: [(String, String)]) -> [String] {
+        var out: [String] = []
+        for part in piece.components(separatedBy: " and ") {
+            guard let last = out.last else { out.append(part); continue }
+            let timed = last.rangeOfCharacter(from: .decimalDigits) != nil || last.range(of: #"\bnow\b"#, options: .regularExpression) != nil
+            if timed, !part.hasPrefix("a half"), category(in: " \(part) ", names: names) != nil {
+                out.append(part)
+            } else {
+                out[out.count - 1] = last + " and " + part
+            }
+        }
+        return out
     }
 
     /// The category a piece is about: the first one named, skipping any it
@@ -192,6 +222,8 @@ public enum LogCorrection {
     static let durationPattern = #"\bfor (\#(span))\b"#
     static let lastPattern = #"\b(?:last|past) (\#(span))\b"#
     static let agoPattern = #"\b(\#(span)) ago\b"#
+    /// "sauna 120 min": a length without "for", never a clock time.
+    static let bareLengthPattern = #"\b\d+(?:\.\d+)? ?(?:minutes|minute|mins|min|hours|hour|hrs|hr)\b"#
 
     /// Minutes in a `span`: "30 min" 30, "half an hour" 30, "1.5 hours" 90.
     static func spanMinutes(_ text: String) -> Int? {
@@ -230,7 +262,8 @@ public enum LogCorrection {
     /// Fills in what the sentence left out, then keeps blocks that make
     /// sense. A missing start is where the previous range ended ("then class
     /// until 1:40"), or for the first range the start of the logged block
-    /// its end falls in ("reading until 20 min ago, then chores"); a missing
+    /// its end falls in ("reading until 20 min ago, then chores"), or where
+    /// the untracked gap it ends in began ("woke up at 9:20"); a missing
     /// end is the end of the logged block the range starts in, or now if
     /// that block is still running ("the rest was leisure", "math since 2").
     /// Kept: start before end, at most 18 h, within the last 36 h, clipped to
@@ -246,6 +279,7 @@ public enum LogCorrection {
             var start = from.isEmpty ? previousEnd : resolve(from, now: now, calendar: calendar)
             if start == nil, from.isEmpty, !to.isEmpty, !to.hasPrefix("+"), let end = resolve(to, now: now, calendar: calendar) {
                 start = log.last { $0.start < end && $0.end >= end }?.start
+                    ?? log.filter { $0.end <= end }.map(\.end).max()
             }
             guard let a = start else { continue }
             var b: Date
@@ -271,6 +305,19 @@ public enum LogCorrection {
             kept.append(block)
         }
         return kept
+    }
+
+    /// A range said to reach now stops where the block running now began,
+    /// when that block began inside it as something else: "sauna until now",
+    /// typed a minute after LeetCode started on its own (11/14), meant until
+    /// they sat down. The preview offers the whole range too.
+    public static func sparing(_ blocks: [Block], running: (start: Date, category: String?)?, now: Date) -> [Block] {
+        guard let running else { return blocks }
+        return blocks.map { b in
+            guard b.end >= now.addingTimeInterval(-90), running.start.timeIntervalSince(b.start) >= 60,
+                  b.category != running.category else { return b }
+            return Block(start: b.start, end: min(b.end, running.start), category: b.category)
+        }
     }
 
     /// "the last SWE section was a break", "the hw block this morning was

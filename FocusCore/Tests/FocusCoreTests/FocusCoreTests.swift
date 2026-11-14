@@ -358,6 +358,23 @@ final class LogCorrectionTests: XCTestCase {
         let blocks = LogCorrection.validate(raw, now: t(14, 15, 0), categories: ["Math"], calendar: cal)
         XCTAssertEqual(blocks, [LogCorrection.Block(start: t(14, 10, 0), end: t(14, 11, 0), category: nil)])
     }
+
+    // 11/14: "woke up at 920 and sauna until now", nothing logged since 11:37 PM,
+    // LeetCode started on its own at 11:18 while the sentence was being typed.
+    func testWakeUpStartsWhereTheGapBeganAndWhatsRunningIsKept() {
+        let now = t(14, 11, 21)
+        let log = [(start: t(13, 23, 3), end: t(13, 23, 37), label: "SWE"), (start: t(14, 11, 18), end: now, label: "LeetCode")]
+        let raw = [LogCorrection.Raw(from: "", to: "9:20", category: "Sleep"),
+                   LogCorrection.Raw(from: "", to: "now", category: "Exercise")]
+        let blocks = LogCorrection.validate(raw, now: now, categories: ["Sleep", "Exercise", "LeetCode"], log: log, calendar: cal)
+        XCTAssertEqual(blocks, [LogCorrection.Block(start: t(13, 23, 37), end: t(14, 9, 20), category: "Sleep"),
+                                LogCorrection.Block(start: t(14, 9, 20), end: now, category: "Exercise")])
+        let kept = LogCorrection.sparing(blocks, running: (start: t(14, 11, 18), category: "LeetCode"), now: now)
+        XCTAssertEqual(kept, [blocks[0], LogCorrection.Block(start: t(14, 9, 20), end: t(14, 11, 18), category: "Exercise")])
+        // Running since before the range, or already what was said: the range stands.
+        XCTAssertEqual(LogCorrection.sparing(blocks, running: (start: t(14, 9, 0), category: "LeetCode"), now: now), blocks)
+        XCTAssertEqual(LogCorrection.sparing(blocks, running: (start: t(14, 11, 18), category: "Exercise"), now: now), blocks)
+    }
 }
 
 final class LogCorrectionParseTests: XCTestCase {
@@ -401,6 +418,16 @@ final class LogCorrectionParseTests: XCTestCase {
         XCTAssertEqual(read("lunch with friends 12-1"), ["12:00|1:00|Meals"])
         XCTAssertEqual(read("walked to class at 1"), ["1:00||Commute"])
         XCTAssertEqual(read("finished class at 1:40, then leisure"), ["|1:40|Class", "||Leisure"])
+    }
+
+    // 11/14, typed in the popover: no colon, a wake-up time, two parts joined by "and".
+    func testWakingUpAndTimesWithoutAColon() {
+        XCTAssertEqual(read("woke up at 920 and sauna until now"), ["|9:20|Sleep", "|now|Exercise"])
+        XCTAssertEqual(read("went to bed at 1:15, woke up at 9:20"), ["1:15|9:20|Sleep"])
+        XCTAssertEqual(read("class 1140 to 1230 and the rest was leisure"), ["11:40|12:30|Class", "||Leisure"])
+        XCTAssertEqual(read("math and swe from 2 to 4"), ["2:00|4:00|Math"])
+        XCTAssertEqual(read("for an hour and a half, math"), ["-90|now|Math"])
+        XCTAssertNil(read("sauna 120 min"))
     }
 
     func testFallsBackToTheModelWhenItCantRead() {

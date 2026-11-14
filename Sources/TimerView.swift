@@ -1018,10 +1018,16 @@ struct LogFixView: View {
         let running: String
     }
 
+    private struct Proposal {
+        let blocks: [LogCorrection.Block]
+        let basis: Basis
+    }
+
     private enum Step {
         case typing(String?)
         case reading
-        case preview([LogCorrection.Block], Basis)
+        /// `whole` is the range as said when `shown` stops short of what's running.
+        case preview(Proposal, whole: (Proposal, keeps: String)?, note: String?)
         case done([SessionStore.ReviewUndo], changedRunning: Bool, failed: Bool)
     }
     @State private var text = ""
@@ -1037,7 +1043,7 @@ struct LogFixView: View {
                     TextField("Fix the log", text: $text)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
-                        .onSubmit(read)
+                        .onSubmit { read() }
                 }
                 if let note { Text(note).font(.system(size: 11)).foregroundStyle(Color.secondaryText) }
             case .reading:
@@ -1045,7 +1051,9 @@ struct LogFixView: View {
                     ProgressView().controlSize(.small)
                     Text("Reading “\(text)”…").font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
                 }
-            case .preview(let blocks, let basis):
+            case .preview(let shown, let whole, let note):
+                let blocks = shown.blocks
+                if let note { Text(note).font(.system(size: 11)).foregroundStyle(Color.secondaryText) }
                 Text("“\(text)”").font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(2)
                 ForEach(blocks, id: \.start) { b in
                     HStack(spacing: 8) {
@@ -1058,13 +1066,21 @@ struct LogFixView: View {
                         }
                     }
                 }
+                if let whole {
+                    HStack(spacing: 6) {
+                        Text("Keeps \(whole.keeps).")
+                        Button("Change it too") { step = .preview(whole.0, whole: nil, note: nil) }
+                            .buttonStyle(.plainHit).foregroundStyle(.primary).fontWeight(.semibold)
+                    }
+                    .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                }
                 if blocks.contains(where: touchesRunning) {
                     Text("This changes what's running now too; Undo won't revert that part.")
                         .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack {
-                    Button("Apply") { apply(blocks, basis: basis) }.keyboardShortcut(.defaultAction)
+                    Button("Apply") { apply(shown) }.keyboardShortcut(.defaultAction)
                     Button("Cancel") { step = .typing(nil) }
                 }
             case .done(let undos, let changedRunning, let failed):
@@ -1096,7 +1112,7 @@ struct LogFixView: View {
         return b.end.timeIntervalSince(max(b.start, start)) >= 60
     }
 
-    private func read() {
+    private func read(note: String? = nil) {
         let said = text.trimmingCharacters(in: .whitespaces)
         guard !said.isEmpty else { return }
         step = .reading
@@ -1122,8 +1138,17 @@ struct LogFixView: View {
             }
             let blocks = await LogCorrection.propose(said, log: log, now: now, categories: categories, cloud: cloud)
             guard let blocks else { return step = .typing("Couldn't read that. Try times like 1:00–1:40.") }
-            step = blocks.isEmpty ? .typing("Didn't find any times in that. Try “Class 1–1:40, then Leisure”.")
-                : .preview(blocks, basis(for: blocks))
+            guard !blocks.isEmpty else { return step = .typing("Didn't find any times in that. Try “Class 1–1:40, then Leisure”.") }
+            let label: String? = timer.isOnBreak ? nil : timer.currentLabel
+            let running: (start: Date, category: String?)? = timer.isActive ? timer.sessionStartTime.map { ($0, label) } : nil
+            let kept = LogCorrection.sparing(blocks, running: running, now: now)
+            let whole = Proposal(blocks: blocks, basis: basis(for: blocks))
+            if kept != blocks, let running {
+                let keeps = "\(running.category ?? "Break") running since \(clock(running.start))"
+                step = .preview(Proposal(blocks: kept, basis: basis(for: kept)), whole: (whole, keeps), note: note)
+            } else {
+                step = .preview(whole, whole: nil, note: note)
+            }
         }
     }
 
@@ -1136,9 +1161,12 @@ struct LogFixView: View {
         return Basis(rows: rows.sorted(), running: running)
     }
 
-    private func apply(_ blocks: [LogCorrection.Block], basis: Basis) {
-        guard self.basis(for: blocks) == basis else {
-            return step = .typing("The log changed while this was open. Press Return to read it again.")
+    private func apply(_ proposal: Proposal) {
+        let blocks = proposal.blocks
+        // Something started or was saved since the preview (11/14: LeetCode
+        // started on its own mid-sentence): read it again against the new log.
+        guard basis(for: blocks) == proposal.basis else {
+            return read(note: "The log changed while this was open, so this was read again. Check it, then Apply.")
         }
         var undos: [SessionStore.ReviewUndo] = []
         var changedRunning = false
