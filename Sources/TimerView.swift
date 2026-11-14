@@ -337,14 +337,19 @@ struct TimerView: View {
         if timer.isActive, !onBreak, !label.isEmpty {
             let reading = streak.reading.flatMap { $0.category == WindowTimeline.privateCategory || $0.bundle.isEmpty ? nil : $0 }
             let seen = reading.map { r -> String in
-                if r.category == label { return [r.course, r.detail].compactMap { $0 }.joined(separator: " · ") }
-                let head = r.state == .unread ? "not read yet" : r.state == .unsure ? "unsure" : r.course ?? r.category ?? "no label"
-                return "on screen: \(head) · \(r.detail)"
+                switch r.state {
+                case .unread: return "on screen: \u{201C}\(r.detail)\u{201D} (not read yet)"
+                case .unsure: return "on screen: \(r.detail) (unsure what it is)"
+                case .labeled:
+                    let head = r.course.map { r.category == label ? $0 : "\($0) (\(r.category ?? ""))" }
+                        ?? (r.category == label ? "also \(label)" : r.category ?? "no label")
+                    return "on screen: \(head), \(r.detail)"
+                }
             }
             HStack(alignment: .top, spacing: 8) {
                 Text([label, seen].compactMap { $0 }.joined(separator: " · "))
                     .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-                    .lineLimit(2).truncationMode(.tail)
+                    .lineLimit(2, reservesSpace: true).truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 3)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1287,6 +1292,7 @@ struct WrongMenu: View, Equatable {
         .menuIndicator(.hidden)
         .fixedSize()
         .padding(.vertical, -7)
+        .padding(.trailing, -16)
         .help("Focus read this window wrong? Tell it the class or category and it learns the window. Or press ⌃⌥⌘ and the ' key from anywhere.")
     }
 

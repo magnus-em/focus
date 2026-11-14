@@ -259,7 +259,7 @@ struct InsightsContent: View {
                     }
                 }
             }
-            Text("Matched: time Focus labeled during a focus block with the same category as your timer. A window you corrected counts as wrong until you corrected it, and a trip to Messages or a feed counts as not matching. ✓ marks a day that met the goal. To correct a reading, click the button next to what Focus sees, under the timer, or press ⌃⌥⌘ and the ' key.")
+            Text("Matched: focus time where Focus's reading of the screen was the same category as your timer. Time on a window before you corrected it counts as not matching, and so does a trip to Messages or a feed. ✓ marks a day that met the goal. To correct a reading, click the Not …? button under the timer in the menu bar, or press ⌃⌥⌘ and the ' key.")
                 .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 .frame(maxWidth: 640, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -272,7 +272,7 @@ struct InsightsContent: View {
         let status: String = {
             guard let met, let gap else { return bar }
             if met { return bar + " · met" }
-            if text.contains(" of ") { return bar + " · not met" }
+            if text.contains(" of "), let v = value, v > 0 { return bar + " · you undid 1 in \(Int((1 / v).rounded()))" }
             return bar + " · \(gap) point\(gap == 1 ? "" : "s") \(higherIsBetter ? "short" : "over")"
         }()
         return VStack(alignment: .leading, spacing: 2) {
