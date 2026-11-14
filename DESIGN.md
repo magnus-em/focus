@@ -89,7 +89,7 @@ Colors are the seven groups' (11/13, CATEGORIES.md): `categoryColor(_:)`
 (FocusCore) returns the group's `CategoryGroup.color` for every category and
 for group names, so Math and HW are both School blue. Focus groups (School,
 Career, Learning & projects) vivid, the rest quieter; distinct in lightness,
-not only hue. Break keeps its own blue. Show the category itself as text
+not only hue. Break draws in Free time's color, the group it counts in. Show the category itself as text
 (detail), not as another color.
 
 ## SwiftUI rules

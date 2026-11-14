@@ -112,7 +112,8 @@ struct StatsView: View {
             let parts = byTag.filter { CategoryGroup.of($0.tag, isLife: false) == g }.sorted { $0.minutes > $1.minutes }
             let m = parts.reduce(0.0) { $0 + $1.minutes }
             guard m > 0 else { return nil }
-            return (g, m, parts.map { "\($0.tag) \(formatMinutes($0.minutes))" }.joined(separator: " · "))
+            // One category: just its name, the total is already on the row.
+            return (g, m, parts.count == 1 ? parts[0].tag : parts.map { "\($0.tag) \(formatMinutes($0.minutes))" }.joined(separator: " · "))
         }
 
         return VStack(alignment: .leading, spacing: 8) {

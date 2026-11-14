@@ -51,6 +51,8 @@ struct TimerView: View {
     /// Neutral with nothing picked: the system blue reads as Math.
     var accent: Color {
         if onBreak { return Self.breakBlue }
+        // Idle, nothing is chosen yet: the last block's colour read as if it were.
+        if !timer.isActive && !timer.labelPickedByHand { return .primary }
         return timer.currentLabel.isEmpty ? .primary : categoryColor(timer.currentLabel)
     }
 

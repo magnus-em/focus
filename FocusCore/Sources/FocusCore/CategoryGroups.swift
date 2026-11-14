@@ -48,7 +48,7 @@ public enum CategoryGroup: String, CaseIterable, Codable, Sendable {
         switch self {
         case .school: return Self.schoolColor
         case .career: return Color(red: 0.90, green: 0.40, blue: 0.08)
-        case .learning: return Color(red: 0.70, green: 0.55, blue: 0.95)
+        case .learning: return Self.learningColor
         case .wellbeing: return Self.wellbeingColor
         case .sleep: return Self.sleepColor
         case .life: return Color(red: 0.61, green: 0.51, blue: 0.37)
@@ -58,6 +58,8 @@ public enum CategoryGroup: String, CaseIterable, Codable, Sendable {
 
     // Built once: two dynamic colours built separately never compare equal.
     private static let schoolColor = dynamic(light: (0.12, 0.36, 1.00), dark: (0.43, 0.52, 1.00))
+    // Dark: lighter and toward violet-magenta, or it matched dark School (review 11/13).
+    private static let learningColor = dynamic(light: (0.70, 0.55, 0.95), dark: (0.84, 0.62, 0.98))
     private static let wellbeingColor = dynamic(light: (0.16, 0.51, 0.59), dark: (0.30, 0.64, 0.71))
     private static let sleepColor = dynamic(light: (0.28, 0.30, 0.46), dark: (0.40, 0.42, 0.62))
 
