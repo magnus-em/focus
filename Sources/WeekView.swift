@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import FocusCore
 
 /// Everything about one stretch of days needed for the week card.
@@ -9,6 +10,8 @@ struct WeekLedger {
     let from: Date
     let to: Date
     let minutesByCategory: [String: Double]
+    /// The categories above in the seven groups (`CategoryGroup`).
+    let minutesByGroup: [CategoryGroup: Double]
     let untrackedMinutes: Double
     let elapsedMinutes: Double
     let focusMinutes: Double
@@ -23,6 +26,10 @@ struct WeekLedger {
 
     static func key(_ s: WorkSession) -> String {
         s.type.isBreak ? breakKey : (s.label?.isEmpty == false ? s.label! : "Focus")
+    }
+
+    static func group(_ key: String) -> CategoryGroup {
+        key == "Focus" ? .learning : CategoryGroup.of(key, isBreak: key == breakKey)
     }
 
     static func overlap(_ s: WorkSession, _ a: Date, _ b: Date) -> Double {
@@ -45,6 +52,7 @@ struct WeekLedger {
         var byCat: [String: Double] = [:]
         for s in inWindow { byCat[Self.key(s), default: 0] += Self.overlap(s, from, to) }
         minutesByCategory = byCat
+        minutesByGroup = byCat.reduce(into: [:]) { $0[Self.group($1.key), default: 0] += $1.value }
         elapsedMinutes = max(0, to.timeIntervalSince(from) / 60)
         untrackedMinutes = to > from ? store.untrackedGaps(from: from, to: to, live: live, minMinutes: 0).reduce(0) { $0 + $1.minutes } : 0
         let focusBlocks = inWindow.filter(\.isFocus)
@@ -102,7 +110,6 @@ struct WhereTimeWentSection: View {
     let selectedDay: Date
     let onSelectDay: (Date) -> Void
 
-    private let breakColor = Color(red: 0.27, green: 0.62, blue: 0.83)
     private let green = Color(red: 0.25, green: 0.72, blue: 0.53)
     private let red = Color(red: 0.96, green: 0.36, blue: 0.36)
 
@@ -114,7 +121,7 @@ struct WhereTimeWentSection: View {
 
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                SectionTitle("Where time went", subtitle: "Every hour of the last 7 days by category, against the week before. Underlines mark time away from the Mac; click a day to open it.")
+                SectionTitle("Where time went", subtitle: "Every hour of the last 7 days in seven groups, against the week before. Underlines mark time away from the Mac; click a day to open it.")
                 Spacer()
                 Text("\(Int((coverage * 100).rounded()))% tracked")
                     .font(.system(size: 12, weight: .semibold))
@@ -124,7 +131,9 @@ struct WhereTimeWentSection: View {
 
             strips(week)
             Divider().opacity(0.5)
-            categoryTable(week, prev)
+            groupTable(week, prev)
+            Divider().opacity(0.5)
+            WeekByWeekChart(sessions: store.sessions + live, endDay: endDay)
             Divider().opacity(0.5)
             statsGrid(week, prev)
         }
@@ -149,7 +158,7 @@ struct WhereTimeWentSection: View {
                             .font(.system(size: 9.5, weight: isSel ? .bold : .medium))
                             .foregroundStyle(isSel ? Color.primary : Color.secondary)
                             .frame(width: 26, alignment: .leading)
-                        DayStripRow(day: d, blocks: blocks, away: presence.spans(from: d, to: dEnd), breakColor: breakColor)
+                        DayStripRow(day: d, blocks: blocks, away: presence.spans(from: d, to: dEnd))
                             .frame(height: 13)
                         Text(focus >= 1 ? hm(focus) : "–")
                             .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
@@ -177,66 +186,81 @@ struct WhereTimeWentSection: View {
         }
     }
 
-    // MARK: - Hours by category
+    // MARK: - Hours by group
 
-    private func categoryTable(_ week: WeekLedger, _ prev: WeekLedger) -> some View {
-        let rows = (Set(week.minutesByCategory.keys).union(prev.minutesByCategory.keys))
-            .map { (key: $0, now: week.minutesByCategory[$0] ?? 0, before: prev.minutesByCategory[$0] ?? 0) }
-            .filter { $0.now >= 1 || $0.before >= 30 }
-            .sorted { $0.now > $1.now }
-        let maxM = max(1, rows.map(\.now).max() ?? 1)
+    /// Always the same seven rows in the same order, so weeks read alike.
+    private func groupTable(_ week: WeekLedger, _ prev: WeekLedger) -> some View {
+        let groups = CategoryGroup.allCases.filter { (week.minutesByGroup[$0] ?? 0) >= 1 || (prev.minutesByGroup[$0] ?? 0) >= 30 }
+        let maxM = max(1, groups.map { week.minutesByGroup[$0] ?? 0 }.max() ?? 1, week.untrackedMinutes)
         let days = max(1, week.elapsedMinutes / 1440)
 
-        return VStack(alignment: .leading, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("").frame(width: 70)
                 Spacer()
-                Text("week").frame(minWidth: 50, alignment: .trailing)
-                Text("/day").frame(width: 44, alignment: .trailing)
-                Text("vs last wk").frame(width: 58, alignment: .trailing)
+                Text("week").frame(minWidth: 56, alignment: .trailing)
+                Text("a day").frame(width: 56, alignment: .trailing)
+                Text("vs last week").frame(width: 84, alignment: .trailing)
             }
-            .font(.system(size: 8.5, weight: .medium))
-            .foregroundStyle(.tertiary)
-            ForEach(rows, id: \.key) { r in
-                let isFocus = r.key != WeekLedger.breakKey && !settings.lifeTags.contains(r.key)
-                categoryRow(name: r.key, color: color(r.key), minutes: r.now, max: maxM, perDay: r.now / days,
-                            delta: r.now - r.before, good: isFocus ? 1 : 0, bold: isFocus)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Color.secondaryText)
+            ForEach(groups, id: \.self) { g in
+                let now = week.minutesByGroup[g] ?? 0
+                groupRow(name: g.rawValue, color: g.color, inside: inside(g, week), minutes: now, max: maxM,
+                         perDay: now / days, delta: now - (prev.minutesByGroup[g] ?? 0), good: g.holdsFocus ? 1 : 0,
+                         bold: g.holdsFocus)
             }
-            categoryRow(name: "Untracked", color: .secondary.opacity(0.5), minutes: week.untrackedMinutes, max: maxM,
-                        perDay: week.untrackedMinutes / days, delta: week.untrackedMinutes - prev.untrackedMinutes,
-                        good: -1, bold: false)
+            groupRow(name: "Untracked", color: .secondary.opacity(0.5), inside: nil, minutes: week.untrackedMinutes, max: maxM,
+                     perDay: week.untrackedMinutes / days, delta: week.untrackedMinutes - prev.untrackedMinutes,
+                     good: -1, bold: false)
         }
     }
 
+    /// "Math 7h 30m · Class 6h 12m · HW 1h 5m": what the group held this week.
+    private func inside(_ g: CategoryGroup, _ week: WeekLedger) -> String? {
+        let parts = week.minutesByCategory.filter { WeekLedger.group($0.key) == g && $0.value >= 1 }
+            .sorted { $0.value > $1.value }
+        guard !(parts.count == 1 && parts[0].key == g.rawValue), !parts.isEmpty else { return nil }
+        return parts.map { "\($0.key) \(hm($0.value))" }.joined(separator: " · ")
+    }
+
     /// `good`: 1 = more is better, -1 = less is better, 0 = neutral.
-    private func categoryRow(name: String, color: Color, minutes: Double, max maxM: Double, perDay: Double,
-                             delta: Double, good: Int, bold: Bool) -> some View {
-        HStack(spacing: 6) {
-            Circle().fill(color).frame(width: 6, height: 6)
-            Text(name)
-                .font(.system(size: 10.5, weight: bold ? .semibold : .regular))
-                .lineLimit(1)
-                .frame(width: 62, alignment: .leading)
-            GeometryReader { geo in
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(color.opacity(0.75))
-                    .frame(width: max(2, geo.size.width * CGFloat(min(1, minutes / maxM))), height: 6)
-                    .frame(maxHeight: .infinity)
+    private func groupRow(name: String, color: Color, inside: String?, minutes: Double, max maxM: Double, perDay: Double,
+                          delta: Double, good: Int, bold: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Circle().fill(color).frame(width: 8, height: 8)
+                Text(name)
+                    .font(.system(size: 13, weight: bold ? .semibold : .regular))
+                    .lineLimit(1)
+                    .frame(width: 136, alignment: .leading)
+                GeometryReader { geo in
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(color.opacity(0.8))
+                        .frame(width: max(2, geo.size.width * CGFloat(min(1, minutes / maxM))), height: 8)
+                        .frame(maxHeight: .infinity)
+                }
+                .frame(height: 12)
+                Text(hm(minutes))
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    .lineLimit(1)
+                    .fixedSize()
+                    .frame(minWidth: 56, alignment: .trailing)
+                Text(hm(perDay))
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(Color.secondaryText)
+                    .frame(width: 56, alignment: .trailing)
+                Text(abs(delta) < 15 ? "same" : (delta > 0 ? "+" : "−") + hm(abs(delta)))
+                    .font(.system(size: 12, weight: .medium).monospacedDigit())
+                    .foregroundStyle(abs(delta) < 15 || good == 0 ? Color.secondaryText : (delta > 0) == (good > 0) ? green : red)
+                    .frame(width: 84, alignment: .trailing)
             }
-            .frame(height: 10)
-            Text(hm(minutes))
-                .font(.system(size: 10, weight: .semibold).monospacedDigit())
-                .lineLimit(1)
-                .fixedSize()
-                .frame(minWidth: 50, alignment: .trailing)
-            Text(hm(perDay))
-                .font(.system(size: 9.5).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .trailing)
-            Text(abs(delta) < 15 ? "·" : (delta > 0 ? "+" : "−") + hm(abs(delta)))
-                .font(.system(size: 9.5, weight: .medium).monospacedDigit())
-                .foregroundStyle(abs(delta) < 15 || good == 0 ? Color.secondary : (delta > 0) == (good > 0) ? green : red)
-                .frame(width: 58, alignment: .trailing)
+            if let inside {
+                Text(inside)
+                    .font(.system(size: 11).monospacedDigit())
+                    .foregroundStyle(Color.secondaryText)
+                    .lineLimit(1)
+                    .padding(.leading, 16)
+            }
         }
     }
 
@@ -286,10 +310,6 @@ struct WhereTimeWentSection: View {
 
     // MARK: - Helpers
 
-    private func color(_ key: String) -> Color {
-        key == WeekLedger.breakKey ? breakColor : categoryColor(key == "Focus" ? "" : key)
-    }
-
     private func hm(_ m: Double) -> String {
         let h = Int(m.rounded()) / 60, mn = Int(m.rounded()) % 60
         return h > 0 ? (mn > 0 ? "\(h)h \(mn)m" : "\(h)h") : "\(mn)m"
@@ -331,13 +351,12 @@ struct WhereTimeWentSection: View {
     }
 }
 
-/// One day, midnight to midnight: tracked blocks in category colours, a thin
+/// One day, midnight to midnight: tracked blocks in their group's colour, a thin
 /// grey rule under the stretches when nobody was at the Mac.
 private struct DayStripRow: View {
     let day: Date
     let blocks: [WorkSession]
     let away: [AwaySpan]
-    let breakColor: Color
 
     var body: some View {
         GeometryReader { geo in
@@ -352,7 +371,7 @@ private struct DayStripRow: View {
                 ForEach(blocks) { s in
                     let e = s.startTime.addingTimeInterval(s.durationMinutes * 60)
                     Rectangle()
-                        .fill(s.type.isBreak ? breakColor : categoryColor(s.label ?? ""))
+                        .fill(WeekLedger.group(WeekLedger.key(s)).color)
                         .opacity(s.isFocus ? 1 : 0.55)
                         .frame(width: max(1, x(e) - x(s.startTime)), height: h - 3)
                         .offset(x: x(s.startTime))
@@ -369,5 +388,101 @@ private struct DayStripRow: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 3))
         }
+    }
+}
+
+/// The seven groups week by week: hours a day in each, stacked to 24 h with
+/// the untracked rest in grey, so any stretch of weeks reads the same way.
+/// Old blocks count under their group by the fixed table (`CategoryGroup`).
+struct WeekByWeekChart: View {
+    let sessions: [WorkSession]
+    let endDay: Date
+    var weeks = 8
+
+    struct Slice: Identifiable {
+        let week: Date
+        let name: String
+        let color: Color
+        let hoursPerDay: Double
+        var id: String { "\(week.timeIntervalSince1970)|\(name)" }
+    }
+
+    @State private var selected: Date?
+
+    var body: some View {
+        let slices = Self.slices(sessions: sessions, endDay: endDay, weeks: weeks)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Week by week")
+                .font(.system(size: 13, weight: .semibold))
+            Text("Hours a day in each group over the last \(weeks) weeks; grey is untracked. Hover a week for its numbers.")
+                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+            Chart {
+                ForEach(slices) { s in
+                    BarMark(x: .value("Week", s.week, unit: .weekOfYear), y: .value("Hours a day", s.hoursPerDay))
+                        .foregroundStyle(s.color)
+                        .opacity(selected == nil || Calendar.current.isDate(s.week, equalTo: selected!, toGranularity: .weekOfYear) ? 1 : 0.4)
+                }
+                if let sel = selected, let week = slices.map(\.week).last(where: { $0 <= sel }) {
+                    RuleMark(x: .value("Week", week, unit: .weekOfYear))
+                        .foregroundStyle(.clear)
+                        .annotation(position: .top, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                            readout(slices.filter { $0.week == week }, week: week)
+                        }
+                }
+            }
+            .chartXSelection(value: $selected)
+            .chartYScale(domain: 0...24)
+            .chartYAxis {
+                AxisMarks(position: .leading, values: [0, 6, 12, 18, 24]) { v in
+                    AxisGridLine()
+                    AxisValueLabel { if let h = v.as(Double.self) { Text("\(Int(h))h") } }
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: .stride(by: .weekOfYear)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated).day()) }
+            }
+            .frame(height: 180)
+        }
+    }
+
+    private func readout(_ parts: [Slice], week: Date) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Week of " + week.formatted(.dateTime.month(.abbreviated).day())).font(.system(size: 12, weight: .semibold))
+            ForEach(parts.filter { $0.hoursPerDay >= 0.05 }) { p in
+                HStack(spacing: 5) {
+                    Circle().fill(p.color).frame(width: 6, height: 6)
+                    Text("\(p.name) \(durationText(minutes: p.hoursPerDay * 60)) a day").font(.system(size: 11)).monospacedDigit()
+                }
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.background.secondary))
+    }
+
+    static func slices(sessions: [WorkSession], endDay: Date, weeks: Int, now: Date = Date(),
+                       calendar cal: Calendar = .current) -> [Slice] {
+        guard let thisWeek = cal.dateInterval(of: .weekOfYear, for: endDay)?.start else { return [] }
+        var out: [Slice] = []
+        for k in (0..<weeks).reversed() {
+            guard let start = cal.date(byAdding: .weekOfYear, value: -k, to: thisWeek),
+                  let next = cal.date(byAdding: .weekOfYear, value: 1, to: start) else { continue }
+            let end = min(next, now)
+            guard end > start else { continue }
+            let days = end.timeIntervalSince(start) / 86400
+            var byGroup: [CategoryGroup: Double] = [:]
+            for s in sessions {
+                let m = WeekLedger.overlap(s, start, end)
+                if m > 0 { byGroup[WeekLedger.group(WeekLedger.key(s)), default: 0] += m }
+            }
+            var tracked = 0.0
+            for g in CategoryGroup.allCases {
+                let m = byGroup[g] ?? 0
+                tracked += m
+                if m > 0 { out.append(Slice(week: start, name: g.rawValue, color: g.color, hoursPerDay: m / 60 / days)) }
+            }
+            let untracked = max(0, days * 24 - tracked / 60) / days
+            out.append(Slice(week: start, name: "Untracked", color: Color.secondary.opacity(0.18), hoursPerDay: untracked))
+        }
+        return out
     }
 }

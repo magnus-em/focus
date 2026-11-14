@@ -335,9 +335,11 @@ struct FocusHistorySection: View {
 
     struct Bar: Identifiable {
         let start: Date
-        let label: String
+        let group: CategoryGroup
         let hoursPerDay: Double
-        var id: String { "\(start.timeIntervalSince1970)|\(label)" }
+        /// Hours a day of each category inside the group, largest first.
+        let parts: [(label: String, hours: Double)]
+        var id: String { "\(start.timeIntervalSince1970)|\(group.rawValue)" }
     }
 
     struct Summary {
@@ -365,7 +367,7 @@ struct FocusHistorySection: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 SectionTitle("How much you focused",
-                             subtitle: "Hours per day in your focus categories on the timer; life time and breaks don't count")
+                             subtitle: "Hours of focus a day on your timer, in your three focus groups: School, Career, Learning & projects. Class, life time and breaks don't count.")
                 Spacer()
                 Picker("Range", selection: $range) {
                     ForEach(Range.allCases) { Text($0.rawValue).tag($0) }
@@ -415,7 +417,7 @@ struct FocusHistorySection: View {
         Chart {
             ForEach(summary.bars) { b in
                 BarMark(x: .value("When", b.start, unit: unit), y: .value("Hours per day", b.hoursPerDay))
-                    .foregroundStyle(categoryColor(b.label))
+                    .foregroundStyle(b.group.color)
                     .opacity(selected == nil || Calendar.current.isDate(b.start, equalTo: selected!, toGranularity: unit) ? 1 : 0.4)
             }
             RuleMark(y: .value("Goal", goalHours))
@@ -450,13 +452,12 @@ struct FocusHistorySection: View {
     }
 
     private var legend: some View {
-        var minutes: [String: Double] = [:]
-        for b in summary.bars { minutes[b.label, default: 0] += b.hoursPerDay }
+        let shown = Set(summary.bars.map(\.group))
         return HStack(spacing: 14) {
-            ForEach(minutes.sorted { $0.value > $1.value }.map(\.key), id: \.self) { label in
+            ForEach(CategoryGroup.allCases.filter { shown.contains($0) }, id: \.self) { group in
                 HStack(spacing: 5) {
-                    Circle().fill(categoryColor(label)).frame(width: 7, height: 7)
-                    Text(label).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    Circle().fill(group.color).frame(width: 7, height: 7)
+                    Text(group.rawValue).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 }
             }
             Spacer(minLength: 0)
@@ -465,7 +466,7 @@ struct FocusHistorySection: View {
     }
 
     private func readout(_ bucket: Date) -> some View {
-        let parts = summary.bars.filter { $0.start == bucket }.sorted { $0.hoursPerDay > $1.hoursPerDay }
+        let parts = summary.bars.filter { $0.start == bucket }
         let total = parts.reduce(0) { $0 + $1.hoursPerDay }
         let when: String = switch range {
         case .week, .month: bucket.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
@@ -476,9 +477,17 @@ struct FocusHistorySection: View {
             Text(when).font(.system(size: 12, weight: .semibold))
             Text(durationText(minutes: total * 60) + (unit == .day ? "" : " a day")).font(.system(size: 12)).monospacedDigit()
             ForEach(parts) { p in
-                HStack(spacing: 5) {
-                    Circle().fill(categoryColor(p.label)).frame(width: 6, height: 6)
-                    Text("\(p.label) \(durationText(minutes: p.hoursPerDay * 60))").font(.system(size: 11)).monospacedDigit()
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 5) {
+                        Circle().fill(p.group.color).frame(width: 6, height: 6)
+                        Text("\(p.group.rawValue) \(durationText(minutes: p.hoursPerDay * 60))")
+                            .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                    }
+                    if p.parts.count > 1 || p.parts.first?.label != p.group.rawValue {
+                        Text(p.parts.map { "\($0.label) \(durationText(minutes: $0.hours * 60))" }.joined(separator: " · "))
+                            .font(.system(size: 11)).monospacedDigit().foregroundStyle(Color.secondaryText)
+                            .padding(.leading, 11)
+                    }
                 }
             }
         }
@@ -540,8 +549,13 @@ struct FocusHistorySection: View {
                 d = cal.date(byAdding: .day, value: 1, to: d)!
             }
             out.buckets.append(bucket)
-            for (k, v) in totals.sorted(by: { $0.value > $1.value }) {
-                out.bars.append(Bar(start: bucket, label: k, hoursPerDay: v / 60 / Double(days)))
+            var byGroup: [CategoryGroup: [String: Double]] = [:]
+            for (k, v) in totals { byGroup[CategoryGroup.of(k, isLife: false), default: [:]][k] = v }
+            for g in CategoryGroup.allCases {
+                guard let cats = byGroup[g] else { continue }
+                let perDay = { (m: Double) in m / 60 / Double(days) }
+                out.bars.append(Bar(start: bucket, group: g, hoursPerDay: perDay(cats.values.reduce(0, +)),
+                                    parts: cats.sorted { $0.value > $1.value }.map { ($0.key, perDay($0.value)) }))
             }
             bucket = next
         }

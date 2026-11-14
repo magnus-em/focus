@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 /// The seven groups every category, old or new, is shown under. Locked by the
 /// user on 11/13 (CATEGORIES.md: "I don't want a million categories", and old
@@ -28,6 +28,24 @@ public enum CategoryGroup: String, CaseIterable, Codable, Sendable {
         "Meals": .life, "Chores": .life, "Commute": .life, "Admin": .life,
         "Leisure": .freeTime, "Social": .freeTime, "Break": .freeTime,
     ]
+
+    /// School, Career and Learning & projects hold the focus categories.
+    public var holdsFocus: Bool { self == .school || self == .career || self == .learning }
+
+    /// Borrowed from each group's main category so the colors already mean
+    /// something: Math blue, LeetCode orange, AI purple, Leisure pink. Focus
+    /// groups vivid, the rest quieter (DESIGN.md), apart in lightness too.
+    public var color: Color {
+        switch self {
+        case .school: return Color(red: 0.12, green: 0.36, blue: 1.00)
+        case .career: return Color(red: 0.90, green: 0.40, blue: 0.08)
+        case .learning: return Color(red: 0.66, green: 0.38, blue: 0.94)
+        case .wellbeing: return Color(red: 0.50, green: 0.72, blue: 0.34)
+        case .sleep: return Color(red: 0.33, green: 0.35, blue: 0.50)
+        case .life: return Color(red: 0.66, green: 0.58, blue: 0.48)
+        case .freeTime: return Color(red: 0.93, green: 0.48, blue: 0.66)
+        }
+    }
 
     /// The group for a block. Breaks and unlabeled blocks are Free time. A
     /// category added later without a table entry falls back on focus vs
