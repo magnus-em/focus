@@ -67,6 +67,8 @@ final class ScreenJournalTests: XCTestCase {
         XCTAssertLessThanOrEqual(size, 3500)
         XCTAssertFalse(try verify(folder).isEmpty)
         try await writer.prune(now: now.addingTimeInterval(8 * 86400))
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
+        try await writer.prune(now: now.addingTimeInterval(366 * 86400))
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folder.path).count, 0)
     }
 

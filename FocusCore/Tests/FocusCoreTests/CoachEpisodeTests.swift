@@ -113,7 +113,7 @@ final class CoachEpisodeTests: XCTestCase {
         let properties = try XCTUnwrap(CoachEpisode.schema["properties"] as? [String: Any])
         XCTAssertNotNil(properties["askedByUser"]); XCTAssertNotNil(properties["onScreenPrompts"]); XCTAssertNil(properties["questions"])
         let record = CoachEpisode.Record(source: chatRow(), understanding: u, model: "grok-4.3", usage: [], needsReview: false)
-        XCTAssertEqual(record.promptVersion, "episode-2")
+        XCTAssertEqual(record.promptVersion, "episode-3")
         XCTAssertEqual(record.schema, 2)
     }
 

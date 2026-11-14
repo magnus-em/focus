@@ -2,7 +2,7 @@
 
 Read this first if you're picking up this work. Written by Claude on 11/13. The user asked to "collapse all the categories on Mac so that Focus basically just tracks it all and decides what sort of categories I need and what should be in them." Earlier, on 11/9, they asked for Mac tracking that's so reliable they never change a category by hand.
 
-Nothing here is built yet except step 1's first half: the menu bar reading.
+Built so far: the menu bar reading (step 1, first half) and the seven-group table in code (`FocusCore/CategoryGroups.swift`, `CategoryGroup.of(label)`, tests in `CategoryGroupTests`). Every chart that shows groups reads that one table.
 
 ## Where things stand (measured 11/13)
 
@@ -167,6 +167,6 @@ Each step ships on its own.
 ## Decisions for the user
 
 1. **A or B.** Recommended: B.
-2. **The seven groups and the table above.** Rename, merge or move an old category now; after that the top level doesn't grow.
+2. ~~The seven groups and the table above.~~ **Locked by the user on 11/13**, with SWE in School. The top level doesn't grow; a new category gets one of the seven.
 3. **HW becomes School + problem set** instead of something you pick. Recommended: yes.
 4. **Off-Mac life time:** from the phone, calendar, Health and being away only. The Mac stops offering life categories except Break.
