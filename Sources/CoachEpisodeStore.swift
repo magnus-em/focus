@@ -158,6 +158,10 @@ final class CoachEpisodeStore: ObservableObject {
                     if let c = understanding.category, categories.contains(c), understanding.confidence != .low, !understanding.unreadable {
                         ScreenWatcher.shared.cloudLabel(c, for: source.row)
                     }
+                    if let course = understanding.course?.trimmingCharacters(in: .whitespacesAndNewlines), !course.isEmpty,
+                       understanding.confidence != .low, !understanding.unreadable {
+                        ScreenWatcher.shared.cloudCourse(course, for: source.row)
+                    }
                     status = needsReview ? "Episode saved; evidence needs review" : "Episode saved"
                     lastError = nil
                 } catch let error as XAIClient.Failure {

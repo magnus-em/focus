@@ -28,7 +28,20 @@ final class FocusStreakStore: ObservableObject {
         var category: String?
         var detail: String
         var state: State = .labeled
+        /// The window, so "Wrong?" can teach it.
+        var app = ""
+        var bundle = ""
+        var title = ""
+        var course: String? = nil
         enum State { case labeled, unsure, unread }
+    }
+
+    /// "Wrong?" answered: show the answer now rather than at the next reading.
+    func corrected(category: String?, course: String?) {
+        guard var r = reading else { return }
+        if let category { r.category = category; r.state = .labeled }
+        if let course { r.course = course == ScreenCourse.notAClass ? nil : course }
+        reading = r
     }
 
     private var live: FocusStreak.Live
@@ -105,11 +118,14 @@ final class FocusStreakStore: ObservableObject {
 
     private static func reading(_ f: WindowTimelineRecorder.Front, category: String?, sample: ScreenSample?) -> Reading {
         if category == WindowTimeline.privateCategory { return Reading(category: category, detail: f.app) }
-        guard let s = sample else { return Reading(category: nil, detail: f.title ?? f.app, state: .unread) }
+        guard let s = sample else {
+            return Reading(category: nil, detail: f.title ?? f.app, state: .unread, app: f.app, bundle: f.bundle, title: f.title ?? "")
+        }
         var d = s.summary.trimmingCharacters(in: .whitespacesAndNewlines)
         if d.hasPrefix(s.app + ": ") { d = String(d.dropFirst(s.app.count + 2)) }
         if d.isEmpty || d == "Private" { d = s.title.isEmpty ? s.app : s.title }
         if d.hasSuffix(".") { d.removeLast() }
-        return Reading(category: category, detail: d, state: s.uncertain ? .unsure : .labeled)
+        return Reading(category: category, detail: d, state: s.uncertain ? .unsure : .labeled,
+                       app: s.app, bundle: s.bundleID, title: s.title, course: s.course)
     }
 }

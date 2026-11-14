@@ -76,6 +76,7 @@ struct InsightsContent: View {
                 attentionSection(s).id("insights-attention")
                 reportSection.id("insights-report")
                 timerSection(s)
+                accuracySection.id("insights-accuracy")
                 daysSection(s).id("insights-days")
                 studySection(s)
             } else {
@@ -207,6 +208,69 @@ struct InsightsContent: View {
                 }
             }
         }
+    }
+
+    // MARK: Reading accuracy
+
+    /// The bar in CATEGORIES.md for letting Focus name every block.
+    private var accuracySection: some View {
+        let days = store.accuracy.filter { $0.readSeconds >= 60 || $0.autoSwitches > 0 || $0.corrections > 0 }
+        let t = ReadingAccuracy.total(days)
+        return VStack(alignment: .leading, spacing: 14) {
+            SectionTitle("How well Focus reads your screen",
+                         subtitle: "During focus blocks. Focus names blocks from the screen, so these say whether it can be trusted to. Wrong? next to what it reads in the popover, or ⌃⌥⌘', teaches it")
+            HStack(alignment: .top, spacing: 28) {
+                measure(t.right.map(pct) ?? "–", "read as the block's category", bar: "goal 90%",
+                        met: t.right.map { $0 >= ReadingAccuracy.rightBar })
+                measure(t.unlabeled.map(pct) ?? "–", "with no label", bar: "goal 5% or less",
+                        met: t.unlabeled.map { $0 <= ReadingAccuracy.unlabeledBar })
+                measure(t.autoSwitches > 0 ? "\(t.undone) of \(t.autoSwitches)" : "–", "switches without asking you undid",
+                        bar: "goal 1 in 10", met: t.undoneShare.map { $0 <= ReadingAccuracy.undoneBar })
+                measure("\(t.corrections)", t.corrections == 1 ? "correction from you" : "corrections from you",
+                        bar: t.courseCorrections > 0 ? "\(t.courseCorrections) named a class" : "", met: nil)
+            }
+            if !days.isEmpty {
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
+                    GridRow {
+                        ForEach(["Day", "Read right", "No label", "Undone", "Your corrections"], id: \.self) {
+                            Text($0).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.secondaryText)
+                        }
+                    }
+                    ForEach(days.reversed()) { d in
+                        GridRow {
+                            Text(d.day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                            cell(d.right.map(pct), met: d.right.map { $0 >= ReadingAccuracy.rightBar })
+                            cell(d.unlabeled.map(pct), met: d.unlabeled.map { $0 <= ReadingAccuracy.unlabeledBar })
+                            cell(d.autoSwitches > 0 ? "\(d.undone) of \(d.autoSwitches)" : nil,
+                                 met: d.undoneShare.map { $0 <= ReadingAccuracy.undoneBar })
+                            Text(d.corrections > 0 ? "\(d.corrections)" : "none").monospacedDigit()
+                                .foregroundStyle(d.corrections > 0 ? Color.primary : Color.secondaryText)
+                        }
+                        .font(.system(size: 13))
+                    }
+                }
+            }
+            Text("Read right: screen time during focus blocks where its category matched the block's, unless you corrected that window. Trips to Messages or a feed count as not matching, as in the 73% measured on Nov 13. No label: time it read but couldn't name.")
+                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func measure(_ value: String, _ label: String, bar: String, met: Bool?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(.system(size: 22, weight: .semibold)).monospacedDigit()
+                .foregroundStyle(met == true ? Color.good : Color.primary)
+            Text(label).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+            if !bar.isEmpty {
+                Label(bar, systemImage: met == true ? "checkmark.circle.fill" : "flag")
+                    .font(.system(size: 11)).foregroundStyle(met == true ? Color.good : Color.secondaryText)
+            }
+        }
+    }
+
+    private func cell(_ value: String?, met: Bool?) -> some View {
+        Text(value ?? "–").monospacedDigit()
+            .foregroundStyle(value == nil ? Color.secondaryText : (met == true ? Color.good : Color.primary))
     }
 
     // MARK: Attention

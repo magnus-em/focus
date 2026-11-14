@@ -335,14 +335,26 @@ struct TimerView: View {
     private var whatLine: some View {
         let label = timer.currentLabel
         if timer.isActive, !onBreak, !label.isEmpty {
-            let seen = streak.reading.flatMap { r -> String? in
-                guard r.category != WindowTimeline.privateCategory else { return nil }
-                return r.category == label ? String(r.detail.prefix(40)) : "on screen " + MenuBarTitle.describe(r)
+            let reading = streak.reading.flatMap { $0.category == WindowTimeline.privateCategory || $0.bundle.isEmpty ? nil : $0 }
+            let seen = reading.map { r -> String in
+                r.category == label ? [r.course, String(r.detail.prefix(40))].compactMap { $0 }.joined(separator: " · ")
+                    : "on screen " + MenuBarTitle.describe(r)
             }
-            Text([label, seen].compactMap { $0 }.joined(separator: " · "))
-                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-                .lineLimit(1).truncationMode(.tail)
-                .help("What Focus named this block, and what it reads on your screen now. Wrong? Pick what it is from the menu above.")
+            HStack(spacing: 8) {
+                Text([label, seen].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    .lineLimit(1).truncationMode(.tail)
+                    .help("What Focus named this block, and what it reads on your screen now")
+                if let reading {
+                    WrongMenu(window: reading.title.isEmpty ? reading.app : reading.title, category: reading.category,
+                              course: reading.course,
+                              study: settings.tags.filter { !settings.lifeTags.contains($0) },
+                              other: settings.tags.filter { settings.lifeTags.contains($0) }) { category, course in
+                        ReadingCorrection.apply(category: category, course: course, timer: timer, via: "popover")
+                    }
+                    .equatable()
+                }
+            }
         } else if !timer.isActive, timer.labelPickedByHand, !label.isEmpty {
             Text("\(label), picked by you").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
         }
@@ -437,7 +449,9 @@ struct TimerView: View {
             guard tag != timer.currentLabel else { return }
             let from = timer.currentLabel
             timer.relabelRunning(tag)
-            if let start = timer.sessionStartTime { watcher.correct(from: from, to: tag, since: start) }
+            if let start = timer.sessionStartTime {
+                ReadingCorrection.logRename(from: from, to: tag, windows: watcher.correct(from: from, to: tag, since: start), since: start)
+            }
         } else if timer.isActive || FocusCategories.isLife(tag) {
             if !(timer.isActive && !timer.isOnBreak && timer.currentLabel == tag) { timer.switchTo(tag) }
         } else {
@@ -1218,6 +1232,71 @@ struct CategoryMenu: View, Equatable {
         .menuIndicator(.hidden)
         .fixedSize()
         .help(renames ? "Not what you're doing? Pick what it is (renames this block)" : "Pick what to focus on, or press Start and Focus names it")
+    }
+}
+
+/// "Wrong?" beside what Focus reads in front: name its class (which also
+/// sets its category) or its category. Equatable for the same reason as
+/// `CategoryMenu`: a per-second redraw would close the open menu.
+struct WrongMenu: View, Equatable {
+    let window: String
+    let category: String?
+    let course: String?
+    let study: [String]
+    let other: [String]
+    let pick: (String?, String?) -> Void
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.window == b.window && a.category == b.category && a.course == b.course && a.study == b.study && a.other == b.other
+    }
+
+    var body: some View {
+        Menu {
+            Text("What's in front: \(window.prefix(50))")
+            Section("Which class?") {
+                ForEach(CoachCourse.known, id: \.code) { c in
+                    item([c.code, CoachCourse.name(of: c.code)].compactMap { $0 }.joined(separator: " · "), current: c.code == course) {
+                        pick(nil, c.code)
+                    }
+                }
+                item("Not a class", current: false) { pick(nil, ScreenCourse.notAClass) }
+            }
+            Section("Or a category") {
+                ForEach(study, id: \.self) { t in item(t, current: t == category) { pick(t, conflicting(t)) } }
+            }
+            Section("Something else") {
+                ForEach(other, id: \.self) { t in item(t, current: t == category) { pick(t, conflicting(t)) } }
+            }
+        } label: {
+            Text("Wrong?")
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 10)
+                .frame(minHeight: 22)
+                .background(Capsule().fill(Color.primary.opacity(0.06)))
+                .frame(minHeight: 36)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plainHit)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .padding(.vertical, -7)
+        .help("Focus read this wrong? Tell it the class or category, and it learns this window. ⌃⌥⌘' from anywhere.")
+    }
+
+    /// A category the window's class doesn't count toward means the class was wrong too.
+    private func conflicting(_ category: String) -> String? {
+        guard let course, ScreenCourse.category(of: course) != category else { return nil }
+        return ScreenCourse.notAClass
+    }
+
+    @ViewBuilder
+    private func item(_ title: String, current: Bool, _ action: @escaping () -> Void) -> some View {
+        if current {
+            Button(action: action) { Label(title, systemImage: "checkmark") }
+        } else {
+            Button(title, action: action)
+        }
     }
 }
 

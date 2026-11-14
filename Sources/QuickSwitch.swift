@@ -8,7 +8,7 @@ import FocusCore
 /// and commands arriving from other devices.
 ///
 /// Hotkeys (all ⌃⌥⌘, right hand only): J switcher · K start/stop · L break ·
-/// ; recall · 0 stop · Space pause. Categories take `categoryKeys` in order
+/// ; recall · 0 stop · Space pause · ' "Wrong?" (what's in front is…). Categories take `categoryKeys` in order
 /// (U I O P M , . / …), the same keys the switcher panel shows.
 /// URLs: focus://switch/<category>, focus://stop,
 /// focus://break[?minutes=N], focus://toggle, focus://switcher,
@@ -52,6 +52,7 @@ final class QuickSwitch {
         bind(UInt32(kVK_ANSI_L)) { [weak self] in self?.startBreak() }
         bind(UInt32(kVK_ANSI_Semicolon)) { [weak self] in self?.openRecall?() }
         bind(UInt32(kVK_ANSI_0)) { [weak self] in self?.stop() }
+        bind(UInt32(kVK_ANSI_Quote)) { [weak self] in MainActor.assumeIsolated { self?.showCorrection() } }
         for (i, k) in Self.categoryKeys.enumerated() {
             bind(UInt32(k.code)) { [weak self] in
                 guard let self, i < self.settings.tags.count else { return }
@@ -116,6 +117,24 @@ final class QuickSwitch {
     }
 
     func showSwitcher() { switcher.show() }
+
+    /// ⌃⌥⌘': the switcher, asking what the window in front really is.
+    @MainActor func showCorrection() {
+        guard FocusStreakStore.shared.reading.map({ !$0.bundle.isEmpty && $0.category != WindowTimeline.privateCategory }) == true else {
+            toast.show(icon: "questionmark.circle", title: "Nothing read yet", detail: "Focus reads the window in front during a focus block")
+            return
+        }
+        switcher.show(correcting: true)
+    }
+
+    /// What the window in front is, for the switcher's correction rows.
+    @MainActor var reading: FocusStreakStore.Reading? { FocusStreakStore.shared.reading }
+
+    @MainActor func correct(category: String?, course: String?) {
+        if let line = ReadingCorrection.apply(category: category, course: course, timer: timer, via: "hotkey") {
+            toast.show(icon: "checkmark.circle", title: "Got it", detail: line)
+        }
+    }
 
     func handle(url: URL) {
         // focustracker:// is the old scheme, kept so existing shortcuts still work.
@@ -215,11 +234,11 @@ private final class SwitcherPanel {
 
     init(quick: QuickSwitch) { self.quick = quick }
 
-    func show() {
+    func show(correcting: Bool = false) {
         guard let quick else { return }
         if panel != nil { close(); return }
         previousApp = NSWorkspace.shared.frontmostApplication
-        let view = SwitcherView(quick: quick) { [weak self] in self?.close() }
+        let view = SwitcherView(quick: quick, correcting: correcting) { [weak self] in self?.close() }
         let hosting = NSHostingView(rootView: view)
         let size = hosting.fittingSize
         let p = KeyPanel(
@@ -275,6 +294,7 @@ private final class SwitcherPanel {
 /// Esc to close. Also "break 15", "stop", "dashboard", "recall", "end day".
 private struct SwitcherView: View {
     let quick: QuickSwitch
+    @State var correcting: Bool
     let dismiss: () -> Void
     @State private var query = ""
     @State private var selection = 0
@@ -291,7 +311,27 @@ private struct SwitcherView: View {
         var id: String { title }
     }
 
+    /// "Wrong?" rows: the window in front is this class, or this category.
+    private var correctionItems: [Item] {
+        let r = MainActor.assumeIsolated { quick.reading }
+        var out: [Item] = CoachCourse.known.map { c in
+            Item(title: c.code, detail: CoachCourse.name(of: c.code) ?? "", color: categoryColor(ScreenCourse.category(of: c.code) ?? ""),
+                 current: c.code == r?.course) { MainActor.assumeIsolated { quick.correct(category: nil, course: c.code) } }
+        }
+        out.append(Item(title: "Not a class", color: nil, icon: "xmark.circle") {
+            MainActor.assumeIsolated { quick.correct(category: nil, course: ScreenCourse.notAClass) }
+        })
+        for tag in quick.tags {
+            let clash = r?.course.flatMap { ScreenCourse.category(of: $0) }.map { $0 != tag } ?? false
+            out.append(Item(title: tag, detail: "category", color: categoryColor(tag), current: tag == r?.category) {
+                MainActor.assumeIsolated { quick.correct(category: tag, course: clash ? ScreenCourse.notAClass : nil) }
+            })
+        }
+        return out
+    }
+
     private var allItems: [Item] {
+        if correcting { return correctionItems }
         var out: [Item] = quick.tags.enumerated().map { i, tag in
             Item(title: tag, detail: FocusCategories.isWellbeing(tag) ? "wellbeing" : (FocusCategories.isLife(tag) ? "life" : "focus"), color: categoryColor(tag),
                  hint: i < QuickSwitch.categoryKeys.count ? "⌃⌥⌘\(String(QuickSwitch.categoryKeys[i].key).uppercased())" : "",
@@ -302,6 +342,9 @@ private struct SwitcherView: View {
                         icon: "cup.and.saucer", hint: "⌃⌥⌘L", current: quick.isOnBreak) { quick.startBreak(minutes: minutes) })
         if quick.isActive {
             out.append(Item(title: "Stop", detail: "saves what's running", color: nil, icon: "stop.fill", hint: "⌃⌥⌘0") { quick.stop() })
+        }
+        if quick.isActive, !quick.isOnBreak {
+            out.append(Item(title: "Wrong?", detail: "what's in front is…", color: nil, icon: "questionmark.circle", hint: "⌃⌥⌘'") {})
         }
         out.append(Item(title: "Dashboard", color: nil, icon: "rectangle.grid.2x2") { quick.openDashboard?() })
         out.append(Item(title: "Recall", color: nil, icon: "brain.head.profile", hint: "⌃⌥⌘;") { quick.openRecall?() })
@@ -339,7 +382,7 @@ private struct SwitcherView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 20))
                     .focused($focused)
-                    .onSubmit { if let i = list[safe: selection] { run(i.run) } }
+                    .onSubmit { if let i = list[safe: selection] { run(i) } }
                     .onKeyPress(.downArrow) { selection = min(selection + 1, max(list.count - 1, 0)); return .handled }
                     .onKeyPress(.upArrow) { selection = max(selection - 1, 0); return .handled }
                     .onKeyPress(.escape) { dismiss(); return .handled }
@@ -353,7 +396,7 @@ private struct SwitcherView: View {
                     VStack(spacing: 2) {
                         ForEach(Array(list.enumerated()), id: \.element.id) { n, item in
                             row(item, selected: n == selection).id(n)
-                                .onTapGesture { run(item.run) }
+                                .onTapGesture { run(item) }
                         }
                         if list.isEmpty {
                             Text("No match").font(.system(size: 13)).foregroundStyle(Color.secondaryText).padding(14)
@@ -371,9 +414,23 @@ private struct SwitcherView: View {
     }
 
     private var statusLine: String {
+        if correcting {
+            let r = MainActor.assumeIsolated { quick.reading }
+            let w = r.map { $0.title.isEmpty ? $0.app : $0.title } ?? "this window"
+            return "Wrong? \(w.prefix(36)) is…"
+        }
         if quick.isOnBreak { return "On a break · switch to…" }
         if !quick.currentLabel.isEmpty { return "\(quick.currentLabel) now · switch to…" }
         return "Start…"
+    }
+
+    private func run(_ item: Item) {
+        if !correcting, item.title == "Wrong?" {
+            correcting = true
+            query = ""
+            return
+        }
+        run(item.run)
     }
 
     private func run(_ action: @escaping () -> Void) {

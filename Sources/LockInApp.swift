@@ -487,7 +487,7 @@ struct MenuBarTitle: View {
         switch r.state {
         case .unread: head = "not read yet"
         case .unsure: head = "unsure"
-        case .labeled: head = r.category ?? "no label"
+        case .labeled: head = r.course ?? r.category ?? "no label"
         }
         let d = r.detail.count > 36 ? r.detail.prefix(35).trimmingCharacters(in: .whitespaces) + "…" : r.detail
         return "\(head): \(d)"

@@ -19,6 +19,8 @@ final class InsightsStore: ObservableObject {
     @Published private(set) var writing = false
     @Published private(set) var writeStatus = ""
     @Published private(set) var loading = false
+    /// How well Focus read the screen during focus, a day at a time.
+    @Published private(set) var accuracy: [ReadingAccuracy.Day] = []
 
     /// Set by the app: the timer's saved blocks and logged problems.
     var sessionsProvider: () -> [WorkSession] = { ScreenCoach.shared?.sessions ?? [] }
@@ -93,6 +95,9 @@ final class InsightsStore: ObservableObject {
         Task {
             let input = await gather(period: period)
             let s = await Task.detached(priority: .utility) { Insights.summarize(input) }.value
+            let accuracy = await accuracyDays(period: input.period, sessions: input.sessions)
+            guard id == self.refreshID else { return }
+            self.accuracy = accuracy
             guard id == self.refreshID else { return }
             self.summary = s
             self.loading = false
@@ -138,6 +143,27 @@ final class InsightsStore: ObservableObject {
             return Insights.Input(period: period, goals: goals, sessions: sessions, segments: labeled + fallback,
                                   observations: observations, aiMessages: messages, applications: apps,
                                   leetCodeSolves: leet, studyCategories: study, lifeCategories: lifeSet)
+        }.value
+    }
+
+    /// Screen readings during focus blocks (not Class, where the screen names
+    /// the subject by design), your "Wrong?" answers and the switches made
+    /// without asking, per day.
+    func accuracyDays(period: DateInterval, sessions: [Insights.Session]) async -> [ReadingAccuracy.Day] {
+        let live = ScreenWatcher.shared.spans(from: period.start, to: period.end)
+        let skip = ScreenWatcher.privateApps.union(ScreenWatcher.userIgnored.keys).union([ScreenWatcher.ownBundle])
+        let blocks = sessions.filter { $0.isFocus && $0.category != "Class" }
+            .map { ReadingAccuracy.Block(start: $0.start, end: $0.end, label: $0.category) }
+        return await Task.detached(priority: .utility) {
+            let spans = (ScreenArchive.spans(from: period.start, to: period.end) + live)
+                .filter { !skip.contains($0.bundleID) && $0.summary != "Private" && !$0.bundleID.hasPrefix("ios:") }
+                .map { ReadingAccuracy.Span(start: $0.start, end: $0.end, window: ScreenWatcher.memoryKey(bundle: $0.bundleID, title: $0.title),
+                                            category: $0.category, uncertain: $0.uncertain ?? false) }
+            let switches = PromptLog.scorecardCards(since: period.start).filter(\.automatic)
+                .map { ReadingAccuracy.AutoSwitch(at: $0.shown, undone: $0.answer?.hasPrefix("undid") ?? false) }
+            return ReadingAccuracy.days(spans: spans, blocks: blocks,
+                                        corrections: ScreenWatcher.corrections(from: period.start, to: period.end),
+                                        autoSwitches: switches, from: period.start, to: period.end)
         }.value
     }
 

@@ -26,6 +26,10 @@ struct ScreenSpan: Codable, Equatable, Identifiable {
     var reason: String?
     var uncertain: Bool?
     var testMode: Bool? = nil
+    /// The course this reading belongs to (`ScreenCourse`), and where that
+    /// came from: "you", "model", "title", "calendar", "window". nil in old data.
+    var course: String? = nil
+    var courseBasis: String? = nil
     var id: Date { start }
 }
 
@@ -546,9 +550,12 @@ final class ScreenWatcher: ObservableObject {
             app: appName, bundle: bundle, windowID: "\(app.processIdentifier):\(shot.windowID)", title: title,
             url: privacy == .incognito ? nil : url, category: category, trackedCategory: trackedAtCapture, active: idle < 90,
             idleSeconds: idle, privacy: privacy, evidenceImageID: imageID, text: read.fullText), token: journalToken)
+        let course = courseReading(app: appName, bundle: bundle, title: title, url: privacy == .incognito ? nil : url,
+                                   category: labelUncertain ? nil : category, at: now)
         record(ScreenSample(date: now, app: appName, bundleID: bundle, title: title,
                             summary: summary, category: category, active: PresenceMonitor.idleSeconds < 90,
-                            learned: learned, source: source, reason: labelReason, uncertain: labelUncertain))
+                            learned: learned, source: source, reason: labelReason, uncertain: labelUncertain,
+                            course: course?.course, courseBasis: course?.basis.rawValue))
     }
 
     private func canRecordSample(generation: Int, bundle: String) -> Bool {
@@ -572,6 +579,7 @@ final class ScreenWatcher: ObservableObject {
                     && recorder.wasFront(bundle: s.bundleID, from: last.end, to: s.date))
         }
         if var last = spans.last, last.bundleID == s.bundleID, last.title == s.title, last.category == s.category,
+           last.course == s.course,
            (last.uncertain ?? false) == s.uncertain, last.testMode == testMode, continuous(last) {
             last.end = end
             last.summary = s.summary
@@ -579,6 +587,7 @@ final class ScreenWatcher: ObservableObject {
             last.source = s.source ?? last.source
             last.reason = s.reason
             last.uncertain = s.uncertain
+            last.courseBasis = s.courseBasis ?? last.courseBasis
             spans[spans.count - 1] = last
         } else {
             var start = s.date
@@ -597,7 +606,8 @@ final class ScreenWatcher: ObservableObject {
             }
             spans.append(ScreenSpan(start: start, end: end, app: s.app, bundleID: s.bundleID,
                                     title: s.title, summary: s.summary, category: s.category, active: s.active,
-                                    source: s.source, reason: s.reason, uncertain: s.uncertain, testMode: testMode))
+                                    source: s.source, reason: s.reason, uncertain: s.uncertain, testMode: testMode,
+                                    course: s.course, courseBasis: s.courseBasis))
         }
         unsavedSamples += 1
         if unsavedSamples >= 4 { save() }
@@ -1086,10 +1096,159 @@ final class ScreenWatcher: ObservableObject {
     /// "Not this" in the popover: the running block was named `from` but is
     /// `to`. The windows the screen read as `from` since `since` learn `to`,
     /// so the next readings don't switch it straight back.
-    func correct(from: String, to: String, since: Date) {
+    @discardableResult
+    func correct(from: String, to: String, since: Date) -> Set<String> {
         let keys = Set(samples.filter { $0.date >= since && $0.category == from && $0.bundleID != Self.ownBundle }.map(\.memoryKey))
         Self.learn(keys, as: to)
         SyncLog.event("notThis", ["from": from, "to": to, "windows": keys.count])
+        return keys
+    }
+
+    // MARK: Courses
+
+    /// Your answer for a window's course ("" = not a class), by memory key.
+    private static let courseMemoryKey = "screenCourseMemory"
+    static var courseMemory: [String: String] {
+        UserDefaults.standard.dictionary(forKey: courseMemoryKey) as? [String: String] ?? [:]
+    }
+    /// What each window got from direct evidence today, lent to its later readings.
+    private var windowCourses: [String: (reading: ScreenCourse.Reading, at: Date)] = [:]
+    /// The course a cloud reading named for a window, for 30 min.
+    private var cloudCourses: [String: (course: String, at: Date)] = [:]
+    private var courseContextCache: (made: Date, context: CoachCourse.Context)?
+
+    private func courseContext(_ now: Date) -> CoachCourse.Context {
+        if let c = courseContextCache, now.timeIntervalSince(c.made) < 600, Calendar.current.isDate(c.made, inSameDayAs: now) {
+            return c.context
+        }
+        let calendar = ClassCalendar.shared
+        let context = CoachCourse.Context(coursePrefixes: calendar.coursePrefixes, classes: calendar.classes(on: now).map {
+            CoachCourse.ClassEvent(start: $0.start, end: $0.end, title: $0.title)
+        })
+        courseContextCache = (now, context)
+        return context
+    }
+
+    private func courseReading(app: String, bundle: String, title: String, url: String?, category: String?, at now: Date) -> ScreenCourse.Reading? {
+        let key = Self.memoryKey(bundle: bundle, title: title)
+        // A chat titled with the app's name is every chat: no answer sticks to it.
+        let generic = Self.isGeneric(title: title, app: app)
+        let earlier = generic ? nil : windowCourses[key].flatMap { now.timeIntervalSince($0.at) < 4 * 3600 ? $0.reading : nil }
+        let r = ScreenCourse.resolve(
+            category: category, title: title, url: url, at: now,
+            taught: generic ? nil : Self.courseMemory[key],
+            cloud: cloudCourses[key].flatMap { now.timeIntervalSince($0.at) < 1800 ? $0.course : nil },
+            earlier: earlier, context: courseContext(now))
+        if let r, !generic { windowCourses[key] = (r.basis == .window ? earlier ?? r : r, now) }
+        if windowCourses.count > 400 { windowCourses = windowCourses.filter { now.timeIntervalSince($0.value.at) < 4 * 3600 } }
+        return r
+    }
+
+    /// A cloud reading named this window's course: its recent readings that
+    /// had none (or only borrowed one) take it, and so do the next 30 min.
+    func cloudCourse(_ course: String, for row: ScreenJournal.Row) {
+        guard !ScreenClassificationPolicy.showsNoTask(app: row.app, title: row.title),
+              !Self.isGeneric(title: row.title, app: row.app) else { return }
+        let key = Self.memoryKey(bundle: row.bundle, title: row.title)
+        guard Self.courseMemory[key] == nil else { return }
+        let code = CoachCourse.codes(in: course, context: courseContext(row.at)).first ?? course
+        cloudCourses[key] = (code, Date())
+        cloudCourses = cloudCourses.filter { Date().timeIntervalSince($0.value.at) < 1800 }
+        windowCourses[key] = (ScreenCourse.Reading(course: code, basis: .model), Date())
+        let weak: Set<String?> = [nil, ScreenCourse.Basis.window.rawValue]
+        func fits(_ category: String?) -> Bool { category.map(CoachCourse.studyCategories.contains) ?? true }
+        for i in samples.indices where samples[i].memoryKey == key && samples[i].date >= row.at.addingTimeInterval(-1)
+            && weak.contains(samples[i].courseBasis) && fits(samples[i].category) {
+            samples[i].course = code
+            samples[i].courseBasis = ScreenCourse.Basis.model.rawValue
+        }
+        for i in spans.indices.reversed() {
+            if spans[i].end < row.at { break }
+            guard Self.memoryKey(bundle: spans[i].bundleID, title: spans[i].title) == key,
+                  weak.contains(spans[i].courseBasis), fits(spans[i].category) else { continue }
+            spans[i].course = code
+            spans[i].courseBasis = ScreenCourse.Basis.model.rawValue
+        }
+    }
+
+    /// "Wrong?": the window in front is `category` and/or `course` ("" = not
+    /// a class). It learns that, and so does every window in this block that
+    /// was read the same way since `since`. Live readings change at once;
+    /// saved readings keep their category (so the accuracy numbers can tell
+    /// the reading was wrong) but take the course. Returns the windows taught.
+    @discardableResult
+    func teach(bundle: String, app: String, title: String, readAs: (category: String?, course: String?),
+               since: Date, category: String?, course: String?) -> Set<String> {
+        let front = Self.memoryKey(bundle: bundle, title: title)
+        var all: Set<String> = [front]
+        for s in samples where s.date >= since && s.bundleID != Self.ownBundle && !Self.privateApps.contains(s.bundleID)
+            && s.category == readAs.category && s.course == readAs.course {
+            all.insert(s.memoryKey)
+        }
+        let teachable = Set(samples.filter { all.contains($0.memoryKey) && !Self.isGeneric(title: $0.title, app: $0.app) }.map(\.memoryKey))
+            .union(Self.isGeneric(title: title, app: app) ? [] : [front])
+        if let course, !teachable.isEmpty {
+            var m = Self.courseMemory
+            for k in teachable { m[k] = course }
+            if m.count > 800 {
+                let others = m.filter { !teachable.contains($0.key) }.sorted { $0.key < $1.key }.prefix(max(0, 800 - teachable.count))
+                m = m.filter { teachable.contains($0.key) }.merging(others.map { ($0.key, $0.value) }) { a, _ in a }
+            }
+            UserDefaults.standard.set(m, forKey: Self.courseMemoryKey)
+            for k in teachable { windowCourses[k] = nil }
+        }
+        if let category { Self.learn(teachable, as: category) }
+        let courseValue = course.flatMap { $0 == ScreenCourse.notAClass ? nil : $0 }
+        let basis = ScreenCourse.Basis.you.rawValue
+        for i in samples.indices where samples[i].date >= since && all.contains(samples[i].memoryKey) {
+            if let category {
+                samples[i].category = category
+                samples[i].uncertain = false
+                samples[i].source = "you"
+                samples[i].reason = "your answer just now"
+            }
+            if course != nil {
+                samples[i].course = courseValue
+                samples[i].courseBasis = courseValue == nil ? nil : basis
+            }
+        }
+        if course != nil {
+            for i in spans.indices.reversed() {
+                if spans[i].end < since { break }
+                guard all.contains(Self.memoryKey(bundle: spans[i].bundleID, title: spans[i].title)) else { continue }
+                spans[i].course = courseValue
+                spans[i].courseBasis = courseValue == nil ? nil : basis
+            }
+        }
+        save()
+        objectWillChange.send()
+        SyncLog.event("readingCorrected", ["category": category ?? "", "course": course ?? "-", "windows": all.count])
+        return all
+    }
+
+    /// `Focus/screen-corrections.jsonl`, one line per "Wrong?" answer (90 days).
+    nonisolated static let correctionsURL: URL = PromptLog.url.deletingLastPathComponent().appendingPathComponent("screen-corrections.jsonl")
+
+    static func logCorrection(_ c: ReadingAccuracy.Correction) {
+        let enc = JSONEncoder()
+        enc.dateEncodingStrategy = .iso8601
+        guard var data = try? enc.encode(c) else { return }
+        data.append(0x0A)
+        if let h = try? FileHandle(forWritingTo: correctionsURL) {
+            h.seekToEndOfFile()
+            h.write(data)
+            try? h.close()
+        } else {
+            try? data.write(to: correctionsURL)
+        }
+    }
+
+    nonisolated static func corrections(from: Date, to: Date) -> [ReadingAccuracy.Correction] {
+        guard let raw = try? String(contentsOf: correctionsURL, encoding: .utf8) else { return [] }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        return raw.split(separator: "\n").compactMap { try? dec.decode(ReadingAccuracy.Correction.self, from: Data($0.utf8)) }
+            .filter { $0.at >= from && $0.at < to }
     }
 
     /// The user's answer for these windows beats the model next time.
@@ -1348,6 +1507,8 @@ struct ScreenSample {
     var source: String? = nil
     var reason: String? = nil
     var uncertain = false
+    var course: String? = nil
+    var courseBasis: String? = nil
     var memoryKey: String { ScreenWatcher.memoryKey(bundle: bundleID, title: title) }
 }
 

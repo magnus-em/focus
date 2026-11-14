@@ -82,6 +82,11 @@ public enum CoachCourse {
     ]
 
     public static let known = enrollment.map(\.course)
+
+    /// "Discrete Math" for "MATH 244"; nil for a course outside the roster.
+    public static func name(of code: String) -> String? {
+        enrollment.first { $0.course.code == code }?.name
+    }
     static let enrollmentDescription = enrollment.map { "\($0.course.code) \($0.name)" }.joined(separator: "; ")
     static let categoryDescription = enrollment.compactMap { e in e.course.category.map { "\(e.course.code) → \($0)" } }.joined(separator: ", ")
 
@@ -94,7 +99,7 @@ public enum CoachCourse {
         }?.course
     }
 
-    static let studyCategories: Set<String> = ["Math", "SWE", "HW", "AI", "Quant", "Class", "Reading"]
+    public static let studyCategories: Set<String> = ["Math", "SWE", "HW", "AI", "Quant", "Class", "Reading"]
     private static let interviewPrep = ["leetcode", "neetcode", "hackerrank", "codeforces"]
     private static let window = TimeInterval(20 * 60)
 
@@ -257,6 +262,10 @@ public enum CoachCourse {
     }
 
     private static func courseCategory(_ code: String, context: Context) -> String? {
+        category(of: code, context: context)
+    }
+
+    public static func category(of code: String, context: Context) -> String? {
         context.courses.first { $0.code == code }?.category ?? StudyRecall.courseCategory(code)
     }
 
