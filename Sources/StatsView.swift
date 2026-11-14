@@ -103,8 +103,15 @@ struct StatsView: View {
 
     private var splitCard: some View {
         let start = Calendar.current.date(byAdding: .day, value: -6, to: Calendar.current.startOfDay(for: Date()))!
-        let split = splitAllTime ? store.minutesByTag() : store.minutesByTag(since: start)
-        let total = split.reduce(0.0) { $0 + $1.minutes }
+        let byTag = splitAllTime ? store.minutesByTag() : store.minutesByTag(since: start)
+        let total = byTag.reduce(0.0) { $0 + $1.minutes }
+        // By group (CATEGORIES.md), with the categories inside on a second line.
+        let split = CategoryGroup.allCases.compactMap { g -> (group: CategoryGroup, minutes: Double, inside: String)? in
+            let parts = byTag.filter { CategoryGroup.of($0.tag, isLife: false) == g }.sorted { $0.minutes > $1.minutes }
+            let m = parts.reduce(0.0) { $0 + $1.minutes }
+            guard m > 0 else { return nil }
+            return (g, m, parts.map { "\($0.tag) \(formatMinutes($0.minutes))" }.joined(separator: " · "))
+        }
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -127,9 +134,9 @@ struct StatsView: View {
             } else {
                 GeometryReader { geo in
                     HStack(spacing: 1.5) {
-                        ForEach(split, id: \.tag) { e in
+                        ForEach(split, id: \.group) { e in
                             Rectangle()
-                                .fill(categoryColor(e.tag))
+                                .fill(e.group.color)
                                 .frame(width: max(0, geo.size.width * CGFloat(e.minutes / total) - 1.5))
                         }
                     }
@@ -138,17 +145,22 @@ struct StatsView: View {
                 .frame(height: 8)
 
                 VStack(spacing: 5) {
-                    ForEach(split, id: \.tag) { e in
-                        HStack(spacing: 6) {
-                            Circle().fill(categoryColor(e.tag)).frame(width: 6, height: 6)
-                            Text(e.tag).font(.system(size: 13, weight: .medium))
-                            Spacer()
-                            Text(formatMinutes(e.minutes))
-                                .font(.system(size: 13).monospacedDigit())
-                            Text("\(Int((e.minutes / total * 100).rounded()))%")
-                                .font(.system(size: 12).monospacedDigit())
-                                .foregroundStyle(.secondary)
-                                .frame(width: 30, alignment: .trailing)
+                    ForEach(split, id: \.group) { e in
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 6) {
+                                Circle().fill(e.group.color).frame(width: 6, height: 6)
+                                Text(e.group.rawValue).font(.system(size: 13, weight: .medium))
+                                Spacer()
+                                Text(formatMinutes(e.minutes))
+                                    .font(.system(size: 13).monospacedDigit())
+                                Text("\(Int((e.minutes / total * 100).rounded()))%")
+                                    .font(.system(size: 12).monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 30, alignment: .trailing)
+                            }
+                            Text(e.inside)
+                                .font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
+                                .lineLimit(1).padding(.leading, 12)
                         }
                     }
                 }

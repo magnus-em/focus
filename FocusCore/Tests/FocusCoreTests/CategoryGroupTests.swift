@@ -40,4 +40,14 @@ final class CategoryGroupTests: XCTestCase {
         XCTAssertEqual(CategoryGroup.of("Stat 110", isLife: false), .learning)
         XCTAssertEqual(CategoryGroup.of("Laundry", isLife: true), .life)
     }
+
+    func testCategoriesDrawInTheirGroupsColor() {
+        XCTAssertEqual(categoryColor("Math"), CategoryGroup.school.color)
+        XCTAssertEqual(categoryColor("hw"), CategoryGroup.school.color)
+        XCTAssertEqual(categoryColor("LeetCode"), CategoryGroup.career.color)
+        XCTAssertEqual(categoryColor("Leisure"), CategoryGroup.freeTime.color)
+        XCTAssertEqual(categoryColor("Free time"), CategoryGroup.freeTime.color)
+        XCTAssertEqual(categoryColor("Learning & projects"), CategoryGroup.learning.color)
+        XCTAssertNotEqual(categoryColor("Break"), CategoryGroup.freeTime.color)
+    }
 }

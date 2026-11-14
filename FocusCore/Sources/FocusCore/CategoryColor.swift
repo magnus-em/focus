@@ -1,10 +1,21 @@
 import SwiftUI
 
-/// Focus categories get vivid, well-separated hues (and lightness, so they
-/// still differ in grayscale); life categories are quieter. Math and SWE
-/// were a shade apart until 10/13.
+private let groupByLowercased = Dictionary(uniqueKeysWithValues: CategoryGroup.table.map { ($0.key.lowercased(), $0.value) })
+private let groupByName = Dictionary(uniqueKeysWithValues: CategoryGroup.allCases.map { ($0.rawValue.lowercased(), $0) })
+
+/// Every category is drawn in its group's color (user, 11/13: one consistent
+/// way to see where time went, not a color per category; CATEGORIES.md).
+/// Break and categories outside the table keep their own below.
 public func categoryColor(_ tag: String) -> Color {
-    switch tag.lowercased() {
+    let key = tag.lowercased()
+    if key != "break", let group = groupByLowercased[key] ?? groupByName[key] { return group.color }
+    return ownCategoryColor(key)
+}
+
+/// The per-category palette from before the groups: vivid, well-separated
+/// focus hues, quieter life ones.
+func ownCategoryColor(_ key: String) -> Color {
+    switch key {
     // Teal, not green: green means "goal met" (DESIGN.md).
     case "leetcode": return Color(red: 0.90, green: 0.40, blue: 0.08)
     case "swe":      return Color(red: 0.05, green: 0.62, blue: 0.66)

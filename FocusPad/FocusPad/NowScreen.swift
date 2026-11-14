@@ -106,8 +106,9 @@ struct NowScreen: View {
 
     // MARK: - Running
 
+    /// The group, not the category (CATEGORIES.md); the category sits by the start time.
     private var runningName: String {
-        engine.isOnBreak ? "Break" : (engine.currentLabel.isEmpty ? "Focus" : engine.currentLabel)
+        engine.isOnBreak ? "Break" : (engine.currentLabel.isEmpty ? "Focus" : CategoryGroup.of(engine.currentLabel).rawValue)
     }
     private var runningColor: Color { engine.isOnBreak ? FocusColors.breakBlue : categoryColor(engine.currentLabel) }
     private var isCountdown: Bool { engine.isActive && !FocusCategories.isOpenEnded(total: engine.totalTime) }
@@ -129,7 +130,8 @@ struct NowScreen: View {
                         .font(.system(size: 48, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                     if let start = engine.sessionStartTime {
-                        Text(isCountdown ? "left · since \(clock(start))" : "since \(clock(start))")
+                        Text((engine.isOnBreak || engine.currentLabel.isEmpty ? "" : "\(engine.currentLabel) · ")
+                             + (isCountdown ? "left · since \(clock(start))" : "since \(clock(start))"))
                             .font(.subheadline).foregroundStyle(Color.secondaryText)
                     }
                 }
@@ -162,7 +164,7 @@ struct NowScreen: View {
                 }
             } else {
                 Text("Nothing tracked").font(.title2.weight(.semibold))
-                Text("Tap what you're doing below. Focus categories count toward your \(settings.dailyGoalHours)h goal; Wellbeing, Life and Break count up separately.")
+                Text("Tap Focus to start studying; the Mac names what it is from your screen. Focus counts toward your \(settings.dailyGoalHours)h goal; Wellbeing, Life and Break count up separately.")
                     .font(.subheadline).foregroundStyle(Color.secondaryText)
             }
         }
@@ -182,7 +184,7 @@ struct NowScreen: View {
             Text("Tap to switch now. Touch and hold one to pick an earlier start.")
                 .font(.footnote).foregroundStyle(Color.secondaryText)
             Text("Focus · counts toward your goal").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 6)
-            LazyVGrid(columns: columns, spacing: 8) { ForEach(focusTags, id: \.self) { tile($0) } }
+            LazyVGrid(columns: columns, spacing: 8) { focusTile(focusTags) }
             Text("Wellbeing · today’s totals").font(.subheadline.weight(.semibold)).foregroundStyle(Color.secondaryText).padding(.top, 4)
             LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { tag in
@@ -199,6 +201,37 @@ struct NowScreen: View {
                 breakTile
             }
         }
+    }
+
+    /// One button for all study (user, 11/13: "I just start it"): it starts
+    /// your last focus category and the Mac renames it from the screen as soon
+    /// as you're there. Touch and hold to pick one yourself.
+    private func focusTile(_ focusTags: [String]) -> some View {
+        let running = engine.isActive && !engine.isOnBreak && focusTags.contains(engine.currentLabel)
+        let last = sessions.first { s in focusTags.contains(s.label ?? "") && s.type == .work }?.label
+        let start = running ? engine.currentLabel : (last ?? focusTags.first ?? "HW")
+        return Button {
+            guard !running else { return }
+            Haptics.medium()
+            engine.switchTo(start)
+            notice = nil
+        } label: {
+            ChipLabel(icon: "scope", text: running ? CategoryGroup.of(engine.currentLabel).rawValue : "Focus",
+                      color: running ? categoryColor(engine.currentLabel) : CategoryGroup.school.color, selected: running)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            ForEach([CategoryGroup.school, .career, .learning], id: \.self) { g in
+                let items = focusTags.filter { CategoryGroup.of($0, isLife: false) == g }
+                if !items.isEmpty {
+                    Section(g.rawValue) {
+                        ForEach(items, id: \.self) { t in Button(t) { engine.switchTo(t) } }
+                    }
+                }
+            }
+            Button("Started earlier…") { switchAt = SwitchAtRequest(label: start) }
+        }
+        .accessibilityLabel(running ? "Focus, tracking now" : "Start focus")
     }
 
     private func tile(_ tag: String) -> some View {

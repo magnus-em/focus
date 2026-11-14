@@ -48,7 +48,8 @@ final class FocusStreakStore: ObservableObject {
         if let front, let block = ScreenCoach.shared?.focusBlock, !PresenceMonitor.shared.isAway {
             if front.bundle == ScreenWatcher.ownBundle {
                 kind = .neutral
-                seen = Reading(category: nil, detail: "Focus")
+                // Opening the popover puts Focus in front; keep what you were on.
+                seen = reading
             } else {
                 let (category, source, sample) = label(for: front, now: now)
                 seen = Self.reading(front, category: category, sample: sample)

@@ -109,6 +109,19 @@ final class ScreenWatcher: ObservableObject {
     let practiceObservations = PassthroughSubject<PracticeObservation, Never>()
     var onSample: ((ScreenSample) -> Void)?
     private(set) var samples: [ScreenSample] = []
+
+    /// The focus category of the last window you were in (not Focus itself),
+    /// read in the last `within` seconds. Nil when that window was something
+    /// else or unsure: then Start falls back on your last focus category.
+    func recentFocusLabel(in focus: Set<String>, within: TimeInterval = 180, now: Date = Date()) -> String? {
+        for s in samples.reversed() {
+            if now.timeIntervalSince(s.date) > within { return nil }
+            if s.bundleID == Self.ownBundle { continue }
+            guard let c = s.category, !s.uncertain else { return nil }
+            return focus.contains(c) ? c : nil
+        }
+        return nil
+    }
     private var settings: AppSettings?
     private var tick: Timer?
     private var busy = false
@@ -1068,6 +1081,15 @@ final class ScreenWatcher: ObservableObject {
         var dot = 0.0, na = 0.0, nb = 0.0
         for i in 0..<min(a.count, b.count) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i] }
         return na > 0 && nb > 0 ? dot / (na.squareRoot() * nb.squareRoot()) : 0
+    }
+
+    /// "Not this" in the popover: the running block was named `from` but is
+    /// `to`. The windows the screen read as `from` since `since` learn `to`,
+    /// so the next readings don't switch it straight back.
+    func correct(from: String, to: String, since: Date) {
+        let keys = Set(samples.filter { $0.date >= since && $0.category == from && $0.bundleID != Self.ownBundle }.map(\.memoryKey))
+        Self.learn(keys, as: to)
+        SyncLog.event("notThis", ["from": from, "to": to, "windows": keys.count])
     }
 
     /// The user's answer for these windows beats the model next time.

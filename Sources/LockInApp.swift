@@ -446,7 +446,7 @@ struct FocusApp: App {
     }
 }
 
-/// "Math  24:13" and, during focus, the stretch without a distraction
+/// "School  24:13" (the group) and, during focus, the stretch without a distraction
 /// counting up ("🔥 12:05"), or what ended it and for how long ("Messages 0:34").
 struct MenuBarTitle: View {
     @ObservedObject var timer: TimerManager
@@ -454,7 +454,8 @@ struct MenuBarTitle: View {
     @ObservedObject private var streak = FocusStreakStore.shared
 
     var body: some View {
-        let title = "\(timer.isOnBreak ? "Break" : timer.currentLabel)  \(timer.menuBarTimeText)"
+        let name = timer.isOnBreak ? "Break" : timer.currentLabel.isEmpty ? "Focus" : CategoryGroup.of(timer.currentLabel).rawValue
+        let title = "\(name)  \(timer.menuBarTimeText)"
         if let extra {
             Image(nsImage: Self.image(title, symbol: extra.symbol, extra.text))
                 .accessibilityLabel("\(title), \(extra.symbol == nil ? "" : "without a distraction ")\(extra.text)")

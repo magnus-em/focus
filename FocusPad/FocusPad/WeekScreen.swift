@@ -108,10 +108,10 @@ struct WeekView: View {
     private func categories(_ week: [Day], _ before: [Day]) -> some View {
         let now = totalsByName(week)
         let then = totalsByName(before)
-        let sorted = now.sorted { $0.value > $1.value }
+        let sorted = CategoryGroup.allCases.compactMap { g in now[g.rawValue].map { (key: g.rawValue, value: $0) } }.filter { $0.value >= 1 }
         let tracked = week.map(\.tracked).reduce(0, +)
         let elapsed = week.map { d in min(Date(), d.date.addingTimeInterval(86400)).timeIntervalSince(d.date) / 60 }.reduce(0, +)
-        let top = sorted.first?.value ?? 1
+        let top = sorted.map(\.value).max() ?? 1
         Section {
             if sorted.isEmpty { Text("Nothing logged this week.").foregroundStyle(Color.secondaryText) }
             ForEach(sorted, id: \.key) { name, minutes in
@@ -136,7 +136,7 @@ struct WeekView: View {
                 .accessibilityElement(children: .combine)
             }
         } header: {
-            Text("Where the week went")
+            Text("Where the week went, by group")
         } footer: {
             if elapsed > 0 {
                 Text("\(Int((tracked / elapsed * 100).rounded()))% of the week tracked. Changes are against the 7 days before.")
@@ -146,7 +146,7 @@ struct WeekView: View {
 
     private func totalsByName(_ days: [Day]) -> [String: Double] {
         var out: [String: Double] = [:]
-        for row in days.flatMap(\.rows) { out[row.name, default: 0] += row.minutes }
+        for row in days.flatMap(\.rows) { out[CategoryGroup.of(row.label, isBreak: row.label == nil).rawValue, default: 0] += row.minutes }
         return out
     }
 }

@@ -162,12 +162,15 @@ struct TimerView: View {
         savedCategoryTotals = FocusStats.focusCategoryMinutes(sessions, on: Date(), through: Date(), lifeTags: [])
     }
 
+    /// Today's focus in its three groups (CATEGORIES.md), each with the
+    /// categories inside on hover. LeetCode counts in Career here; its own
+    /// card below is about problems.
     @ViewBuilder
     private var focusTotals: some View {
-        let totals = todayFocusByCategory.filter { $0.value > 2 && $0.key != FocusCategories.leetCode }
-        let labels = settings.tags.filter { totals[$0] != nil }
-            + totals.keys.filter { !settings.tags.contains($0) }.sorted()
-        if labels.count > 1 || (!labels.isEmpty && (todayCategoryTotals[FocusCategories.leetCode] ?? 0) > 2) || possibleDrift >= 1 {
+        let byGroup = todayFocusByCategory.filter { $0.value > 0.5 }
+            .reduce(into: [CategoryGroup: [String: Double]]()) { $0[CategoryGroup.of($1.key, isLife: false), default: [:]][$1.key] = $1.value }
+        let groups = [CategoryGroup.school, .career, .learning].filter { (byGroup[$0]?.values.reduce(0, +) ?? 0) > 2 }
+        if groups.count > 1 || possibleDrift >= 1 {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text("Focus")
@@ -179,16 +182,18 @@ struct TimerView: View {
                             .help("The screen showed a non-focus category during focus blocks. Not taken off your focus time: the screen can be wrong, and work on paper or the iPad doesn't show here.")
                     }
                 }
-                if !labels.isEmpty { FlowLayout(spacing: 8) {
-                    ForEach(labels, id: \.self) { label in
+                if !groups.isEmpty { FlowLayout(spacing: 8) {
+                    ForEach(groups, id: \.self) { g in
+                        let parts = (byGroup[g] ?? [:]).sorted { $0.value > $1.value }
                         HStack(spacing: 6) {
-                            Circle().fill(categoryColor(label)).frame(width: 7, height: 7)
-                            Text(label).font(.system(size: 13, weight: .medium))
-                            Text(hm(totals[label] ?? 0)).font(.system(size: 13).monospacedDigit()).foregroundStyle(Color.secondaryText)
+                            Circle().fill(g.color).frame(width: 7, height: 7)
+                            Text(g.rawValue).font(.system(size: 13, weight: .medium))
+                            Text(hm(parts.reduce(0) { $0 + $1.value })).font(.system(size: 13).monospacedDigit()).foregroundStyle(Color.secondaryText)
                         }
                         .padding(.horizontal, 10).padding(.vertical, 8)
                         .background(Capsule().fill(Color.primary.opacity(0.05)))
                         .accessibilityElement(children: .combine)
+                        .help(parts.map { "\($0.key) \(hm($0.value))" }.joined(separator: " · "))
                     }
                 } }
             }
@@ -230,6 +235,7 @@ struct TimerView: View {
             goalRing
             VStack(alignment: .leading, spacing: 2) {
                 categoryMenu
+                whatLine
                 TimerTicking(clock: timer.clock) {
                     Text(timer.timeString)
                         .font(.system(size: 46, weight: .semibold, design: .rounded).monospacedDigit())
@@ -294,20 +300,30 @@ struct TimerView: View {
         .accessibilityLabel("\(hm(todayFocusMinutes)) focus today\(met ? ", goal met" : ", goal \(settings.dailyGoal) hours")")
     }
 
+    /// Focus names what you're doing; this menu is for when it's wrong, or
+    /// for the rare thing the screen can't see. Study first, in its three
+    /// groups; everything else one level down.
     private var categoryMenu: some View {
         Menu {
             let focus = settings.tags.filter { !settings.lifeTags.contains($0) }
             let life = settings.tags.filter { settings.lifeTags.contains($0) }
-            Section("Focus · counts toward your goal") {
-                ForEach(focus, id: \.self) { t in Button(t) { pick(t) } }
-            }
-            Section("Wellbeing · counts up") {
-                ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { t in
-                    Button(t) { pick(t) }
+            Section(renamesRunning ? "Not this? It's…" : "Focus on…") {
+                ForEach([CategoryGroup.school, .career, .learning], id: \.self) { g in
+                    let items = focus.filter { CategoryGroup.of($0, isLife: false) == g }
+                    if items.count == 1 {
+                        Button("\(g.rawValue) · \(items[0])") { pick(items[0]) }
+                    } else if !items.isEmpty {
+                        Menu(g.rawValue) { ForEach(items, id: \.self) { t in Button(t) { pick(t) } } }
+                    }
                 }
             }
-            if !life.isEmpty {
-                Section("Life · counts up") {
+            Menu("Something else") {
+                Section("Wellbeing") {
+                    ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { t in
+                        Button(t) { pick(t) }
+                    }
+                }
+                Section("Life") {
                     ForEach(life.filter { !FocusCategories.isWellbeing($0) }, id: \.self) { t in Button(t) { pick(t) } }
                 }
             }
@@ -324,12 +340,40 @@ struct TimerView: View {
         .buttonStyle(.plainHit)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("Switch category (⌃⌥⌘J)")
+        .help(renamesRunning ? "Not what you're doing? Pick what it is (renames this block)" : "Pick what to focus on, or press Start and Focus names it")
     }
 
+    /// Picking a study category while study runs renames the running block:
+    /// it says Focus named it wrong, not that you switched.
+    private var renamesRunning: Bool {
+        timer.isActive && !onBreak && !timer.currentLabel.isEmpty && !FocusCategories.isLife(timer.currentLabel)
+    }
+
+    /// The group, not the category (CATEGORIES.md): "School", "Free time".
     private var title: String {
         if onBreak { return "Break" }
-        return timer.currentLabel.isEmpty ? "Ready" : timer.currentLabel
+        if timer.isActive && !timer.currentLabel.isEmpty { return CategoryGroup.of(timer.currentLabel).rawValue }
+        if timer.labelPickedByHand && !timer.currentLabel.isEmpty { return CategoryGroup.of(timer.currentLabel).rawValue }
+        return "Ready to focus"
+    }
+
+    /// Under the group: the category, and what the screen sees right now
+    /// when that's something else ("Math · on screen: Admin: Focus app…").
+    @ViewBuilder
+    private var whatLine: some View {
+        let label = timer.currentLabel
+        if timer.isActive, !onBreak, !label.isEmpty {
+            let seen = streak.reading.flatMap { r -> String? in
+                guard r.category != WindowTimeline.privateCategory else { return nil }
+                return r.category == label ? String(r.detail.prefix(40)) : "on screen " + MenuBarTitle.describe(r)
+            }
+            Text([label, seen].compactMap { $0 }.joined(separator: " · "))
+                .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                .lineLimit(1).truncationMode(.tail)
+                .help("What Focus named this block, and what it reads on your screen now. Wrong? Pick what it is from the menu above.")
+        } else if !timer.isActive, timer.labelPickedByHand, !label.isEmpty {
+            Text("\(label), picked by you").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+        }
     }
 
     /// One plain-words line: how long, against what, and whether sites are blocked.
@@ -385,7 +429,7 @@ struct TimerView: View {
     }
 
     private var sublineText: String {
-        guard timer.isActive else { return timer.currentLabel.isEmpty ? "Pick what's next" : "Press Start when you're ready" }
+        guard timer.isActive else { return "Press Start; Focus names it from your screen" }
         var parts: [String] = []
         if isCountingUp, let start = timer.sessionStartTime {
             parts.append("Since \(clock(start))")
@@ -417,10 +461,16 @@ struct TimerView: View {
     }
 
     private func pick(_ tag: String) {
-        if timer.isActive || FocusCategories.isLife(tag) {
+        if renamesRunning, !FocusCategories.isLife(tag) {
+            guard tag != timer.currentLabel else { return }
+            let from = timer.currentLabel
+            timer.relabelRunning(tag)
+            if let start = timer.sessionStartTime { watcher.correct(from: from, to: tag, since: start) }
+        } else if timer.isActive || FocusCategories.isLife(tag) {
             if !(timer.isActive && !timer.isOnBreak && timer.currentLabel == tag) { timer.switchTo(tag) }
         } else {
-            timer.currentLabel = timer.currentLabel == tag ? "" : tag
+            timer.currentLabel = tag
+            timer.labelPickedByHand = true
         }
     }
 
@@ -839,7 +889,8 @@ struct FocusTransportControls: View {
                 Button {
                     if returning { timer.switchTo(timer.currentLabel) }
                     else if timer.isRunning { timer.pause() }
-                    else { timer.start() }
+                    else if timer.isActive { timer.start() }
+                    else { timer.startFocus() }
                 } label: {
                     Label {
                         Text(title).lineLimit(1).minimumScaleFactor(0.8)
@@ -900,10 +951,10 @@ struct NowPlayingBar: View {
         HStack(spacing: 12) {
             Circle().fill(accent).frame(width: 10, height: 10)
             VStack(alignment: .leading, spacing: 0) {
-                Text(timer.isActive ? (timer.isOnBreak ? "Break" : timer.currentLabel) : "Nothing running")
+                Text(timer.isActive ? (timer.isOnBreak ? "Break" : CategoryGroup.of(timer.currentLabel).rawValue) : "Nothing running")
                     .font(.system(size: 14, weight: .semibold))
                 if let start = timer.sessionStartTime, timer.isActive {
-                    Text("Since \(start.formatted(date: .omitted, time: .shortened))")
+                    Text((timer.isOnBreak ? "" : "\(timer.currentLabel) · ") + "since \(start.formatted(date: .omitted, time: .shortened))")
                         .font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }

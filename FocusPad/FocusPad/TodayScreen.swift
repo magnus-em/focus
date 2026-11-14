@@ -431,10 +431,11 @@ struct TodayScreen: View {
     // MARK: - Totals and log
 
     private func totals(_ rows: [LogRow]) -> some View {
-        var byLabel: [String: Double] = [:]
-        for row in rows { byLabel[row.name, default: 0] += row.minutes }
+        // By group (CATEGORIES.md), always in the same order.
+        var byGroup: [CategoryGroup: Double] = [:]
+        for row in rows { byGroup[CategoryGroup.of(row.label, isBreak: row.label == nil), default: 0] += row.minutes }
         let focus = rows.filter { $0.label.map { !FocusCategories.isLife($0) } ?? false }.map(\.minutes).reduce(0, +)
-        let top = byLabel.sorted { $0.value > $1.value }
+        let top = CategoryGroup.allCases.compactMap { g in byGroup[g].map { (g.rawValue, $0) } }.filter { $0.1 >= 1 }
         return Section {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
@@ -442,7 +443,7 @@ struct TodayScreen: View {
                     Text("focus of your \(settings.dailyGoalHours)h goal").foregroundStyle(Color.secondaryText)
                 }
                 DayStrip(rows: rows, day: day)
-                FlowRows(items: top.map { ($0.key, $0.value) })
+                FlowRows(items: top)
             }
             .padding(.vertical, 4)
         } header: {

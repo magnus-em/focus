@@ -143,6 +143,31 @@ class TimerManager: ObservableObject {
 
     // MARK: - Controls
 
+    /// A focus category picked by hand while idle; Start uses it instead of
+    /// what Focus would name.
+    var labelPickedByHand = false
+
+    /// Start focus without choosing (user, 11/13: "I just start it"). Focus
+    /// names it: the last window you were in, if the screen read it as a
+    /// focus category in the last 3 min, else your last focus category. The
+    /// screen keeps switching it as you go (`screenAutoAlways`).
+    func startFocus() {
+        if !labelPickedByHand || currentLabel.isEmpty || FocusCategories.isLife(currentLabel) {
+            currentLabel = autoLabel()
+        }
+        labelPickedByHand = false
+        start()
+    }
+
+    func autoLabel() -> String {
+        let tags = settings?.tags ?? []
+        let focus = Set(tags.filter { !FocusCategories.isLife($0) })
+        if let seen = MainActor.assumeIsolated({ ScreenWatcher.shared.recentFocusLabel(in: focus) }) { return seen }
+        if let last = sessionStore?.sessions.last(where: { $0.isFocus && focus.contains($0.label ?? "") })?.label { return last }
+        let quick = settings?.quickStartTag ?? ""
+        return focus.contains(quick) ? quick : (tags.first { focus.contains($0) } ?? "HW")
+    }
+
     func start() {
         cancelPauseGrace()
         perform("start") { core, now in
@@ -218,7 +243,9 @@ class TimerManager: ObservableObject {
             reset()
             return .stopped(minutes: minutes, label: label)
         }
-        let label = currentLabel.isEmpty ? tag : currentLabel
+        let keep = (isActive || labelPickedByHand) && !currentLabel.isEmpty && !FocusCategories.isLife(currentLabel)
+        let label = keep ? currentLabel : autoLabel()
+        labelPickedByHand = false
         switchTo(label)
         return .started(label)
     }
