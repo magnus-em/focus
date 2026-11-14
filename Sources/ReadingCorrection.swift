@@ -18,11 +18,12 @@ enum ReadingCorrection {
         let target = category ?? course.flatMap { $0 == ScreenCourse.notAClass ? nil : ScreenCourse.category(of: $0) }
         let block = timer.isActive && !timer.isOnBreak && !timer.currentLabel.isEmpty ? timer.currentLabel : nil
         let since = block != nil ? timer.sessionStartTime ?? Date() : Date().addingTimeInterval(-30 * 60)
+        let named = block != nil && r.state == .labeled && r.category == block
         let windows = ScreenWatcher.shared.teach(bundle: r.bundle, app: r.app, title: r.title,
-                                                 readAs: (r.category, r.course), since: since,
+                                                 readAs: (r.category, r.course), wholeBlock: named, since: since,
                                                  category: target, course: course)
         var renamed: String?
-        if let block, let target, target != block, r.category == block,
+        if named, let block, let target, target != block,
            !FocusCategories.isLife(block), block != "Class", !FocusCategories.isLife(target) {
             timer.relabelRunning(target)
             renamed = target

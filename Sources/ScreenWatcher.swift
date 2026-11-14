@@ -221,7 +221,13 @@ final class ScreenWatcher: ObservableObject {
     private init() {
         if let data = try? Data(contentsOf: fileURL),
            let saved = try? JSONDecoder().decode([ScreenSpan].self, from: data) {
-            spans = saved
+            // A course belongs only on study (or unlabeled) readings; 11/14's first
+            // Wrong? stamped one on Leisure spans of other windows.
+            spans = saved.map { s in
+                var s = s
+                if let c = s.category, !CoachCourse.studyCategories.contains(c) { s.course = nil; s.courseBasis = nil }
+                return s
+            }
         }
         if let data = try? Data(contentsOf: devicesURL),
            let saved = try? JSONDecoder().decode([DeviceActivity].self, from: data) {
@@ -993,7 +999,7 @@ final class ScreenWatcher: ObservableObject {
     nonisolated static func isGeneric(title: String, app: String) -> Bool {
         let t = title.trimmingCharacters(in: .whitespaces).lowercased()
         return t.isEmpty || t == app.lowercased() || app.lowercased().hasPrefix(t)
-            || ["new chat", "new conversation", "untitled", "untitled chat"].contains(t)
+            || ["new chat", "new conversation", "untitled", "untitled chat", "google gemini", "gemini", "chatgpt", "claude"].contains(t)
     }
 
     nonisolated static func memoryKey(bundle: String, title: String) -> String {
@@ -1172,16 +1178,19 @@ final class ScreenWatcher: ObservableObject {
     }
 
     /// "Wrong?": the window in front is `category` and/or `course` ("" = not
-    /// a class). It learns that, and so does every window in this block that
-    /// was read the same way since `since`. Live readings change at once;
+    /// a class). It learns that. With `wholeBlock` (the window was read as the
+    /// block's own category, so it's what named the block), so does every
+    /// window read the same way since `since`; a side trip teaches only itself
+    /// (11/14: correcting one Gemini chat read as Leisure also taught a YouTube
+    /// video and Gemini's home page, the other Leisure readings that block). Live readings change at once;
     /// saved readings keep their category (so the accuracy numbers can tell
     /// the reading was wrong) but take the course. Returns the windows taught.
     @discardableResult
-    func teach(bundle: String, app: String, title: String, readAs: (category: String?, course: String?),
+    func teach(bundle: String, app: String, title: String, readAs: (category: String?, course: String?), wholeBlock: Bool,
                since: Date, category: String?, course: String?) -> Set<String> {
         let front = Self.memoryKey(bundle: bundle, title: title)
         var all: Set<String> = [front]
-        for s in samples where s.date >= since && s.bundleID != Self.ownBundle && !Self.privateApps.contains(s.bundleID)
+        for s in samples where wholeBlock && s.date >= since && s.bundleID != Self.ownBundle && !Self.privateApps.contains(s.bundleID)
             && s.category == readAs.category && s.course == readAs.course {
             all.insert(s.memoryKey)
         }
@@ -1215,7 +1224,8 @@ final class ScreenWatcher: ObservableObject {
         if course != nil {
             for i in spans.indices.reversed() {
                 if spans[i].end < since { break }
-                guard all.contains(Self.memoryKey(bundle: spans[i].bundleID, title: spans[i].title)) else { continue }
+                guard all.contains(Self.memoryKey(bundle: spans[i].bundleID, title: spans[i].title)),
+                      spans[i].category.map(CoachCourse.studyCategories.contains) ?? true else { continue }
                 spans[i].course = courseValue
                 spans[i].courseBasis = courseValue == nil ? nil : basis
             }

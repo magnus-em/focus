@@ -341,10 +341,12 @@ struct TimerView: View {
                 let head = r.state == .unread ? "not read yet" : r.state == .unsure ? "unsure" : r.course ?? r.category ?? "no label"
                 return "on screen: \(head) · \(r.detail)"
             }
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 Text([label, seen].compactMap { $0 }.joined(separator: " · "))
                     .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-                    .lineLimit(1).truncationMode(.middle)
+                    .lineLimit(2).truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .help("What Focus named this block, and what it reads on your screen now")
                 if let reading, reading.state != .unread {
