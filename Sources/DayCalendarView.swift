@@ -176,6 +176,8 @@ struct DayCalendarPage: View {
     @State private var review: [DayStory.Fix] = []
     @State private var reviewIndex = 0
     @State private var dragState = CalendarDragState()
+    /// Clears a drag the system cancelled (no onEnded), so its preview can't stay up.
+    @GestureState private var pressing = false
     @State private var cache = CalendarLayoutCache()
     @State private var showNight = false
     @State private var highlight: DayWhy.Reason?
@@ -712,6 +714,7 @@ struct DayCalendarPage: View {
         .frame(width: width, alignment: .topLeading)
         .contentShape(Rectangle())
         .gesture(logGesture(width: width))
+        .onChange(of: pressing) { _, down in if !down { dragState.value = nil } }
         .onContinuousHover { phase in
             if case .active(let p) = phase, dragState.value == nil, edgeHit(p, width: width) != nil {
                 NSCursor.resizeUpDown.set()
@@ -903,24 +906,42 @@ struct DayCalendarPage: View {
 
     private func logGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 0)
+            .updating($pressing) { _, down, _ in down = true }
             .onChanged { v in
-                if dragState.value == nil {
-                    let start = date(at: v.startLocation.y)
-                    if let hit = edgeHit(v.startLocation, width: width) {
-                        dragState.value = CalendarDrag(mode: hit.top ? .top(hit.block) : .bottom(hit.block), current: start)
-                    } else {
-                        dragState.value = CalendarDrag(mode: .range(anchor: snap(start)), current: snap(start))
-                    }
-                }
+                if dragState.value == nil { dragState.value = startDrag(at: v.startLocation, width: width) }
                 let current = snap(date(at: v.location.y))
                 if dragState.value?.current != current { dragState.value?.current = current }
             }
             .onEnded { v in
-                let d = dragState.value
+                var d = dragState.value ?? startDrag(at: v.startLocation, width: width)
                 dragState.value = nil
-                guard let d, abs(v.translation.height) >= 4 else { return tap(at: v.location, width: width) }
+                d.current = snap(date(at: v.location.y))
+                // A click, or a press that moved less than one 5-minute step, picks
+                // what's under it whole (11/14: a click gave "5:55–5:55 · 0m").
+                if case .range(let anchor) = d.mode, abs(d.current.timeIntervalSince(anchor)) < 60 {
+                    return tap(at: v.startLocation, width: width)
+                }
+                guard abs(v.translation.height) >= 4 else { return tap(at: v.startLocation, width: width) }
                 finish(d)
             }
+    }
+
+    private func startDrag(at p: CGPoint, width: CGFloat) -> CalendarDrag {
+        let start = date(at: p.y)
+        if let hit = edgeHit(p, width: width) {
+            return CalendarDrag(mode: hit.top ? .top(hit.block) : .bottom(hit.block), current: start)
+        }
+        return CalendarDrag(mode: .range(anchor: snap(start)), current: snap(start))
+    }
+
+    /// The untracked stretch around `d`: from the end of the block before it
+    /// (or midnight) to the start of the next (or now).
+    private func emptyStretch(around d: Date) -> (Date, Date)? {
+        let tracked = model.lanes.tracked
+        guard d >= dayStart, d < limit, !tracked.contains(where: { $0.start <= d && d < $0.end }) else { return nil }
+        let a = max(tracked.map(\.end).filter { $0 <= d }.max() ?? dayStart, dayStart)
+        let b = min(tracked.map(\.start).filter { $0 > d }.min() ?? limit, limit)
+        return b.timeIntervalSince(a) >= 60 ? (a, b) : nil
     }
 
     /// A saved block's top or bottom edge within 5 points; on a shared edge,
@@ -950,6 +971,8 @@ struct DayCalendarPage: View {
             selection = isSelected(t) ? nil : .block(t)
         } else if let g = gaps.first(where: { $0.start <= d && d < $0.end }) {
             selection = .range(g.start, g.end)
+        } else if let s = emptyStretch(around: d) {
+            selection = .range(s.0, s.1)
         } else {
             selection = nil
         }
@@ -1464,7 +1487,7 @@ fileprivate struct CalendarDragPreview: View {
     @ViewBuilder
     private func preview(_ d: CalendarDrag) -> some View {
         switch d.mode {
-        case .range(let anchor):
+        case .range(let anchor) where abs(d.current.timeIntervalSince(anchor)) >= 60:
             let a = min(anchor, d.current), b = max(anchor, d.current)
             ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.accentColor.opacity(0.22))
@@ -1495,6 +1518,9 @@ fileprivate struct CalendarDragPreview: View {
                    height: max(layout.y(min(b, layout.end)) - layout.y(max(a, layout.start)), 2))
             .offset(x: column?.minX ?? 0, y: layout.y(max(a, layout.start)))
             .allowsHitTesting(false)
+        case .range:
+            // Pressed but not dragged yet: a click picks what's under it on release.
+            EmptyView()
         }
     }
 
