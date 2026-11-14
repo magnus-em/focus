@@ -221,7 +221,11 @@ struct WhereTimeWentSection: View {
         let parts = week.minutesByCategory.filter { WeekLedger.group($0.key) == g && $0.value >= 1 }
             .sorted { $0.value > $1.value }
         guard !(parts.count == 1 && parts[0].key == g.rawValue), !parts.isEmpty else { return nil }
-        return parts.map { "\($0.key == "Focus" ? "Unlabeled" : $0.key) \(hm($0.value))" }.joined(separator: " · ")
+        return parts.map { p in
+            let name = p.key == "Focus" ? "Unlabeled" : p.key
+            let notFocus = g.holdsFocus && FocusCategories.isLife(p.key) ? " (not counted as focus)" : ""
+            return "\(name) \(hm(p.value))\(notFocus)"
+        }.joined(separator: " · ")
     }
 
     /// `good`: 1 = more is better, -1 = less is better, 0 = neutral.
@@ -282,8 +286,8 @@ struct WhereTimeWentSection: View {
                 stat(hm(week.focusMinutes), "focus",
                      sub: abs(focusDelta) >= 15 ? "\(focusDelta > 0 ? "+" : "−")\(hm(abs(focusDelta))) vs last wk" : "same as last wk",
                      subColor: focusDelta >= 15 ? green : Color.secondaryText)
-                stat(sleepAvg.map { String(format: "%.1fh", $0) } ?? "–", "avg sleep",
-                     sub: week.nights.isEmpty ? "log Sleep to see this" : "\(week.nights.count) night\(week.nights.count == 1 ? "" : "s")")
+                stat(sleepAvg.map { hm($0 * 60) } ?? "–", "sleep a night",
+                     sub: week.nights.isEmpty ? "log Sleep to see this" : "\(week.nights.count) night\(week.nights.count == 1 ? "" : "s") of 3 h or more")
                 stat(bed.map(clock) ?? "–", "bedtime",
                      sub: spread.map { "±\(Int($0))m" + (wake.map { " · up \(clock($0))" } ?? "") } ?? (wake.map { "up \(clock($0))" } ?? ""))
             }
@@ -442,7 +446,9 @@ struct WeekByWeekChart: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .stride(by: .weekOfYear)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated).day()) }
+                AxisMarks(values: Array(Set(slices.map(\.week))).sorted()) { _ in
+                    AxisValueLabel(format: .dateTime.month(.abbreviated).day(), centered: true)
+                }
             }
             .frame(height: 180)
             legend

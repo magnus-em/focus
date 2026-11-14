@@ -40,22 +40,22 @@ public enum CategoryGroup: String, CaseIterable, Codable, Sendable {
     /// Hues borrowed from each group's main category (Math blue, LeetCode
     /// orange, AI purple, Leisure pink), lightness spread so neighbours in a
     /// stacked bar differ by 10+ L* (DESIGN.md: distinct in lightness, not
-    /// only hue). Sleep lightens in dark mode so a night doesn't vanish.
+    /// only hue). Wellbeing leans cyan so it isn't read as "good" green.
     public var color: Color {
         switch self {
         case .school: return Color(red: 0.12, green: 0.36, blue: 1.00)
         case .career: return Color(red: 0.90, green: 0.40, blue: 0.08)
         case .learning: return Color(red: 0.70, green: 0.55, blue: 0.95)
-        case .wellbeing: return Color(red: 0.20, green: 0.55, blue: 0.50)
-        case .sleep: return Self.dynamic(light: (0.21, 0.23, 0.36), dark: (0.42, 0.44, 0.64))
-        case .life: return Color(red: 0.77, green: 0.71, blue: 0.61)
-        case .freeTime: return Color(red: 0.78, green: 0.31, blue: 0.51)
+        case .wellbeing: return Color(red: 0.16, green: 0.51, blue: 0.59)
+        case .sleep: return Color(red: 0.28, green: 0.30, blue: 0.46)
+        case .life: return Color(red: 0.84, green: 0.80, blue: 0.71)
+        case .freeTime: return Color(red: 0.90, green: 0.55, blue: 0.69)
         }
     }
 
     /// Untracked time in charts of the groups: a grey that reads as a fill,
     /// not as empty plot area.
-    public static let untrackedColor = dynamic(light: (0.80, 0.81, 0.85), dark: (0.24, 0.24, 0.30))
+    public static let untrackedColor = dynamic(light: (0.89, 0.89, 0.92), dark: (0.17, 0.17, 0.22))
 
     static func dynamic(light: (Double, Double, Double), dark: (Double, Double, Double)) -> Color {
         #if canImport(AppKit)
