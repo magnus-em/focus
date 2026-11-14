@@ -145,7 +145,8 @@ Each step ships on its own.
 2. **A course on every reading.** Store the subject (`CoachCourse.resolver`: course code, calendar class, same chat, neighbours) on each screen span next to the category.
    - Uses the on-device resolver and the cloud readings already approved, so it adds no new spend.
 3. **The seven groups everywhere.**
-   - Week, Insights and the Day page draw the groups, with old rows translated by the table above at read time; nothing is rewritten.
+   - **Week page done (11/13):** How much you focused stacks the three focus groups; Where time went lists the seven groups (categories inside) and adds Week by week, 8 weeks stacked to 24 h. Old rows are translated at read time; nothing is rewritten.
+   - Still to do: Insights, the Day page and the phone.
    - Detail (course, kind of work) opens under each group.
    - Goals point at groups plus courses.
 4. **Shadow week.** Focus labels every block with a group and detail in the background. The Day page shows its label next to yours, and Insights measures agreement against the bar above.
