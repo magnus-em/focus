@@ -304,46 +304,15 @@ struct TimerView: View {
     }
 
     /// Focus names what you're doing; this menu is for when it's wrong, or
-    /// for the rare thing the screen can't see. Study first, in its three
-    /// groups; everything else one level down.
+    /// for the rare thing the screen can't see.
     private var categoryMenu: some View {
-        Menu {
-            let focus = settings.tags.filter { !settings.lifeTags.contains($0) }
-            let life = settings.tags.filter { settings.lifeTags.contains($0) }
-            Section(renamesRunning ? "Not this? It's…" : "Focus on…") {
-                ForEach([CategoryGroup.school, .career, .learning], id: \.self) { g in
-                    let items = focus.filter { CategoryGroup.of($0, isLife: false) == g }
-                    if items.count == 1 {
-                        Button("\(g.rawValue) · \(items[0])") { pick(items[0]) }
-                    } else if !items.isEmpty {
-                        Menu(g.rawValue) { ForEach(items, id: \.self) { t in Button(t) { pick(t) } } }
-                    }
-                }
-            }
-            Menu("Something else") {
-                Section("Wellbeing") {
-                    ForEach(FocusCategories.wellbeingTags.filter { settings.tags.contains($0) }, id: \.self) { t in
-                        Button(t) { pick(t) }
-                    }
-                }
-                Section("Life") {
-                    ForEach(life.filter { !FocusCategories.isWellbeing($0) }, id: \.self) { t in Button(t) { pick(t) } }
-                }
-            }
-            Divider()
-            Button("Break") { if !onBreak { timer.startManualBreak(minutes: 0) } }
-        } label: {
-            HStack(spacing: 6) {
-                Circle().fill(accent).frame(width: 10, height: 10)
-                Text(title).font(.system(size: 22, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
-                Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
-            }
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plainHit)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help(renamesRunning ? "Not what you're doing? Pick what it is (renames this block)" : "Pick what to focus on, or press Start and Focus names it")
+        CategoryMenu(title: title, accent: accent, renames: renamesRunning,
+                     focus: settings.tags.filter { !settings.lifeTags.contains($0) },
+                     wellbeing: FocusCategories.wellbeingTags.filter { settings.tags.contains($0) },
+                     life: settings.tags.filter { settings.lifeTags.contains($0) && !FocusCategories.isWellbeing($0) },
+                     pick: { pick($0) },
+                     takeBreak: { if !onBreak { timer.startManualBreak(minutes: 0) } })
+            .equatable()
     }
 
     /// Picking a study category while study runs renames the running block:
@@ -1197,6 +1166,58 @@ struct LogFixView: View {
             }
         }
         step = .done(undos, changedRunning: changedRunning, failed: failed)
+    }
+}
+
+/// The title and its menu, kept apart from TimerView: the popover redraws
+/// every second (timer, screen readings), and each redraw rebuilt the open
+/// menu, so its submenus flickered shut before you could click (11/14).
+/// Redrawn only when what it shows changes. One level, no submenus: a
+/// section per group, every category one click away.
+struct CategoryMenu: View, Equatable {
+    let title: String
+    let accent: Color
+    let renames: Bool
+    let focus: [String]
+    let wellbeing: [String]
+    let life: [String]
+    let pick: (String) -> Void
+    let takeBreak: () -> Void
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.title == b.title && a.accent == b.accent && a.renames == b.renames
+            && a.focus == b.focus && a.wellbeing == b.wellbeing && a.life == b.life
+    }
+
+    var body: some View {
+        Menu {
+            Text(renames ? "Not this? It's…" : "Focus on…")
+            ForEach([CategoryGroup.school, .career, .learning], id: \.self) { g in
+                let items = focus.filter { CategoryGroup.of($0, isLife: false) == g }
+                if !items.isEmpty {
+                    Section(g.rawValue) { ForEach(items, id: \.self) { t in Button(t) { pick(t) } } }
+                }
+            }
+            if !wellbeing.isEmpty {
+                Section("Wellbeing") { ForEach(wellbeing, id: \.self) { t in Button(t) { pick(t) } } }
+            }
+            if !life.isEmpty {
+                Section("Life") { ForEach(life, id: \.self) { t in Button(t) { pick(t) } } }
+            }
+            Divider()
+            Button("Break") { takeBreak() }
+        } label: {
+            HStack(spacing: 6) {
+                Circle().fill(accent).frame(width: 10, height: 10)
+                Text(title).font(.system(size: 22, weight: .bold)).lineLimit(1).minimumScaleFactor(0.7)
+                Image(systemName: "chevron.down").font(.system(size: 11, weight: .bold)).foregroundStyle(.secondary)
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plainHit)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(renames ? "Not what you're doing? Pick what it is (renames this block)" : "Pick what to focus on, or press Start and Focus names it")
     }
 }
 
