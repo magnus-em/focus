@@ -146,17 +146,17 @@ Each step ships on its own.
    - Uses the on-device resolver and the cloud readings already approved, so it adds no new spend.
 3. **The seven groups everywhere.**
    - **Week page done (11/13):** How much you focused stacks the three focus groups; Where time went lists the seven groups (categories inside) and adds Week by week, 8 weeks stacked to 24 h. Old rows are translated at read time; nothing is rewritten.
-   - Still to do: Insights, the Day page and the phone.
+   - **Rest of the app done (11/13):** popover title, Details totals, Stats split, Day page totals, menu bar, phone Now/Today/Week; every category draws in its group's colour (`categoryColor`). Insights still follows goals, which map onto the groups.
    - Detail (course, kind of work) opens under each group.
    - Goals point at groups plus courses.
 4. **Shadow week.** Focus labels every block with a group and detail in the background. The Day page shows its label next to yours, and Insights measures agreement against the bar above.
-5. **Switch the Mac to the chosen direction.**
+5. **Switch the Mac to the chosen direction.** Done 11/13 at the user's request, before the shadow week: Start names it (`startFocus`), the title menu is "Not this? It's…" (renames and teaches), life categories under "Something else".
    - The popover drops the category grid for Focus on/off plus what Focus sees.
    - ⌃⌥⌘K stays as start/stop. Picking a category by hand moves into the switcher (⌃⌥⌘J), as an override.
    - Cards between focus categories go away; only switches with Undo remain.
    - Leaving focus for leisure stays a distraction until 8 min, then a switch, backdated (as now).
 6. **Retire picking old categories.** The 19 old names stay readable forever, so old rows open, edit and chart. New blocks are saved as a group plus detail.
-7. **Phone.** The life grid stays. Its study grid becomes one Focus button, and the Mac names the group.
+7. **Phone.** The life grid stays. Its study grid becomes one Focus button, and the Mac names the group. Done 11/13 (installed on the iPad once it's unlocked).
 
 ## Risks
 
