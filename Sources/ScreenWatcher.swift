@@ -1675,6 +1675,14 @@ final class ScreenCoach {
     /// The model labeled the window, or you did earlier: your own label needs
     /// less proof, so a window you've answered for before is suggested in 45s.
     private static let learnedRunSeconds: TimeInterval = 45
+
+    /// Focus work on screen while Break runs means the break is over (user,
+    /// 11/14: "when i get back from a break … and i start doing focus stuff it
+    /// should auto turn off the break"). It switches after 45 s, not 2 min.
+    /// Life categories (Messages, Admin, a feed) don't end a break this way.
+    private static func endsBreak(running: String?, category: String) -> Bool {
+        running == "Break" && !FocusCategories.isLife(category) && category != "Class"
+    }
     private static let afterStopQuiet: TimeInterval = 20 * 60
     /// The last switch made without asking: a switch straight back to what it
     /// left is two windows of one task disagreeing, not a change of task.
@@ -1720,10 +1728,11 @@ final class ScreenCoach {
         // kept; learned focus→life cards had never been taken).
         let leavesFocus = running.map { $0 != "Break" && !FocusCategories.isLife($0) } ?? false
         let followsYourRule = (allLearned || allProjectAdmin) && !(leavesFocus && FocusCategories.isLife(c))
-        let needed = settings.screenEverySwitch ? 25 : followsYourRule ? Self.learnedRunSeconds
+        let endsBreak = Self.endsBreak(running: running, category: c)
+        let needed = settings.screenEverySwitch ? 25 : followsYourRule || endsBreak ? Self.learnedRunSeconds
             : settings.screenAutoAll && leavesFocus && FocusCategories.isLife(c) ? Self.autoLeaveFocusSeconds
             : Double(settings.screenSuggestMinutes) * 60
-        guard hits >= (settings.screenEverySwitch ? 2 : followsYourRule ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
+        guard hits >= (settings.screenEverySwitch ? 2 : followsYourRule || endsBreak ? 3 : 4), Double(hits) / Double(max(total, 1)) >= 0.8,
               last.date.timeIntervalSince(start) >= needed else { return nil }
         // Your answer teaches the windows the run was made of, not one stray
         // snapshot of another window the model happened to call the same
@@ -1822,6 +1831,10 @@ final class ScreenCoach {
         // 10/23: a ChatGPT chat on C++ syntax ("Find a faster approach") was SWE mid-LeetCode.
         if running == FocusCategories.leetCode, run.category == "SWE", run.inChat {
             return say("Coding help in a chat is part of LeetCode practice")
+        }
+        if Self.endsBreak(running: running, category: run.category), settings.screenAutoSwitch {
+            say("Back from your break: switched to \(run.category)")
+            return autoSwitch(from: "Break", to: run)
         }
         if let running, let start = timer.sessionStartTime, !FocusCategories.isLife(running), running != "Break",
            !FocusCategories.isLife(run.category) {
@@ -2009,7 +2022,8 @@ final class ScreenCoach {
     private func autoSwitch(from: String?, to run: Run) {
         timer.switchTo(run.category, at: run.start)
         lastAuto = from.map { ($0, run.category, run.start) }
-        let why = run.projectAdmin ? "your Focus project rule"
+        let why = from == "Break" && Self.endsBreak(running: from, category: run.category) ? "back from your break"
+            : run.projectAdmin ? "your Focus project rule"
             : run.trusted ? "windows you've labeled \(run.category)" : "what's on screen"
         let m = AwayPromptModel(
             icon: "arrow.triangle.swap",
