@@ -111,7 +111,6 @@ struct WhereTimeWentSection: View {
     let onSelectDay: (Date) -> Void
 
     private let green = Color(red: 0.25, green: 0.72, blue: 0.53)
-    private let red = Color(red: 0.96, green: 0.36, blue: 0.36)
 
     var body: some View {
         let week = WeekLedger(store: store, live: live, endDay: endDay, presence: presence.spans)
@@ -125,7 +124,7 @@ struct WhereTimeWentSection: View {
                 Spacer()
                 Text("\(Int((coverage * 100).rounded()))% tracked")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(coverage >= 0.9 ? green : coverage >= 0.6 ? Color.orange : red)
+                    .foregroundStyle(coverage >= 0.9 ? green : Color.secondaryText)
                     .help("Share of the week's hours (so far) that have a category or Break")
             }
 
@@ -156,15 +155,15 @@ struct WhereTimeWentSection: View {
                 Button { onSelectDay(d) } label: {
                     HStack(spacing: 6) {
                         Text(d.formatted(.dateTime.weekday(.abbreviated)))
-                            .font(.system(size: 9.5, weight: isSel ? .bold : .medium))
-                            .foregroundStyle(isSel ? Color.primary : Color.secondary)
-                            .frame(width: 26, alignment: .leading)
+                            .font(.system(size: 11, weight: isSel ? .bold : .medium))
+                            .foregroundStyle(isSel ? Color.primary : Color.secondaryText)
+                            .frame(width: 32, alignment: .leading)
                         DayStripRow(day: d, blocks: blocks, away: presence.spans(from: d, to: dEnd))
                             .frame(height: 13)
                         Text(focus >= 1 ? hm(focus) : "–")
-                            .font(.system(size: 9.5, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(focus >= 1 ? Color.primary : Color.secondary.opacity(0.5))
-                            .frame(width: 40, alignment: .trailing)
+                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                            .foregroundStyle(focus >= 1 ? Color.primary : Color.secondaryText)
+                            .frame(width: 64, alignment: .trailing)
                     }
                     .contentShape(Rectangle())
                 }
@@ -172,17 +171,18 @@ struct WhereTimeWentSection: View {
                 .help("Show \(d.formatted(.dateTime.weekday(.wide).month().day())) in the day timeline")
             }
             HStack(spacing: 6) {
-                Spacer().frame(width: 26)
+                Spacer().frame(width: 32)
                 GeometryReader { geo in
                     ForEach([0, 6, 12, 18], id: \.self) { h in
                         Text(h == 0 ? "12a" : h == 12 ? "12p" : h < 12 ? "\(h)a" : "\(h - 12)p")
-                            .font(.system(size: 7.5))
-                            .foregroundStyle(.tertiary)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.secondaryText)
                             .offset(x: geo.size.width * CGFloat(h) / 24)
                     }
                 }
-                .frame(height: 10)
-                Text("focus").font(.system(size: 7.5)).foregroundStyle(.tertiary).frame(width: 40, alignment: .trailing)
+                .frame(height: 14)
+                Text("timer focus").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                    .fixedSize().frame(width: 64, alignment: .trailing)
             }
         }
     }
@@ -221,7 +221,7 @@ struct WhereTimeWentSection: View {
         let parts = week.minutesByCategory.filter { WeekLedger.group($0.key) == g && $0.value >= 1 }
             .sorted { $0.value > $1.value }
         guard !(parts.count == 1 && parts[0].key == g.rawValue), !parts.isEmpty else { return nil }
-        return parts.map { "\($0.key) \(hm($0.value))" }.joined(separator: " · ")
+        return parts.map { "\($0.key == "Focus" ? "Unlabeled" : $0.key) \(hm($0.value))" }.joined(separator: " · ")
     }
 
     /// `good`: 1 = more is better, -1 = less is better, 0 = neutral.
@@ -252,7 +252,7 @@ struct WhereTimeWentSection: View {
                     .frame(width: 56, alignment: .trailing)
                 Text(abs(delta) < 15 ? "same" : (delta > 0 ? "+" : "−") + hm(abs(delta)))
                     .font(.system(size: 12, weight: .medium).monospacedDigit())
-                    .foregroundStyle(abs(delta) < 15 || good == 0 ? Color.secondaryText : (delta > 0) == (good > 0) ? green : red)
+                    .foregroundStyle(abs(delta) >= 15 && good != 0 && (delta > 0) == (good > 0) ? green : Color.secondaryText)
                     .frame(width: 84, alignment: .trailing)
             }
             if let inside {
@@ -281,7 +281,7 @@ struct WhereTimeWentSection: View {
             HStack(spacing: 0) {
                 stat(hm(week.focusMinutes), "focus",
                      sub: abs(focusDelta) >= 15 ? "\(focusDelta > 0 ? "+" : "−")\(hm(abs(focusDelta))) vs last wk" : "same as last wk",
-                     subColor: abs(focusDelta) < 15 ? .secondary : focusDelta > 0 ? green : red)
+                     subColor: focusDelta >= 15 ? green : Color.secondaryText)
                 stat(sleepAvg.map { String(format: "%.1fh", $0) } ?? "–", "avg sleep",
                      sub: week.nights.isEmpty ? "log Sleep to see this" : "\(week.nights.count) night\(week.nights.count == 1 ? "" : "s")")
                 stat(bed.map(clock) ?? "–", "bedtime",
@@ -302,8 +302,8 @@ struct WhereTimeWentSection: View {
     private func stat(_ value: String, _ label: String, sub: String, subColor: Color = .secondary, help: String? = nil) -> some View {
         VStack(spacing: 1) {
             Text(value).font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
-            Text(label).font(.system(size: 9, weight: .medium)).foregroundStyle(.secondary)
-            Text(sub).font(.system(size: 8.5)).foregroundStyle(subColor).lineLimit(1)
+            Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(Color.secondaryText)
+            Text(sub).font(.system(size: 11)).foregroundStyle(subColor).lineLimit(1)
         }
         .frame(maxWidth: .infinity)
         .help(help ?? "")
@@ -373,7 +373,6 @@ private struct DayStripRow: View {
                     let e = s.startTime.addingTimeInterval(s.durationMinutes * 60)
                     Rectangle()
                         .fill(WeekLedger.group(WeekLedger.key(s)).color)
-                        .opacity(s.isFocus ? 1 : 0.55)
                         .frame(width: max(1, x(e) - x(s.startTime)), height: h - 3)
                         .offset(x: x(s.startTime))
                 }
@@ -412,10 +411,13 @@ struct WeekByWeekChart: View {
 
     var body: some View {
         let slices = Self.slices(sessions: sessions, endDay: endDay, weeks: weeks)
+        let shown = Set(slices.map(\.week)).count
         VStack(alignment: .leading, spacing: 8) {
             Text("Week by week")
                 .font(.system(size: 13, weight: .semibold))
-            Text("Hours a day in each group over the last \(weeks) weeks; grey is untracked. Hover a week for its numbers.")
+            Text(shown < weeks
+                 ? "Hours a day in each group, for the \(shown) weeks since all-day tracking began. Hover a week for its numbers."
+                 : "Hours a day in each group over the last \(weeks) weeks. Hover a week for its numbers.")
                 .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
             Chart {
                 ForEach(slices) { s in
@@ -443,6 +445,23 @@ struct WeekByWeekChart: View {
                 AxisMarks(values: .stride(by: .weekOfYear)) { _ in AxisValueLabel(format: .dateTime.month(.abbreviated).day()) }
             }
             .frame(height: 180)
+            legend
+        }
+    }
+
+    private var legend: some View {
+        HStack(spacing: 14) {
+            ForEach(CategoryGroup.allCases, id: \.self) { g in
+                HStack(spacing: 5) {
+                    Circle().fill(g.color).frame(width: 7, height: 7)
+                    Text(g.rawValue).font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                }
+            }
+            HStack(spacing: 5) {
+                Circle().fill(CategoryGroup.untrackedColor).frame(width: 7, height: 7)
+                Text("Untracked").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+            }
+            Spacer(minLength: 0)
         }
     }
 
@@ -464,6 +483,7 @@ struct WeekByWeekChart: View {
                        calendar cal: Calendar = .current) -> [Slice] {
         guard let thisWeek = cal.dateInterval(of: .weekOfYear, for: endDay)?.start else { return [] }
         var out: [Slice] = []
+        var started = false
         for k in (0..<weeks).reversed() {
             guard let start = cal.date(byAdding: .weekOfYear, value: -k, to: thisWeek),
                   let next = cal.date(byAdding: .weekOfYear, value: 1, to: start) else { continue }
@@ -475,14 +495,17 @@ struct WeekByWeekChart: View {
                 let m = WeekLedger.overlap(s, start, end)
                 if m > 0 { byGroup[WeekLedger.group(WeekLedger.key(s)), default: 0] += m }
             }
-            var tracked = 0.0
+            let tracked = byGroup.values.reduce(0, +)
+            // Weeks before all-day tracking (only focus blocks logged) are left
+            // out from the start, so the chart isn't mostly grey columns.
+            if !started, k > 1, tracked / 60 < days * 12 { continue }
+            started = true
             for g in CategoryGroup.allCases {
                 let m = byGroup[g] ?? 0
-                tracked += m
                 if m > 0 { out.append(Slice(week: start, name: g.rawValue, color: g.color, hoursPerDay: m / 60 / days)) }
             }
             let untracked = max(0, days * 24 - tracked / 60) / days
-            out.append(Slice(week: start, name: "Untracked", color: Color.secondary.opacity(0.18), hoursPerDay: untracked))
+            out.append(Slice(week: start, name: "Untracked", color: CategoryGroup.untrackedColor, hoursPerDay: untracked))
         }
         return out
     }

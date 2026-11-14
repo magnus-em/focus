@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// The seven groups every category, old or new, is shown under. Locked by the
 /// user on 11/13 (CATEGORIES.md: "I don't want a million categories", and old
@@ -32,19 +37,40 @@ public enum CategoryGroup: String, CaseIterable, Codable, Sendable {
     /// School, Career and Learning & projects hold the focus categories.
     public var holdsFocus: Bool { self == .school || self == .career || self == .learning }
 
-    /// Borrowed from each group's main category so the colors already mean
-    /// something: Math blue, LeetCode orange, AI purple, Leisure pink. Focus
-    /// groups vivid, the rest quieter (DESIGN.md), apart in lightness too.
+    /// Hues borrowed from each group's main category (Math blue, LeetCode
+    /// orange, AI purple, Leisure pink), lightness spread so neighbours in a
+    /// stacked bar differ by 10+ L* (DESIGN.md: distinct in lightness, not
+    /// only hue). Sleep lightens in dark mode so a night doesn't vanish.
     public var color: Color {
         switch self {
         case .school: return Color(red: 0.12, green: 0.36, blue: 1.00)
         case .career: return Color(red: 0.90, green: 0.40, blue: 0.08)
-        case .learning: return Color(red: 0.66, green: 0.38, blue: 0.94)
-        case .wellbeing: return Color(red: 0.50, green: 0.72, blue: 0.34)
-        case .sleep: return Color(red: 0.33, green: 0.35, blue: 0.50)
-        case .life: return Color(red: 0.66, green: 0.58, blue: 0.48)
-        case .freeTime: return Color(red: 0.93, green: 0.48, blue: 0.66)
+        case .learning: return Color(red: 0.70, green: 0.55, blue: 0.95)
+        case .wellbeing: return Color(red: 0.20, green: 0.55, blue: 0.50)
+        case .sleep: return Self.dynamic(light: (0.21, 0.23, 0.36), dark: (0.42, 0.44, 0.64))
+        case .life: return Color(red: 0.77, green: 0.71, blue: 0.61)
+        case .freeTime: return Color(red: 0.78, green: 0.31, blue: 0.51)
         }
+    }
+
+    /// Untracked time in charts of the groups: a grey that reads as a fill,
+    /// not as empty plot area.
+    public static let untrackedColor = dynamic(light: (0.80, 0.81, 0.85), dark: (0.24, 0.24, 0.30))
+
+    static func dynamic(light: (Double, Double, Double), dark: (Double, Double, Double)) -> Color {
+        #if canImport(AppKit)
+        return Color(nsColor: NSColor(name: nil) { a in
+            let c = a.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
+        #elseif canImport(UIKit)
+        return Color(uiColor: UIColor { t in
+            let c = t.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
+        #else
+        return Color(red: light.0, green: light.1, blue: light.2)
+        #endif
     }
 
     /// The group for a block. Breaks and unlabeled blocks are Free time. A

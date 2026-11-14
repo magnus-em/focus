@@ -185,7 +185,7 @@ struct WeekPage: View {
 
     private var coursesCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionTitle("Courses and goals", subtitle: "How long each course was on your screen this week, as Focus saw it, and its next exam. Below: what your timer logged and goals that went quiet.")
+            SectionTitle("Courses and goals", subtitle: "How long each course was on your screen this week, as Focus saw it, and its next exam. Below: goals that went quiet.")
             let rows = courses
             if rows.isEmpty {
                 Text("No course work seen this week. Course time shows up once cloud AI has seen some study.")
@@ -203,7 +203,7 @@ struct WeekPage: View {
             }
             ForEach(rows) { row in
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Circle().fill(categoryColor(row.category)).frame(width: 8, height: 8)
+                    Circle().fill(WeekLedger.group(row.category).color).frame(width: 8, height: 8)
                     Text(row.code).font(.system(size: 14, weight: .semibold)).frame(width: 96, alignment: .leading)
                     Text(durationText(minutes: row.minutes)).font(.system(size: 14)).monospacedDigit()
                         .frame(width: 70, alignment: .leading)
@@ -217,20 +217,16 @@ struct WeekPage: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 6) {
-                Text("Your timer's focus time: " + (trackedByCategory.isEmpty ? "none"
-                     : trackedByCategory.map { "\($0.label == "Focus" ? "Unlabeled" : $0.label) \(durationText(minutes: $0.minutes))" }
-                        .joined(separator: " · ")))
-                    .font(.system(size: 12)).foregroundStyle(Color.secondaryText).fixedSize(horizontal: false, vertical: true)
                 ForEach(quiet.prefix(4), id: \.label) { q in
                     HStack(spacing: 8) {
-                        Circle().fill(categoryColor(q.label)).frame(width: 6, height: 6)
+                        Circle().fill(WeekLedger.group(q.label).color).frame(width: 6, height: 6)
                         Text(q.last.map { "\(q.label): nothing this week, last on \($0.formatted(.dateTime.month(.abbreviated).day()))" }
                              ?? "\(q.label): never tracked")
                             .font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                     }
                 }
                 HStack(spacing: 8) {
-                    Circle().fill(categoryColor("SWE")).frame(width: 6, height: 6)
+                    Circle().fill(CategoryGroup.career.color).frame(width: 6, height: 6)
                     Text(leetCodeThisWeek > 0 ? "LeetCode: \(leetCodeThisWeek) solved this week"
                          : lastLeetCode.map { "LeetCode: none this week, last on \($0.formatted(.dateTime.month(.abbreviated).day()))" }
                          ?? "LeetCode: none logged yet")
@@ -367,7 +363,7 @@ struct FocusHistorySection: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 SectionTitle("How much you focused",
-                             subtitle: "Hours of focus a day on your timer, in your three focus groups: School, Career, Learning & projects. Class, life time and breaks don't count.")
+                             subtitle: "Focus hours a day on your timer. Class, life time and breaks don't count.")
                 Spacer()
                 Picker("Range", selection: $range) {
                     ForEach(Range.allCases) { Text($0.rawValue).tag($0) }
@@ -521,7 +517,7 @@ struct FocusHistorySection: View {
             while a < end {
                 let day = cal.startOfDay(for: a)
                 let next = cal.date(byAdding: .day, value: 1, to: day)!
-                byDay[day, default: [:]][s.label ?? "Focus", default: 0] += min(end, next).timeIntervalSince(a) / 60
+                byDay[day, default: [:]][s.label ?? "Unlabeled", default: 0] += min(end, next).timeIntervalSince(a) / 60
                 a = next
             }
         }
