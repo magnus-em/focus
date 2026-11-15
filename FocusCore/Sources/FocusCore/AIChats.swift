@@ -157,7 +157,9 @@ public enum AIChats {
             return nil
         }
         guard !text.isEmpty, !text.hasPrefix("<"), !text.hasPrefix("Agent mail from"),
-              !text.hasPrefix("The following is the Codex agent history") else { return nil }
+              !text.hasPrefix("The following is the Codex agent history"),
+              // Later turns of that reviewer: numbered lines of the history it judges.
+              text.range(of: #"^\[\d+\] (assistant|user|tool)"#, options: .regularExpression) == nil else { return nil }
         return text
     }
 

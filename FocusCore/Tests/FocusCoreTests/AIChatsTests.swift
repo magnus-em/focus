@@ -70,6 +70,8 @@ final class AIChatsTests: XCTestCase {
         }
         XCTAssertNil(AIChats.codexPrompt(line("<environment_context>cwd</environment_context>"), cwd: nil))
         XCTAssertNil(AIChats.codexPrompt(line("Agent mail from Claude (follow these"), cwd: nil))
+        XCTAssertNil(AIChats.codexPrompt(line("[46] tool exec call: text(await tools.exec_command({cmd:\"ls\"}))"), cwd: nil))
+        XCTAssertNil(AIChats.codexPrompt(line("[54] assistant: The check-in tests pass."), cwd: nil))
         XCTAssertNil(AIChats.codexPrompt(line("# AGENTS.md instructions for /x"), cwd: nil))
         XCTAssertEqual(AIChats.codexPrompt(line("# Context from my IDE setup:\nfoo\n## My request for Codex:\nadd tests"), cwd: "/a/focus")?.text, "add tests")
         XCTAssertEqual(AIChats.codexPrompt(line("make the popup wider"), cwd: "/a/focus")?.project, "focus")
