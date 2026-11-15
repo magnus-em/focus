@@ -95,9 +95,13 @@ public enum AIUsage {
         }
     }
 
-    /// True for a Claude Code line that is a prompt from a scheduled task.
-    public static func claudeCodeAutomatedPrompt(_ line: Data) -> Bool {
-        guard let o = object(line), o["type"] as? String == "user" else { return false }
+    /// For a Claude Code prompt line, whether it came from the app rather
+    /// than you (a scheduled task, a background-task notice); nil for any
+    /// other line. A session whose first prompt is one is a scheduled task.
+    public static func claudeCodePromptIsAutomated(_ line: Data) -> Bool? {
+        guard let o = object(line), o["type"] as? String == "user", o["isMeta"] as? Bool != true,
+              o["isSidechain"] as? Bool != true, let msg = o["message"] as? [String: Any] else { return nil }
+        if let blocks = msg["content"] as? [[String: Any]], blocks.contains(where: { $0["type"] as? String == "tool_result" }) { return nil }
         return o["promptSource"] as? String == "system"
     }
 

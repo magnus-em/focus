@@ -259,7 +259,7 @@ final class AIChatStore: ObservableObject {
                     if s.skip == nil, let sub = AIUsage.codexSubagent(d) { s.skip = sub; continue }
                     if let w = AIUsage.codexWork(d) { work.append(w) }
                 } else {
-                    if s.automated == nil, AIUsage.claudeCodeAutomatedPrompt(d) { s.automated = true }
+                    if s.automated == nil, let a = AIUsage.claudeCodePromptIsAutomated(d) { s.automated = a }
                     if let w = AIUsage.claudeCodeWork(d, automated: s.automated == true) { work.append(w) }
                 }
             }

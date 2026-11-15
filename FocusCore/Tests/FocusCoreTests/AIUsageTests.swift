@@ -35,10 +35,12 @@ final class AIUsageTests: XCTestCase {
         XCTAssertEqual(AIUsage.claudeCodeWork(tool)?.words, 0)
         let prompt = line(["type": "user", "timestamp": "2026-11-13T15:01:00.000Z", "message": ["content": "do the thing"]])
         XCTAssertNil(AIUsage.claudeCodeWork(prompt))
-        XCTAssertFalse(AIUsage.claudeCodeAutomatedPrompt(prompt))
+        XCTAssertEqual(AIUsage.claudeCodePromptIsAutomated(prompt), false)
         let scheduled = line(["type": "user", "promptSource": "system", "timestamp": "2026-11-13T08:30:00.000Z",
                               "message": ["content": "tune the rules"]])
-        XCTAssertTrue(AIUsage.claudeCodeAutomatedPrompt(scheduled))
+        XCTAssertEqual(AIUsage.claudeCodePromptIsAutomated(scheduled), true)
+        XCTAssertNil(AIUsage.claudeCodePromptIsAutomated(tool))
+        XCTAssertNil(AIUsage.claudeCodePromptIsAutomated(reply))
         let synthetic = line(["type": "assistant", "timestamp": "2026-11-13T15:00:00.000Z",
                               "message": ["model": "<synthetic>", "content": [["type": "text", "text": "No response requested."]]]])
         XCTAssertNil(AIUsage.claudeCodeWork(synthetic))
