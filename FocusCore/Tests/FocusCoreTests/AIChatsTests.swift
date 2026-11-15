@@ -20,6 +20,25 @@ final class AIChatsTests: XCTestCase {
         XCTAssertFalse(more[0].backfill)
     }
 
+    func testRepliesCountForMessagesYouSentWhileWatchingAsTheyGrow() {
+        let old = AIChats.WindowRead(tool: "Claude", title: "Bayes", messages: ["explain bayes"], replies: [300], at: t0)
+        let backfill = AIChats.newMessages(previous: nil, current: old, seenIDs: [], seenText: [])
+        XCTAssertTrue(backfill[0].backfill)
+        let a = AIChats.WindowRead(tool: "Claude", title: "Bayes", messages: ["explain bayes", "and priors?"], replies: [300, 40], at: t0 + 4)
+        let new = AIChats.newMessages(previous: old, current: a, seenIDs: Set(backfill.map(\.id)), seenText: [])
+        XCTAssertEqual(new.map(\.id), [AIChats.messageIDs(a)[1]])
+        let live = Set(new.filter { !$0.backfill }.map(\.id))
+        let first = AIChats.replyGrowth(a, live: live, counted: [:])
+        XCTAssertEqual(first.map(\.words), [40])
+        XCTAssertEqual(first.map(\.added), [40])
+        var b = a; b.replies = [300, 250]; b.at = t0 + 8
+        let more = AIChats.replyGrowth(b, live: live, counted: [first[0].id: 40])
+        XCTAssertEqual(more.map(\.added), [210])
+        XCTAssertTrue(AIChats.replyGrowth(b, live: live, counted: [first[0].id: 250]).isEmpty)
+        var cut = b; cut.replies = [300]
+        XCTAssertTrue(AIChats.replyGrowth(cut, live: live, counted: [:]).isEmpty)
+    }
+
     func testOpeningAnOldConversationIsBackfillOnce() {
         let old = AIChats.WindowRead(tool: "ChatGPT", title: "Bayes", messages: ["explain bayes", "again please"], at: t0)
         let first = AIChats.newMessages(previous: nil, current: old, seenIDs: [], seenText: [])

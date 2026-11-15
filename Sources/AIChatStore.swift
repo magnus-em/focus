@@ -8,7 +8,9 @@ import FocusCore
 /// read through Accessibility every 4 s while one is in front (their pages
 /// mark your messages with a "user-message" class); the Claude Code and
 /// Codex transcripts on disk, scanned every 10 min; and data exports you
-/// import. Temporary/incognito chats are skipped.
+/// import. Temporary/incognito chats are skipped. Replies are never kept,
+/// only their word counts (`usage-YYYY-MM.jsonl`): from the transcripts, and
+/// from Claude app chats as the window shows them ("font-claude-response").
 @MainActor
 final class AIChatStore: ObservableObject {
     static let shared = AIChatStore()
@@ -27,6 +29,8 @@ final class AIChatStore: ObservableObject {
     private var previous: [String: AIChats.WindowRead] = [:]
     private var seenIDs: Set<String> = []
     private var seenText: Set<String> = []
+    private var liveIDs: Set<String> = []
+    private var replyWords: [String: Int] = [:]
     private nonisolated static let axQueue = DispatchQueue(label: "focus.aichats.ax", qos: .utility)
     private nonisolated static let ioQueue = DispatchQueue(label: "focus.aichats.io", qos: .utility)
 
@@ -45,9 +49,13 @@ final class AIChatStore: ObservableObject {
         Self.ioQueue.async {
             let all = Self.load(from: .distantPast, to: .distantFuture, dedupe: false)
             let ids = Set(all.map(\.id)), text = Set(all.map(\.textKey))
+            let live = Set(all.filter { $0.source == .window && !$0.backfill }.map(\.id))
+            let replies = Self.loadReplyWords()
             Task { @MainActor in
                 self.seenIDs.formUnion(ids)
                 self.seenText.formUnion(text)
+                self.liveIDs.formUnion(live)
+                self.replyWords.merge(replies) { max($0, $1) }
                 self.refreshCount()
                 self.scanTranscripts()
             }
@@ -83,6 +91,7 @@ final class AIChatStore: ObservableObject {
                                               seenText: self.seenText)
                 self.previous[tool] = read
                 self.add(new)
+                self.countReplies(read, tool: tool, at: now)
                 self.status = "Last read \(tool) at \(now.formatted(date: .omitted, time: .shortened))"
             }
         }
@@ -91,9 +100,32 @@ final class AIChatStore: ObservableObject {
     private func add(_ messages: [AIChats.Message]) {
         let fresh = messages.filter { !seenIDs.contains($0.id) }
         guard !fresh.isEmpty else { return }
-        for m in fresh { seenIDs.insert(m.id); seenText.insert(m.textKey) }
+        for m in fresh {
+            seenIDs.insert(m.id); seenText.insert(m.textKey)
+            if m.source == .window && !m.backfill { liveIDs.insert(m.id) }
+        }
         Self.ioQueue.async { Self.append(fresh) }
         refreshCount()
+    }
+
+    private func countReplies(_ read: AIChats.WindowRead, tool: String, at: Date) {
+        let grown = AIChats.replyGrowth(read, live: liveIDs, counted: replyWords)
+        guard !grown.isEmpty else { return }
+        for g in grown { replyWords[g.id] = g.words }
+        let rows = AIUsage.minutes([.init(at: at, words: grown.reduce(0) { $0 + $1.added })], tool: tool,
+                                   session: read.conversationKey)
+        let snapshot = replyWords
+        Self.ioQueue.async {
+            Self.appendUsage(rows)
+            if let data = try? JSONEncoder().encode(snapshot) { try? data.write(to: Self.replyWordsURL, options: .atomic) }
+        }
+    }
+
+    /// Words of each Claude app reply counted so far, by the id of the message it answers.
+    private nonisolated static var replyWordsURL: URL { directory.appendingPathComponent("window-replies.json") }
+
+    private nonisolated static func loadReplyWords() -> [String: Int] {
+        (try? JSONDecoder().decode([String: Int].self, from: Data(contentsOf: replyWordsURL))) ?? [:]
     }
 
     private func refreshCount() {
@@ -121,8 +153,10 @@ final class AIChatStore: ObservableObject {
             return AXUIElementCopyAttributeValue(e, a as CFString, &v) == .success ? v : nil
         }
         guard let w = attr(app, "AXFocusedWindow") else { return nil }
-        var title: String?
+        var title: String?, pageTitle: String?
         var messages: [String] = []
+        var replies: [Int] = []
+        var codeTab = false
         var nodes = 0
         var temporary = false
         func text(_ e: AXUIElement, _ depth: Int) -> [String] {
@@ -139,25 +173,37 @@ final class AIChatStore: ObservableObject {
             let role = attr(e, "AXRole") as? String
             let sub = attr(e, "AXSubrole") as? String
             if sub == "AXLandmarkNavigation" || sub == "AXLandmarkComplementary" { return }
-            if role == "AXWebArea", title == nil { title = attr(e, "AXTitle") as? String }
+            if role == "AXWebArea" {
+                // The app's own frame is a web area too; the first web page inside it has the chat's title.
+                let u = attr(e, "AXURL") as? URL, t = attr(e, "AXTitle") as? String
+                if title == nil { title = t }
+                if pageTitle == nil, u?.scheme?.hasPrefix("http") == true, let t, !t.isEmpty { pageTitle = t }
+                if u?.path.hasPrefix("/epitaxy") == true { codeTab = true }
+            }
             if role == "AXStaticText" || role == "AXHeading",
                let v = (attr(e, "AXValue") as? String)?.lowercased(),
                v == "temporary chat" || v.hasPrefix("you're incognito") || v == "incognito chat" {
                 temporary = true
             }
-            if let classes = attr(e, "AXDOMClassList") as? [String], classes.contains(where: { $0.contains("user-message") }) {
+            let classes = attr(e, "AXDOMClassList") as? [String] ?? []
+            if classes.contains(where: { $0.contains("user-message") }) {
                 let t = text(e, 0).joined(separator: " ")
                     .split(whereSeparator: { $0 == " " || $0 == "\t" }).joined(separator: " ")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !t.isEmpty { messages.append(t) }
+                if !t.isEmpty { messages.append(t); replies.append(0) }
+                return
+            }
+            if classes.contains(where: { $0.hasPrefix("font-claude-response") }) {
+                if !replies.isEmpty { replies[replies.count - 1] += AIUsage.words(text(e, 0).joined(separator: " ")) }
                 return
             }
             for k in attr(e, "AXChildren") as? [AXUIElement] ?? [] { walk(k, depth + 1) }
         }
         walk(w as! AXUIElement, 0)
         guard !temporary else { return nil }
-        let clean = (title ?? "").replacingOccurrences(of: #"\s*[-–—|]\s*(Claude|ChatGPT)$"#, with: "", options: .regularExpression)
-        return AIChats.WindowRead(tool: tool, title: clean, messages: messages, at: at)
+        let clean = (pageTitle ?? title ?? "").replacingOccurrences(of: #"\s*[-–—|]\s*(Claude Code|Claude|ChatGPT)$"#, with: "", options: .regularExpression)
+        // The Code tab's replies are already counted from Claude Code's transcripts.
+        return AIChats.WindowRead(tool: tool, title: clean, messages: messages, replies: codeTab ? [] : replies, at: at)
     }
 
     // MARK: - Transcripts

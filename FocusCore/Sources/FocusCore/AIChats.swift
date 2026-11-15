@@ -39,16 +39,19 @@ public enum AIChats {
 
     // MARK: - Desktop chat windows
 
-    /// What one read of a chat window showed: its title and your messages, in order.
+    /// What one read of a chat window showed: its title and your messages, in
+    /// order, with the words of the reply under each (Claude app chats only;
+    /// empty when replies weren't read).
     public struct WindowRead: Equatable, Sendable {
         public var tool: String
         public var title: String
         public var messages: [String]
+        public var replies: [Int]
         public var at: Date
-        public init(tool: String, title: String, messages: [String], at: Date) {
-            self.tool = tool; self.title = title; self.messages = messages; self.at = at
+        public init(tool: String, title: String, messages: [String], replies: [Int] = [], at: Date) {
+            self.tool = tool; self.title = title; self.messages = messages; self.replies = replies; self.at = at
         }
-        var conversationKey: String { AIChats.hash(tool + "|" + (messages.first.map(AIChats.normalized) ?? title)) }
+        public var conversationKey: String { AIChats.hash(tool + "|" + (messages.first.map(AIChats.normalized) ?? title)) }
     }
 
     static let genericTitles: Set<String> = ["chatgpt", "new chat", "claude", "", "gemini"]
@@ -59,30 +62,49 @@ public enum AIChats {
     /// wording, so reopening an old chat adds nothing).
     public static func newMessages(previous: WindowRead?, current: WindowRead, seenIDs: Set<String>,
                                    seenText: Set<String>) -> [Message] {
-        let conv = current.conversationKey
-        var counts: [String: Int] = [:]
         let sameConversation: Bool = {
             guard let p = previous, p.tool == current.tool, current.at.timeIntervalSince(p.at) <= 30 else { return false }
-            if p.conversationKey == conv { return true }
+            if p.conversationKey == current.conversationKey { return true }
             let pt = p.title.lowercased(), ct = current.title.lowercased()
             return pt == ct || p.messages.isEmpty || genericTitles.contains(pt)
         }()
         let previousCount = previous?.messages.count ?? 0
         var out: [Message] = []
-        for (i, m) in current.messages.enumerated() {
-            let n = normalized(m)
-            guard !n.isEmpty else { continue }
-            counts[n, default: 0] += 1
-            let id = hash("\(current.tool)|\(conv)|\(n)|\(counts[n]!)")
-            guard !seenIDs.contains(id) else { continue }
+        for (i, (m, id)) in zip(current.messages, messageIDs(current)).enumerated() {
+            guard let id, !seenIDs.contains(id) else { continue }
             let live = sameConversation && i >= previousCount - 1
-            let textKey = hash(current.tool + "|" + n)
+            let textKey = hash(current.tool + "|" + normalized(m))
             if !live && seenText.contains(textKey) { continue }
             out.append(Message(id: id, at: current.at, tool: current.tool,
                                conversation: genericTitles.contains(current.title.lowercased()) ? nil : current.title,
                                text: m, source: .window, backfill: !live))
         }
         return out
+    }
+
+    /// The id each of a read's messages is recorded under (nil for blank ones).
+    public static func messageIDs(_ read: WindowRead) -> [String?] {
+        let conv = read.conversationKey
+        var counts: [String: Int] = [:]
+        return read.messages.map { m in
+            let n = normalized(m)
+            guard !n.isEmpty else { return nil }
+            counts[n, default: 0] += 1
+            return hash("\(read.tool)|\(conv)|\(n)|\(counts[n]!)")
+        }
+    }
+
+    /// Replies that grew past what's been counted, as (message id, words now,
+    /// words added). Only replies to messages you sent while Focus watched
+    /// (`live`) count, so opening an old chat adds nothing, and a reply still
+    /// being written counts as it grows.
+    public static func replyGrowth(_ read: WindowRead, live: Set<String>,
+                                   counted: [String: Int]) -> [(id: String, words: Int, added: Int)] {
+        guard read.replies.count == read.messages.count else { return [] }
+        return zip(messageIDs(read), read.replies).compactMap { id, w in
+            guard let id, live.contains(id), w > counted[id] ?? 0 else { return nil }
+            return (id, w, w - (counted[id] ?? 0))
+        }
     }
 
     // MARK: - Agent transcripts

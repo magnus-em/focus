@@ -4,8 +4,8 @@ import Foundation
 /// (`AIChats`), words it wrote back, and time it spent working for you, by
 /// day, by tool and by the category the timer was on. Replies and working
 /// time come from the Claude Code and Codex transcripts on disk (the ChatGPT
-/// desktop app keeps its chats there too); the Claude app's chats only count
-/// what you wrote, since its replies aren't on disk.
+/// desktop app keeps its chats there too) and, for the Claude app's chats,
+/// whose replies aren't on disk, from its window while it's in front.
 public enum AIUsage {
     public enum Provider: String, CaseIterable, Codable, Sendable, Identifiable {
         case openAI = "ChatGPT & Codex"

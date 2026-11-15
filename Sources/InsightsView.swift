@@ -535,7 +535,7 @@ struct InsightsContent: View {
     }
 
     private func aiFootnote(_ u: AIUsage.Summary, before: AIUsage.Summary?) -> String {
-        var t = "Words back are replies in Claude Code and the ChatGPT app (its chats and Codex). † Claude chats outside Claude Code count only what you wrote; their replies aren't on this Mac. Gemini: only time on screen. Worked for you: time Claude Code or the ChatGPT app spent answering, thinking or running tools, often while you did something else; in All tools, tools working at once count once."
+        var t = "Words back are replies in Claude Code, the ChatGPT app (its chats and Codex) and Claude app chats. † Claude app chats count replies from Nov 14, read off its window while it's in front. Gemini: only time on screen. Worked for you: time Claude or ChatGPT spent answering, thinking or running tools, often while you did something else; in All tools, tools working at once count once."
         if let windowLog = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 10)),
            (before?.period.start ?? u.period.start) < windowLog {
             t += " Before Nov 10, time on screen comes from 15-second readings that miss AI websites in Chrome, so earlier days" + (before != nil ? " and the comparison" : "") + " undercount it."
