@@ -379,10 +379,11 @@ struct InsightsContent: View {
             SectionTitle("How much you use AI",
                          subtitle: "ChatGPT, Codex, Claude and Gemini on this Mac, \(range(u.period)), as averages per day" + (before.map { ", compared with \(range($0.period))" } ?? ""))
             HStack(alignment: .top, spacing: 24) {
-                aiStat(hm(now.aiSeconds / 60), "a day with AI on screen", change: was.map { minutesChange(now.aiSeconds - $0.aiSeconds) })
-                aiStat(Int(now.wrote.rounded()).formatted(), "words a day you wrote to AI", change: was.map { wordsChange(now.wrote - $0.wrote) })
-                aiStat(Int(now.read.rounded()).formatted(), "words a day AI wrote back", change: was.map { wordsChange(now.read - $0.read) })
-                aiStat(hm(now.workSeconds / 60), "a day AI worked for you", change: was.map { minutesChange(now.workSeconds - $0.workSeconds) })
+                let vs = before.map { range($0.period) } ?? ""
+                aiStat(hm(now.aiSeconds / 60), "a day with AI on screen", change: was.map { minutesChange(now.aiSeconds - $0.aiSeconds, vs) })
+                aiStat(Int(now.wrote.rounded()).formatted(), "words a day you wrote to AI", change: was.map { wordsChange(now.wrote - $0.wrote, vs) })
+                aiStat(Int(now.read.rounded()).formatted(), "words a day AI wrote back", change: was.map { wordsChange(now.read - $0.read, vs) })
+                aiStat(hm(now.workSeconds / 60), "a day AI worked for you", change: was.map { minutesChange(now.workSeconds - $0.workSeconds, vs) })
             }
             HStack(alignment: .top, spacing: 32) {
                 VStack(alignment: .leading, spacing: 18) {
@@ -403,8 +404,9 @@ struct InsightsContent: View {
                             if let was {
                                 RuleMark(y: .value("Before", was.aiSeconds / 3600))
                                     .foregroundStyle(Color.secondaryText).lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                                    .annotation(position: .top, alignment: .leading) {
-                                        Text("\(range(before!.period)) average").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
+                                    .annotation(position: .top, alignment: .trailing) {
+                                        Text("\(range(before!.period)) average, \(String(format: "%.1f h", was.aiSeconds / 3600))")
+                                            .font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                                     }
                             }
                         }
@@ -427,7 +429,7 @@ struct InsightsContent: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Where you use it").font(.system(size: 14, weight: .semibold))
-                    Text("Of each category's timer time at the Mac, how much had AI on screen").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    Text("Share of each category's time at the Mac with AI on screen").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                     if !focus.isEmpty { categoryGroup("Focus", focus) }
                     if !rest.isEmpty { categoryGroup("Rest of the day", rest) }
@@ -452,7 +454,8 @@ struct InsightsContent: View {
                     }
                     .frame(height: 6)
                     Text(pct(c.share ?? 0)).font(.system(size: 13)).monospacedDigit().frame(width: 38, alignment: .trailing)
-                    Text("\(String(format: "%.1f", c.aiSeconds / 3600)) of \(String(format: "%.1f", c.macSeconds / 3600)) h")
+                    Text(c.macSeconds < 3600 ? "\(Int((c.aiSeconds / 60).rounded())) of \(Int((c.macSeconds / 60).rounded())) min"
+                                             : "\(String(format: "%.1f", c.aiSeconds / 3600)) of \(String(format: "%.1f", c.macSeconds / 3600)) h")
                         .font(.system(size: 12)).foregroundStyle(Color.secondaryText).monospacedDigit().frame(width: 84, alignment: .trailing)
                 }
                 .help("\(hm(c.aiSeconds / 60)) with AI on screen, of \(hm(c.macSeconds / 60)) at the Mac during \(hm(c.trackedSeconds / 60)) of \(c.name) on the timer; \(c.messages) \(c.messages == 1 ? "message" : "messages") to AI")
@@ -500,26 +503,26 @@ struct InsightsContent: View {
         }
     }
 
-    private func aiStat(_ value: String, _ label: String, change: String?) -> some View {
+    private func aiStat(_ value: String, _ label: String, change: (text: String, up: Bool)?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value).font(.system(size: 22, weight: .semibold)).monospacedDigit()
             Text(label).font(.system(size: 12)).foregroundStyle(Color.secondaryText).lineLimit(1)
             if let change {
-                Text(change).font(.system(size: 12, weight: .medium)).monospacedDigit()
-                    .foregroundStyle(change.hasPrefix("+") ? Color.good : Color.secondaryText)
+                Text(change.text).font(.system(size: 12, weight: .medium)).monospacedDigit()
+                    .foregroundStyle(change.up ? Color.good : Color.secondaryText)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func minutesChange(_ seconds: Double) -> String {
+    private func minutesChange(_ seconds: Double, _ vs: String) -> (text: String, up: Bool) {
         let m = (seconds / 60).rounded()
-        return m == 0 ? "Same" : (m > 0 ? "+" : "−") + hm(abs(m))
+        return m == 0 ? ("Same as \(vs)", false) : ("\(hm(abs(m))) \(m > 0 ? "more" : "less") than \(vs)", m > 0)
     }
 
-    private func wordsChange(_ words: Double) -> String {
+    private func wordsChange(_ words: Double, _ vs: String) -> (text: String, up: Bool) {
         let w = Int(words.rounded())
-        return w == 0 ? "Same" : (w > 0 ? "+" : "−") + abs(w).formatted() + " words"
+        return w == 0 ? ("Same as \(vs)", false) : ("\(abs(w).formatted()) \(w > 0 ? "more" : "fewer") than \(vs)", w > 0)
     }
 
     private func range(_ p: DateInterval) -> String {
