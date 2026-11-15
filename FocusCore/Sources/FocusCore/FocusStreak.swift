@@ -24,7 +24,7 @@ public enum FocusStreak {
 
     static let chatHosts = ["chatgpt.com", "chat.openai.com", "claude.ai", "gemini.google.com", "grok.com", "perplexity.ai"]
     public static let chatBundles: Set<String> = ["com.openai.chat", "com.anthropic.claudefordesktop", "com.openai.codex",
-                                                  "com.google.Gemini", "ai.perplexity.mac"]
+                                                  "com.google.Gemini", "com.google.GeminiMacOS", "ai.perplexity.mac"]
 
     public static func isAIChat(bundle: String, url: String?) -> Bool {
         if chatBundles.contains(bundle) { return true }

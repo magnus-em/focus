@@ -216,8 +216,27 @@ public enum AIChats {
         }
         var out = order.compactMap { best[$0] }
         var exactKeys = Set<String>()
-        for m in out where m.source != .window { exactKeys.insert(m.textKey) }
-        out.removeAll { $0.source == .window && $0.backfill && exactKeys.contains($0.textKey) }
+        var sameApp = Set<String>()
+        for m in out where m.source != .window {
+            exactKeys.insert(m.textKey)
+            sameApp.insert(appKey(m, cal))
+        }
+        // The Claude app's window reader also sees what you type in its Code
+        // tab, which the Claude Code transcript already has (likewise ChatGPT
+        // and Codex, one app).
+        out.removeAll { $0.source == .window && (($0.backfill && exactKeys.contains($0.textKey)) || sameApp.contains(appKey($0, cal))) }
         return out.sorted { $0.at < $1.at }
+    }
+
+    static func app(_ tool: String) -> String {
+        switch tool {
+        case "Claude Code": return "Claude"
+        case "Codex": return "ChatGPT"
+        default: return tool
+        }
+    }
+
+    private static func appKey(_ m: Message, _ cal: Calendar) -> String {
+        app(m.tool) + "|" + normalized(m.text) + "|" + "\(cal.startOfDay(for: m.at).timeIntervalSince1970)"
     }
 }

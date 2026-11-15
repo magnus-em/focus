@@ -74,6 +74,7 @@ struct InsightsContent: View {
                 hero(s)
                 goalsSection(s)
                 attentionSection(s).id("insights-attention")
+                if let u = store.aiUse { aiSection(u).id("insights-ai") }
                 reportSection.id("insights-report")
                 timerSection(s)
                 accuracySection.id("insights-accuracy")
@@ -362,6 +363,95 @@ struct InsightsContent: View {
             Text(value).font(.system(size: 22, weight: .semibold)).monospacedDigit()
             Text(label).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
         }
+    }
+
+    // MARK: AI
+
+    private func aiSection(_ u: AIUsage.Summary) -> some View {
+        let active = max(1, u.days.filter { $0.macSeconds > 0 || $0.wrote > 0 || $0.workSeconds > 0 }.count)
+        let n = Double(active)
+        let cats = Array(u.categories.filter { $0.share != nil && $0.trackedSeconds >= 30 * 60 }.prefix(8))
+        return VStack(alignment: .leading, spacing: 14) {
+            SectionTitle("How much you use AI",
+                         subtitle: "ChatGPT, Codex, Claude, Claude Code and Gemini: time with them in front on your Mac, what you wrote to them, what they wrote back and how long they worked for you. Averages over \(active) \(active == 1 ? "day" : "days")")
+            HStack(alignment: .top, spacing: 28) {
+                stat(hm(u.aiSeconds / 60 / n), "a day with AI in front, \(pct(u.share)) of your time at the Mac")
+                stat(Int((Double(u.wrote) / n).rounded()).formatted(), "words a day you wrote to AI")
+                stat(Int((Double(u.read) / n).rounded()).formatted(), "words a day AI wrote back")
+                stat(hm(u.workSeconds / 60 / n), "a day AI was working for you")
+            }
+            HStack(alignment: .top, spacing: 32) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("AI in front each day, and its share of your time at the Mac").font(.system(size: 13, weight: .semibold))
+                    Chart {
+                        ForEach(u.days) { d in
+                            BarMark(x: .value("Day", d.date, unit: .day), y: .value("Hours", d.aiSeconds / 3600))
+                                .foregroundStyle(Color.accentColor.opacity(0.8))
+                                .annotation(position: .top) {
+                                    if d.macSeconds >= 600 {
+                                        Text(pct(d.share)).font(.system(size: 10)).foregroundStyle(Color.secondaryText).monospacedDigit()
+                                    }
+                                }
+                        }
+                    }
+                    .chartYAxis { AxisMarks { v in AxisGridLine(); AxisValueLabel { if let h = v.as(Double.self) { Text("\(h.formatted(.number.precision(.fractionLength(0...1)))) h") } } } }
+                    .chartXAxis { AxisMarks(values: .stride(by: .day)) { _ in AxisValueLabel(format: u.days.count > 7 ? .dateTime.day() : .dateTime.weekday(.narrow)) } }
+                    .frame(height: 150)
+                }
+                .frame(maxWidth: .infinity)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Where you use it").font(.system(size: 13, weight: .semibold))
+                    Text("How much of each category's timer blocks had AI in front").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    ForEach(cats) { c in
+                        HStack(spacing: 10) {
+                            Text(c.name).font(.system(size: 13)).lineLimit(1).frame(width: 96, alignment: .leading)
+                            GeometryReader { g in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.secondary.opacity(0.15))
+                                    Capsule().fill(categoryColor(c.name)).frame(width: max(3, g.size.width * (c.share ?? 0)))
+                                }
+                            }
+                            .frame(height: 6)
+                            Text(pct(c.share ?? 0)).font(.system(size: 12)).monospacedDigit().frame(width: 36, alignment: .trailing)
+                        }
+                        .help("\(hm(c.aiSeconds / 60)) with AI in front of \(hm(c.trackedSeconds / 60)) on the timer; \(c.messages) \(c.messages == 1 ? "message" : "messages") to AI")
+                    }
+                    if cats.isEmpty { Text("No timer blocks at the Mac yet").font(.system(size: 12)).foregroundStyle(Color.secondaryText) }
+                }
+                .frame(width: 340)
+            }
+            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
+                GridRow {
+                    ForEach(["Tool", "In front", "Working for you", "You wrote", "It wrote back"], id: \.self) {
+                        Text($0).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.secondaryText)
+                    }
+                }
+                ForEach(u.tools) { t in
+                    GridRow {
+                        Text(t.provider.rawValue)
+                        Text(t.aiSeconds >= 30 ? hm(t.aiSeconds / 60) : "–").monospacedDigit()
+                        Text(t.workSeconds > 0 ? hm(t.workSeconds / 60) : "–").monospacedDigit()
+                        Text(t.wrote > 0 ? "\(t.wrote.formatted()) words" : "–").monospacedDigit()
+                        Text(t.read > 0 ? "\(t.read.formatted()) words" : t.provider == .openAI || t.provider == .anthropic ? "–" : "not recorded")
+                            .monospacedDigit()
+                    }
+                    .font(.system(size: 13))
+                }
+            }
+            Text(aiFootnote(u)).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func aiFootnote(_ u: AIUsage.Summary) -> String {
+        var t = "In all: \(hm(u.aiSeconds / 60)) in front, \(u.messages.formatted()) messages and \(u.wrote.formatted()) words from you, \(u.read.formatted()) words back."
+        t += " Words back are replies in Claude Code and the ChatGPT app (its chats and Codex); Claude chats outside Claude Code count only what you wrote."
+        t += " Working for you is the minutes Claude Code or the ChatGPT app spent answering, thinking or running tools"
+        t += u.parallelWorkSeconds > u.workSeconds * 1.1 ? ": \(hm(u.parallelWorkSeconds / 60)) counting sessions that ran side by side separately." : "."
+        if let windowLog = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 10)), u.period.start < windowLog {
+            t += " Before Nov 10, time in front comes from 15-second screen readings, which miss AI websites in Chrome."
+        }
+        return t
     }
 
     // MARK: Days

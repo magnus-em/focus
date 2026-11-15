@@ -171,6 +171,7 @@ final class AIChatStore: ObservableObject {
         guard enabled else { return }
         Self.ioQueue.async {
             let found = Self.scan()
+            Self.appendUsage(Self.scanUsage())
             Task { @MainActor in self.add(found) }
         }
     }
@@ -213,6 +214,97 @@ final class AIChatStore: ObservableObject {
         try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
         if let data = try? JSONEncoder().encode(state) { try? data.write(to: stateURL, options: .atomic) }
         return out
+    }
+
+    // MARK: - Replies and working time
+
+    /// Separate offsets from the prompt scan, so the first run reads every
+    /// transcript from the start and the history counts too.
+    private struct UsageState: Codable {
+        var offset: UInt64
+        var skip: Bool?
+        var automated: Bool?
+    }
+
+    private nonisolated static var usageStateURL: URL { directory.appendingPathComponent("usage-scan.json") }
+
+    /// Word counts of replies and the minutes an AI worked, from the same
+    /// transcripts; no reply text is kept.
+    private nonisolated static func scanUsage() -> [AIUsage.Minute] {
+        let fm = FileManager.default
+        let home = fm.homeDirectoryForCurrentUser
+        var state = (try? JSONDecoder().decode([String: UsageState].self, from: Data(contentsOf: usageStateURL))) ?? [:]
+        var files: [(URL, Bool)] = []
+        for dir in (try? fm.contentsOfDirectory(at: home.appendingPathComponent(".claude/projects"), includingPropertiesForKeys: nil)) ?? [] {
+            for f in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] where f.pathExtension == "jsonl" {
+                files.append((f, false))
+            }
+        }
+        if let e = fm.enumerator(at: home.appendingPathComponent(".codex/sessions"), includingPropertiesForKeys: nil) {
+            for case let f as URL in e where f.pathExtension == "jsonl" { files.append((f, true)) }
+        }
+        var out: [AIUsage.Minute] = []
+        for (f, codex) in files {
+            guard let size = (try? fm.attributesOfItem(atPath: f.path)[.size] as? NSNumber)?.uint64Value else { continue }
+            var s = state[f.path] ?? UsageState(offset: 0)
+            guard size > s.offset, let h = try? FileHandle(forReadingFrom: f) else { continue }
+            defer { try? h.close() }
+            try? h.seek(toOffset: s.offset)
+            guard let data = try? h.readToEnd(), let lastNL = data.lastIndex(of: 0x0A) else { continue }
+            let body = data[data.startIndex...lastNL]
+            var work: [AIUsage.Work] = []
+            for line in body.split(separator: 0x0A) where s.skip != true {
+                let d = Data(line)
+                if codex {
+                    if s.skip == nil, let sub = AIUsage.codexSubagent(d) { s.skip = sub; continue }
+                    if let w = AIUsage.codexWork(d) { work.append(w) }
+                } else {
+                    if s.automated == nil, AIUsage.claudeCodeAutomatedPrompt(d) { s.automated = true }
+                    if let w = AIUsage.claudeCodeWork(d, automated: s.automated == true) { work.append(w) }
+                }
+            }
+            out += AIUsage.minutes(work, tool: codex ? "Codex" : "Claude Code", session: f.deletingPathExtension().lastPathComponent)
+            s.offset += UInt64(body.count)
+            state[f.path] = s
+        }
+        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(state) { try? data.write(to: usageStateURL, options: .atomic) }
+        return out
+    }
+
+    private nonisolated static func appendUsage(_ rows: [AIUsage.Minute]) {
+        guard !rows.isEmpty else { return }
+        let enc = JSONEncoder()
+        var byMonth: [String: Data] = [:]
+        for r in rows {
+            guard let d = try? enc.encode(r) else { continue }
+            byMonth["usage-" + month(r.at), default: Data()].append(d + Data("\n".utf8))
+        }
+        for (k, data) in byMonth {
+            let url = directory.appendingPathComponent("\(k).jsonl")
+            if let h = try? FileHandle(forWritingTo: url) {
+                _ = try? h.seekToEnd(); try? h.write(contentsOf: data); try? h.close()
+            } else {
+                try? data.write(to: url, options: .atomic)
+            }
+        }
+    }
+
+    nonisolated static func loadUsage(from: Date, to: Date) -> [AIUsage.Minute] {
+        let lo = month(from), hi = month(to)
+        let dec = JSONDecoder()
+        let files = ((try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.lastPathComponent.range(of: #"^usage-\d{4}-\d{2}\.jsonl$"#, options: .regularExpression) != nil }
+        var out: [AIUsage.Minute] = []
+        for f in files {
+            let m = String(f.deletingPathExtension().lastPathComponent.dropFirst(6))
+            guard m >= lo, m <= hi, let text = try? String(contentsOf: f, encoding: .utf8) else { continue }
+            for line in text.split(separator: "\n") {
+                guard let r = try? dec.decode(AIUsage.Minute.self, from: Data(line.utf8)), r.at >= from, r.at < to else { continue }
+                out.append(r)
+            }
+        }
+        return AIUsage.merged(out)
     }
 
     // MARK: - Exports

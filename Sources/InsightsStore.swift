@@ -21,6 +21,8 @@ final class InsightsStore: ObservableObject {
     @Published private(set) var loading = false
     /// How well Focus read the screen during focus, a day at a time.
     @Published private(set) var accuracy: [ReadingAccuracy.Day] = []
+    /// AI tools in front, words to and from them, and time they worked for you.
+    @Published private(set) var aiUse: AIUsage.Summary?
 
     /// Set by the app: the timer's saved blocks and logged problems.
     var sessionsProvider: () -> [WorkSession] = { ScreenCoach.shared?.sessions ?? [] }
@@ -95,9 +97,15 @@ final class InsightsStore: ObservableObject {
         Task {
             let input = await gather(period: period)
             let s = await Task.detached(priority: .utility) { Insights.summarize(input) }.value
+            let ai = await Task.detached(priority: .utility) {
+                AIUsage.summarize(period: input.period, segments: input.segments, sessions: input.sessions,
+                                  messages: input.aiMessages,
+                                  minutes: AIChatStore.loadUsage(from: input.period.start, to: input.period.end))
+            }.value
             let accuracy = await accuracyDays(period: input.period, sessions: input.sessions)
             guard id == self.refreshID else { return }
             self.accuracy = accuracy
+            self.aiUse = ai
             guard id == self.refreshID else { return }
             self.summary = s
             self.loading = false

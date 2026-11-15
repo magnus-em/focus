@@ -100,4 +100,12 @@ final class AIChatsTests: XCTestCase {
         let d = AIChats.deduplicated([w, e, other])
         XCTAssertEqual(d.map(\.id), ["e", "o"])
     }
+
+    func testClaudeWindowReadOfACodePromptIsTheTranscriptsMessage() {
+        let typed = AIChats.Message(id: "cc", at: t0, tool: "Claude Code", conversation: "s", text: "add the insights page", source: .transcript)
+        let seen = AIChats.Message(id: "w", at: t0 + 3, tool: "Claude", conversation: nil, text: "Add the  insights page", source: .window)
+        let chat = AIChats.Message(id: "c", at: t0 + 60, tool: "Claude", conversation: "Papers", text: "summarize the papers", source: .window)
+        let sameWordsToCodex = AIChats.Message(id: "cx", at: t0 + 90, tool: "Codex", conversation: nil, text: "add the insights page", source: .transcript)
+        XCTAssertEqual(AIChats.deduplicated([typed, seen, chat, sameWordsToCodex]).map(\.id), ["cc", "c", "cx"])
+    }
 }
