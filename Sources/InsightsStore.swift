@@ -23,6 +23,9 @@ final class InsightsStore: ObservableObject {
     @Published private(set) var accuracy: [ReadingAccuracy.Day] = []
     /// AI tools in front, words to and from them, and time they worked for you.
     @Published private(set) var aiUse: AIUsage.Summary?
+    /// The same for the period just before, to compare with; past, so only
+    /// recounted when the period moves.
+    @Published private(set) var aiBefore: AIUsage.Summary?
 
     /// Set by the app: the timer's saved blocks and logged problems.
     var sessionsProvider: () -> [WorkSession] = { ScreenCoach.shared?.sessions ?? [] }
@@ -103,13 +106,27 @@ final class InsightsStore: ObservableObject {
                                   minutes: AIChatStore.loadUsage(from: input.period.start, to: input.period.end))
             }.value
             let accuracy = await accuracyDays(period: input.period, sessions: input.sessions)
+            let before = await aiUsageBefore(input.period)
             guard id == self.refreshID else { return }
             self.accuracy = accuracy
             self.aiUse = ai
+            self.aiBefore = before
             guard id == self.refreshID else { return }
             self.summary = s
             self.loading = false
         }
+    }
+
+    private func aiUsageBefore(_ p: DateInterval) async -> AIUsage.Summary? {
+        let cal = Calendar.current
+        guard let start = cal.date(byAdding: .day, value: -days, to: p.start) else { return nil }
+        let prev = DateInterval(start: start, end: p.start)
+        if let b = aiBefore, b.period == prev { return b }
+        let input = await gather(period: prev)
+        return await Task.detached(priority: .utility) {
+            AIUsage.summarize(period: prev, segments: input.segments, sessions: input.sessions, messages: input.aiMessages,
+                              minutes: AIChatStore.loadUsage(from: prev.start, to: prev.end))
+        }.value
     }
 
     func gather(period: DateInterval) async -> Insights.Input {

@@ -378,6 +378,7 @@ final class AIChatStore: ObservableObject {
                 guard var m = try? dec.decode(AIChats.Message.self, from: Data(line.utf8)), m.at >= from, m.at < to else { continue }
                 // Rows saved before a filter improved are cleaned the same way on read.
                 if m.tool == "Codex" { guard let t = AIChats.codexText(m.text) else { continue }; m.text = t }
+                if m.tool == "Claude Code", AIChats.isCompactSummary(m.text) { continue }
                 out.append(m)
             }
         }

@@ -368,88 +368,152 @@ struct InsightsContent: View {
     // MARK: AI
 
     private func aiSection(_ u: AIUsage.Summary) -> some View {
-        let active = max(1, u.days.filter { $0.macSeconds > 0 || $0.wrote > 0 || $0.workSeconds > 0 }.count)
-        let n = Double(active)
-        let cats = Array(u.categories.filter { $0.share != nil && $0.trackedSeconds >= 30 * 60 }.prefix(8))
-        return VStack(alignment: .leading, spacing: 14) {
+        let now = u.perDay
+        let before = store.aiBefore.flatMap { $0.activeDays > 0 ? $0 : nil }
+        let was = before?.perDay
+        let since = before.map { "vs " + range($0.period) }
+        let shown = u.categories.filter { $0.share != nil && $0.trackedSeconds >= 30 * 60 }
+        let cats = (shown.filter(\.isFocus).sorted { $0.share! > $1.share! } + shown.filter { !$0.isFocus }.sorted { $0.share! > $1.share! })
+        let cal = Calendar.current
+        return VStack(alignment: .leading, spacing: 16) {
             SectionTitle("How much you use AI",
-                         subtitle: "ChatGPT, Codex, Claude, Claude Code and Gemini: time with them in front on your Mac, what you wrote to them, what they wrote back and how long they worked for you. Averages over \(active) \(active == 1 ? "day" : "days")")
-            HStack(alignment: .top, spacing: 28) {
-                stat(hm(u.aiSeconds / 60 / n), "a day with AI in front, \(pct(u.share)) of your time at the Mac")
-                stat(Int((Double(u.wrote) / n).rounded()).formatted(), "words a day you wrote to AI")
-                stat(Int((Double(u.read) / n).rounded()).formatted(), "words a day AI wrote back")
-                stat(hm(u.workSeconds / 60 / n), "a day AI was working for you")
+                         subtitle: "ChatGPT, Codex, Claude and Gemini on this Mac, \(range(u.period)), as averages per day")
+            HStack(alignment: .top, spacing: 24) {
+                aiStat(hm(now.aiSeconds / 60), "a day with AI on screen, \(pct(u.share)) of your time at the Mac",
+                       change: was.map { minutesChange(now.aiSeconds - $0.aiSeconds) }, since: since)
+                aiStat(Int(now.wrote.rounded()).formatted(), "words a day you wrote to AI",
+                       change: was.map { wordsChange(now.wrote - $0.wrote) }, since: since)
+                aiStat(Int(now.read.rounded()).formatted(), "words a day AI wrote back",
+                       change: was.map { wordsChange(now.read - $0.read) }, since: since)
+                aiStat(hm(now.workSeconds / 60), "a day AI was working for you, often in the background",
+                       change: was.map { minutesChange(now.workSeconds - $0.workSeconds) }, since: since)
             }
             HStack(alignment: .top, spacing: 32) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("AI in front each day, and its share of your time at the Mac").font(.system(size: 13, weight: .semibold))
+                    Text("AI on screen each day").font(.system(size: 13, weight: .semibold))
                     Chart {
                         ForEach(u.days) { d in
                             BarMark(x: .value("Day", d.date, unit: .day), y: .value("Hours", d.aiSeconds / 3600))
-                                .foregroundStyle(Color.accentColor.opacity(0.8))
+                                .foregroundStyle(Color.primary.opacity(0.45))
                                 .annotation(position: .top) {
                                     if d.macSeconds >= 600 {
-                                        Text(pct(d.share)).font(.system(size: 10)).foregroundStyle(Color.secondaryText).monospacedDigit()
+                                        Text(pct(d.share)).font(.system(size: 11)).foregroundStyle(Color.secondaryText).monospacedDigit()
                                     }
                                 }
                         }
                     }
                     .chartYAxis { AxisMarks { v in AxisGridLine(); AxisValueLabel { if let h = v.as(Double.self) { Text("\(h.formatted(.number.precision(.fractionLength(0...1)))) h") } } } }
-                    .chartXAxis { AxisMarks(values: .stride(by: .day)) { _ in AxisValueLabel(format: u.days.count > 7 ? .dateTime.day() : .dateTime.weekday(.narrow)) } }
-                    .frame(height: 150)
+                    .chartXAxis {
+                        AxisMarks(values: .stride(by: .day, count: u.days.count > 7 ? 7 : 1)) { v in
+                            AxisValueLabel(centered: true) {
+                                if let d = v.as(Date.self) {
+                                    Text(cal.isDateInToday(d) ? "Today" : d.formatted(u.days.count > 7 ? .dateTime.month(.abbreviated).day() : .dateTime.weekday(.abbreviated).day()))
+                                }
+                            }
+                        }
+                    }
+                    .frame(height: 210)
+                    Text("Above each bar: its share of that day's time at the Mac").font(.system(size: 11)).foregroundStyle(Color.secondaryText)
                 }
                 .frame(maxWidth: .infinity)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Where you use it").font(.system(size: 13, weight: .semibold))
-                    Text("How much of each category's timer blocks had AI in front").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
-                    ForEach(cats) { c in
+                    Text("Share of each category's timer blocks with AI on screen").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                    ForEach(cats.prefix(9)) { c in
                         HStack(spacing: 10) {
-                            Text(c.name).font(.system(size: 13)).lineLimit(1).frame(width: 96, alignment: .leading)
+                            Text(c.name).font(.system(size: 13)).lineLimit(1).frame(width: 90, alignment: .leading)
                             GeometryReader { g in
                                 ZStack(alignment: .leading) {
-                                    Capsule().fill(Color.secondary.opacity(0.15))
+                                    Capsule().fill(Color.primary.opacity(0.1))
                                     Capsule().fill(categoryColor(c.name)).frame(width: max(3, g.size.width * (c.share ?? 0)))
                                 }
                             }
                             .frame(height: 6)
-                            Text(pct(c.share ?? 0)).font(.system(size: 12)).monospacedDigit().frame(width: 36, alignment: .trailing)
+                            Text(pct(c.share ?? 0)).font(.system(size: 13)).monospacedDigit().frame(width: 38, alignment: .trailing)
+                            Text("of \(String(format: "%.1f", c.trackedSeconds / 3600)) h").font(.system(size: 12)).foregroundStyle(Color.secondaryText)
+                                .monospacedDigit().frame(width: 58, alignment: .trailing)
                         }
-                        .help("\(hm(c.aiSeconds / 60)) with AI in front of \(hm(c.trackedSeconds / 60)) on the timer; \(c.messages) \(c.messages == 1 ? "message" : "messages") to AI")
+                        .help("\(hm(c.aiSeconds / 60)) with AI on screen in \(hm(c.trackedSeconds / 60)) of \(c.name) on the timer; \(c.messages) \(c.messages == 1 ? "message" : "messages") to AI")
                     }
                     if cats.isEmpty { Text("No timer blocks at the Mac yet").font(.system(size: 12)).foregroundStyle(Color.secondaryText) }
                 }
-                .frame(width: 340)
+                .frame(width: 360)
             }
-            Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 6) {
-                GridRow {
-                    ForEach(["Tool", "In front", "Working for you", "You wrote", "It wrote back"], id: \.self) {
-                        Text($0).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.secondaryText)
-                    }
-                }
-                ForEach(u.tools) { t in
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Each tool, \(range(u.period)) in all").font(.system(size: 13, weight: .semibold))
+                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 6) {
                     GridRow {
-                        Text(t.provider.rawValue)
-                        Text(t.aiSeconds >= 30 ? hm(t.aiSeconds / 60) : "–").monospacedDigit()
-                        Text(t.workSeconds > 0 ? hm(t.workSeconds / 60) : "–").monospacedDigit()
-                        Text(t.wrote > 0 ? "\(t.wrote.formatted()) words" : "–").monospacedDigit()
-                        Text(t.read > 0 ? "\(t.read.formatted()) words" : t.provider == .openAI || t.provider == .anthropic ? "–" : "not recorded")
-                            .monospacedDigit()
+                        Text("Tool")
+                        Text("On screen").gridColumnAlignment(.trailing)
+                        Text("You wrote").gridColumnAlignment(.trailing)
+                        Text("It wrote back").gridColumnAlignment(.trailing)
+                        Text("Working for you").gridColumnAlignment(.trailing)
                     }
-                    .font(.system(size: 13))
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.secondaryText)
+                    ForEach(u.tools) { t in
+                        let recorded = t.provider == .openAI || t.provider == .anthropic
+                        GridRow {
+                            Text(t.provider.rawValue)
+                            Text(hm(t.aiSeconds / 60))
+                            Text(recorded ? "\(t.wrote.formatted()) words" : "not recorded")
+                            Text(recorded ? "\(t.read.formatted()) words\(t.provider == .anthropic ? " †" : "")" : "not recorded")
+                            Text(recorded ? hm(t.workSeconds / 60) : "not recorded")
+                        }
+                        .font(.system(size: 13)).monospacedDigit()
+                    }
+                    Divider().gridCellUnsizedAxes(.horizontal)
+                    GridRow {
+                        Text("All tools")
+                        Text(hm(u.aiSeconds / 60))
+                        Text("\(u.wrote.formatted()) words")
+                        Text("\(u.read.formatted()) words")
+                        Text(hm(u.workSeconds / 60))
+                    }
+                    .font(.system(size: 13, weight: .semibold)).monospacedDigit()
                 }
             }
             Text(aiFootnote(u)).font(.system(size: 12)).foregroundStyle(Color.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 640, alignment: .leading)
         }
     }
 
+    private func aiStat(_ value: String, _ label: String, change: String?, since: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value).font(.system(size: 22, weight: .semibold)).monospacedDigit()
+            Text(label).font(.system(size: 12)).foregroundStyle(Color.secondaryText).fixedSize(horizontal: false, vertical: true)
+            if let change, let since {
+                Text("\(change) \(since)").font(.system(size: 12, weight: .medium)).monospacedDigit()
+                    .foregroundStyle(change.hasPrefix("+") ? Color.green : Color.secondaryText)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func minutesChange(_ seconds: Double) -> String {
+        let m = (seconds / 60).rounded()
+        return m == 0 ? "Same" : (m > 0 ? "+" : "−") + hm(abs(m))
+    }
+
+    private func wordsChange(_ words: Double) -> String {
+        let w = Int(words.rounded())
+        return w == 0 ? "Same" : (w > 0 ? "+" : "−") + abs(w).formatted()
+    }
+
+    private func range(_ p: DateInterval) -> String {
+        let last = p.end.addingTimeInterval(-1)
+        let cal = Calendar.current
+        if cal.isDate(p.start, equalTo: last, toGranularity: .month) {
+            return "\(p.start.formatted(.dateTime.month(.abbreviated).day()))–\(last.formatted(.dateTime.day()))"
+        }
+        return "\(p.start.formatted(.dateTime.month(.abbreviated).day()))–\(last.formatted(.dateTime.month(.abbreviated).day()))"
+    }
+
     private func aiFootnote(_ u: AIUsage.Summary) -> String {
-        var t = "In all: \(hm(u.aiSeconds / 60)) in front, \(u.messages.formatted()) messages and \(u.wrote.formatted()) words from you, \(u.read.formatted()) words back."
-        t += " Words back are replies in Claude Code and the ChatGPT app (its chats and Codex); Claude chats outside Claude Code count only what you wrote."
-        t += " Working for you is the minutes Claude Code or the ChatGPT app spent answering, thinking or running tools"
-        t += u.parallelWorkSeconds > u.workSeconds * 1.1 ? ": \(hm(u.parallelWorkSeconds / 60)) counting sessions that ran side by side separately." : "."
+        var t = "\(u.messages.formatted()) messages from you in all. Words back are replies in Claude Code and the ChatGPT app (its chats and Codex). † Claude chats outside Claude Code count only what you wrote; their replies aren't on this Mac."
+        t += " Working for you is time Claude Code or the ChatGPT app spent answering, thinking or running tools; tools working at the same time count once in All tools."
         if let windowLog = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 10)), u.period.start < windowLog {
-            t += " Before Nov 10, time in front comes from 15-second screen readings, which miss AI websites in Chrome."
+            t += " Before Nov 10, time on screen comes from 15-second screen readings, which miss AI websites in Chrome."
         }
         return t
     }

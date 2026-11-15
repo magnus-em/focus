@@ -87,6 +87,7 @@ final class AIUsageTests: XCTestCase {
                         seg(12, 12.5, bundle: "com.apple.loginwindow")]
         let sessions = [Insights.Session(start: t(9), end: t(11), category: "SWE", isFocus: true),
                         Insights.Session(start: t(11), end: t(12), category: "LeetCode", isFocus: true),
+                        Insights.Session(start: t(12), end: t(15), category: "Leisure", isFocus: false),
                         Insights.Session(start: t(0), end: t(8), category: "Sleep", isFocus: false)]
         let messages = [AIChats.Message(id: "1", at: t(10.2), tool: "Codex", conversation: nil, text: "why does this fail", source: .transcript),
                         AIChats.Message(id: "2", at: t(10.7), tool: "Claude", conversation: nil, text: "explain", source: .window)]
@@ -97,7 +98,7 @@ final class AIUsageTests: XCTestCase {
         XCTAssertEqual(s.share, 1.0 / 3, accuracy: 0.001)
         XCTAssertEqual(s.wrote, 5)
         XCTAssertEqual(s.messages, 2)
-        XCTAssertEqual(s.categories.map(\.name), ["SWE", "LeetCode"])
+        XCTAssertEqual(s.categories.map(\.name), ["SWE", "LeetCode", "Leisure"])
         XCTAssertEqual(s.categories[0].share ?? -1, 0.5, accuracy: 0.001)
         XCTAssertEqual(s.categories[0].messages, 2)
         XCTAssertEqual(s.categories[1].share ?? -1, 0, accuracy: 0.001)

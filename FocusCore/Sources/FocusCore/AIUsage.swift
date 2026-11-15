@@ -100,7 +100,8 @@ public enum AIUsage {
     /// other line. A session whose first prompt is one is a scheduled task.
     public static func claudeCodePromptIsAutomated(_ line: Data) -> Bool? {
         guard let o = object(line), o["type"] as? String == "user", o["isMeta"] as? Bool != true,
-              o["isSidechain"] as? Bool != true, let msg = o["message"] as? [String: Any] else { return nil }
+              o["isSidechain"] as? Bool != true, o["isCompactSummary"] as? Bool != true,
+              let msg = o["message"] as? [String: Any] else { return nil }
         if let blocks = msg["content"] as? [[String: Any]], blocks.contains(where: { $0["type"] as? String == "tool_result" }) { return nil }
         return o["promptSource"] as? String == "system"
     }
@@ -216,6 +217,7 @@ public enum AIUsage {
     /// Timer blocks of one category and how much of them had AI in front.
     public struct Category: Equatable, Sendable, Identifiable {
         public var name: String
+        public var isFocus = false
         public var trackedSeconds: Double = 0
         /// Of those blocks, time anything was in front at the Mac.
         public var macSeconds: Double = 0
@@ -241,6 +243,14 @@ public enum AIUsage {
         public var read: Int { days.reduce(0) { $0 + $1.read } }
         public var messages: Int { days.reduce(0) { $0 + $1.messages } }
         public var share: Double { macSeconds > 0 ? aiSeconds / macSeconds : 0 }
+
+        /// Days with anything to count, for per-day averages (a day the Mac
+        /// was off doesn't pull them down).
+        public var activeDays: Int { days.filter { $0.macSeconds > 0 || $0.wrote > 0 || $0.workSeconds > 0 }.count }
+        public var perDay: (aiSeconds: Double, wrote: Double, read: Double, workSeconds: Double) {
+            let n = Double(max(1, activeDays))
+            return (aiSeconds / n, Double(wrote) / n, Double(read) / n, workSeconds / n)
+        }
     }
 
     static let notAtTheMac: Set<String> = ["com.apple.loginwindow", "com.apple.ScreenSaver.Engine"]
@@ -307,6 +317,7 @@ public enum AIUsage {
             let a = max(s.start, p.start), b = min(s.end, p.end)
             guard b > a else { continue }
             var c = cats[s.category] ?? Category(name: s.category)
+            c.isFocus = c.isFocus || s.isFocus
             c.trackedSeconds += b.timeIntervalSince(a)
             c.macSeconds += overlap(macUnion, a, b)
             c.aiSeconds += overlap(aiUnion, a, b)
@@ -316,7 +327,7 @@ public enum AIUsage {
 
         return Summary(period: p, days: days,
                        tools: tools.values.sorted { ($0.aiSeconds + $0.workSeconds) > ($1.aiSeconds + $1.workSeconds) },
-                       categories: cats.values.sorted { $0.trackedSeconds > $1.trackedSeconds },
+                       categories: cats.values.sorted { $0.isFocus != $1.isFocus ? $0.isFocus : $0.trackedSeconds > $1.trackedSeconds },
                        workSeconds: allWork.reduce(0) { $0 + $1.duration },
                        parallelWorkSeconds: work.reduce(0) { $0 + $1.1.duration })
     }

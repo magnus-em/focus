@@ -56,6 +56,11 @@ final class AIChatsTests: XCTestCase {
         XCTAssertNil(AIChats.claudeCodePrompt(line(tag)))
         var blocks = base; blocks["message"] = ["role": "user", "content": [["type": "text", "text": "look at this"], ["type": "image"]]]
         XCTAssertEqual(AIChats.claudeCodePrompt(line(blocks))?.text, "look at this")
+        var summary = base; summary["isCompactSummary"] = true
+        summary["message"] = ["role": "user", "content": "This session is being continued from a previous conversation that ran out of context."]
+        XCTAssertNil(AIChats.claudeCodePrompt(line(summary)))
+        summary["isCompactSummary"] = nil
+        XCTAssertNil(AIChats.claudeCodePrompt(line(summary)))
     }
 
     func testCodexSkipsInjectedTurns() {

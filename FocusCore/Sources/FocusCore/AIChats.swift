@@ -105,7 +105,8 @@ public enum AIChats {
     public static func claudeCodePrompt(_ line: Data) -> Message? {
         guard let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
               o["type"] as? String == "user", o["isMeta"] as? Bool != true, o["isSidechain"] as? Bool != true,
-              o["promptSource"] as? String != "system",
+              o["promptSource"] as? String != "system", o["isCompactSummary"] as? Bool != true,
+              o["isVisibleInTranscriptOnly"] as? Bool != true,
               let msg = o["message"] as? [String: Any], let at = date(o["timestamp"] as? String) else { return nil }
         var text = ""
         if let s = msg["content"] as? String { text = s }
@@ -114,12 +115,18 @@ public enum AIChats {
             text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: "\n")
         }
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !text.hasPrefix("<"), !text.hasPrefix("[Request interrupted") else { return nil }
+        guard !text.isEmpty, !text.hasPrefix("<"), !text.hasPrefix("[Request interrupted"), !isCompactSummary(text) else { return nil }
         let cwd = o["cwd"] as? String
         let id = (o["uuid"] as? String) ?? hash(text + "\(at.timeIntervalSince1970)")
         return Message(id: "cc-" + id, at: at, tool: "Claude Code", conversation: o["sessionId"] as? String,
                        text: text, source: .transcript,
                        project: cwd.map { URL(fileURLWithPath: $0).lastPathComponent })
+    }
+
+    /// Claude Code's summary when it compacts a long conversation, logged as
+    /// a "user" message (~2,000 words each; 15 were saved as yours by 11/14).
+    public static func isCompactSummary(_ text: String) -> Bool {
+        text.hasPrefix("This session is being continued from a previous conversation")
     }
 
     /// One line of a Codex session (`~/.codex/sessions/**/*.jsonl`). Codex
